@@ -99,6 +99,7 @@ button:focus-visible, .row:focus-visible { outline: 1px solid var(--accent); out
 .stepper input { flex: 1; min-width: 0; height: auto; border: 0; border-left: 1px solid var(--line); border-right: 1px solid var(--line); border-radius: 0; background: none; color: var(--text); font: inherit; text-align: center; outline: none; appearance: textfield; }
 .stepper input::-webkit-inner-spin-button, .stepper input::-webkit-outer-spin-button { appearance: none; margin: 0; }
 .settings .menu-help { margin-top: 4px; }
+.set-value { color: var(--text); min-width: 0; } .set-error { color: var(--warn); }
 .field { height: 28px; padding: 0 8px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 4px; font: inherit; width: 100%; min-width: 0; }
 .field:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
 .term .xterm { padding: 8px 12px 8px 12px; } /* padding lives on .xterm so FitAddon subtracts it */

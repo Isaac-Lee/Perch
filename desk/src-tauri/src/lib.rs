@@ -1,5 +1,7 @@
 mod desk;
+mod hermes;
 mod pty;
+mod sessions;
 
 use tauri::Manager;
 
@@ -9,6 +11,11 @@ pub fn run() {
     .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| desk::open_window(app)))
     .plugin(tauri_plugin_dialog::init())
     .manage(desk::Desk::default())
+    .manage(sessions::Sessions::default())
+    .setup(|app| {
+      sessions::start(app.handle().clone());
+      Ok(())
+    })
     .invoke_handler(tauri::generate_handler![
       desk::pane_create,
       desk::pane_attach,
@@ -19,7 +26,12 @@ pub fn run() {
       desk::home_dir,
       desk::window_new,
       desk::window_focus,
-      desk::pane_focus
+      desk::pane_focus,
+      desk::session_approve,
+      sessions::sessions_snapshot,
+      hermes::hermes_status,
+      hermes::hermes_connect,
+      hermes::hermes_disconnect
     ])
     .on_window_event(|window, event| {
       if let tauri::WindowEvent::Destroyed = event {
