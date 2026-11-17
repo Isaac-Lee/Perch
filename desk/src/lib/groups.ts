@@ -1,22 +1,37 @@
 import type { Group, Session, SessionStateName } from "./types";
 
 export const COMMON_LABEL = "Shared workspace";
-export const MY_TURN: SessionStateName[] = ["approval", "question", "idle"];
+export const MY_TURN: SessionStateName[] = ["approval", "question"];
 
 const STALE_SEC = 600;
 const RECENT_SEC = 86400;
 const DROP_SEC = 604800;
 
-export function displayState(s: Session, now: number): SessionStateName | "stale" {
+export type DisplayState = Exclude<SessionStateName, "idle"> | "stale" | "done" | "ready";
+
+export function displayState(s: Session, now: number): DisplayState {
+  if (s.state === "idle") return s.prompt ? "done" : "ready";
   const working = s.state === "running" || s.state === "thinking" || s.state === "tool";
   return working && now - s.seen > STALE_SEC ? "stale" : s.state;
+}
+
+/** 화면에 보여줄 경과 초. null이면 시간을 표시하지 않는다. */
+export function shownSeconds(s: Session, now: number): number | null {
+  switch (displayState(s, now)) {
+    case "running": case "thinking": case "tool": return now - (s.turnStart ?? s.since);
+    case "approval": case "question": case "stale": return now - s.since;
+    case "done": return s.lastTurn ?? null;
+    default: return null;
+  }
 }
 
 function rank(s: Session, now: number): number {
   switch (displayState(s, now)) {
     case "approval": return 0;
     case "question": return 1;
-    case "idle": return 2;
+    case "done": return 2;
+    case "plain":
+    case "ready": return 3.5;
     case "stale": return 4;
     case "closed": return 5;
     default: return 3;
@@ -65,6 +80,14 @@ export function groupSessions(sessions: Session[], now: number): Group[] {
   const mine = (g: Group) => g.sessions.some((s) => MY_TURN.includes(s.state));
   // common group last; groups with a my-turn session first
   return groups.sort((a, b) => Number(a.isCommon) - Number(b.isCommon) || Number(mine(b)) - Number(mine(a)));
+}
+
+/** q must already be trimmed and lowercased. */
+export const sessionTitle = (s: Session) => s.title || s.prompt;
+
+export function matchSession(s: Session, q: string): boolean {
+  const hay = [sessionTitle(s), s.cwd, s.branch].join(" ").toLowerCase();
+  return q.split(/\s+/).filter(Boolean).every((w) => hay.includes(w));
 }
 
 /** Counts shown on a collapsed group title so waiting/working sessions are not missed. */

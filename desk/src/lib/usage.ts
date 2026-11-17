@@ -17,6 +17,8 @@ export function fmtTokens(n: number): string {
   return `${f(n / 1_000_000, 2)}M`;
 }
 
+export const fmtTok = (n: number) => `Ŧ ${fmtTokens(n)}`;
+
 export interface UsageRow { key: string; label: string; sessions: number; input: number; output: number; cache: number; total: number; costUsd: number | null }
 type SessionRow = UsageRow & { sessionId: string; agent: AgentKind; startedAt: number };
 
@@ -57,7 +59,7 @@ export function summarize(sessions: Session[], period: Period, now: number) {
     bump(groups.project, s.repoRoot ?? "common", s.repoRoot ? labels.get(s.repoRoot)! : COMMON_LABEL, u);
     bump(groups.model, u.model, u.model, u);
     bump(groups.agent, s.agent, s.agent, u);
-    const row = blank(s.sessionId, s.prompt);
+    const row = blank(s.sessionId, s.title || s.prompt);
     add(row, u);
     bySession.push({ ...row, sessionId: s.sessionId, agent: s.agent, startedAt: u.startedAt });
   }

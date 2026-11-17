@@ -10,6 +10,8 @@ export default function PaneHeader({ pane, session, now, focused, onClose, onSto
   const waiting = st === "approval" || st === "question";
   return (
     <div className={`pane-head${focused ? " focused" : ""}`}>
+      {(st === "plain" || st === "ready") && <span className="dot" />}
+      {st === "done" && <span className="dot ok" />}
       {waiting && <span className="dot warn" title={st === "approval" ? "Needs approval" : "Question"} />}
       <span className="pane-title">{agentName(pane.agent)} · {pane.title}</span>
       {pane.branch && <span className="branch"><GitBranch size={13} strokeWidth={1.5} /><span className="ellipsis">{pane.branch}</span></span>}

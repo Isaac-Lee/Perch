@@ -1,18 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, PanelLeftClose } from "lucide-react";
+import { ChevronDown, ChevronRight, PanelLeftClose, Plus, Search, X } from "lucide-react";
 import type { Pane, Session } from "../lib/types";
-import { MY_TURN, displayState, groupSessions, groupSummary } from "../lib/groups";
+import { MY_TURN, displayState, groupSessions, groupSummary, matchSession } from "../lib/groups";
 import SessionRow from "./SessionRow";
 import { clampSidebarWidth, SIDEBAR_DEFAULT, loadCollapsed, saveCollapsed } from "../lib/uiSettings";
 import { useScrollReveal } from "../lib/useScrollReveal";
-import { fmtTokens, summarize } from "../lib/usage";
+import { fmtTok, summarize } from "../lib/usage";
 
-export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, onApprove, onStop, onCollapse, onUsage, width, onResize }: {
+import { formatShortcut } from "../lib/shortcuts";
+
+export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, onApprove, onStop, onCollapse, onUsage, onNew, newSession, width, onResize }: {
   sessions: Session[]; panes: Pane[]; now: number; focusedPaneId: string | null;
-  onFocus: (id: string) => void; onApprove: (id: string, allow: boolean) => void; onStop: (id: string) => void; onCollapse: () => void; onUsage: () => void;
+  onFocus: (id: string) => void; onApprove: (id: string, allow: boolean) => void; onStop: (id: string) => void; onCollapse: () => void; onUsage: () => void; onNew: (cwd: string) => void; newSession: React.ReactNode;
   width: number; onResize: (w: number) => void;
 }) {
-  const groups = useMemo(() => groupSessions(sessions, now), [sessions, now]);
+  const allGroups = useMemo(() => groupSessions(sessions, now), [sessions, now]);
+  const [query, setQuery] = useState("");
+  const q = query.trim().toLowerCase();
+  const groups = useMemo(() => (q ? groupSessions(sessions.filter((s) => matchSession(s, q)), now) : allGroups), [q, sessions, now, allGroups]);
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [folded, setFolded] = useState<Set<string>>(() => new Set(loadCollapsed()));
   const fold = (k: string) => setFolded((o) => { const n = new Set(o); if (!n.delete(k)) n.add(k); saveCollapsed([...n]); return n; });
@@ -38,10 +43,12 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
     return () => { el.removeEventListener("scroll", calc); ro.disconnect(); };
   }, []);
   const focusedSession = panes.find((p) => p.id === focusedPaneId)?.sessionId;
-  const live = groups.flatMap((g) => g.sessions);
+  const live = allGroups.flatMap((g) => g.sessions);
   const working = live.filter((s) => ["running", "thinking", "tool"].includes(displayState(s, now))).length;
   const mine = live.filter((s) => MY_TURN.includes(s.state)).length;
   const todayTok = useMemo(() => summarize(sessions, "today", now).total.total, [sessions, now]);
+  const isFolded = (k: string) => !q && folded.has(k);
+  const isOpen = (k: string) => !!q || open.has(k);
   const toggle = (k: string) => setOpen((o) => { const n = new Set(o); if (!n.delete(k)) n.add(k); return n; });
   return (
     <aside className="sidebar" style={{ width }}>
@@ -49,18 +56,30 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
         <div>
           <div className="side-title">Sessions</div>
           <div className="side-sum">{working} working · {mine} waiting on you</div>
-          <button className="side-tok" onClick={onUsage}>Today {fmtTokens(todayTok)} tok</button>
+          <button className="side-tok" title="Token usage" onClick={onUsage}>Today {fmtTok(todayTok)}</button>
         </div>
         <button className="icon-btn" aria-label="Collapse sidebar" onClick={onCollapse}><PanelLeftClose size={16} strokeWidth={1.5} /></button>
       </div>
+      <div className="side-actions">
+        {newSession}
+        <label className="side-action">
+          <Search size={16} strokeWidth={1.5} />
+          <input id="session-search" placeholder="Search" aria-label="Search sessions" value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Escape") { setQuery(""); e.currentTarget.blur(); } }} />
+          {query ? <button className="icon-btn" aria-label="Clear search" onClick={() => setQuery("")}><X size={14} strokeWidth={1.5} /></button> : <kbd>{formatShortcut("search")}</kbd>}
+        </label>
+      </div>
       <div className="side-body" ref={bodyRef}>
         <div>
+        {q && groups.length === 0 && <div className="side-empty">일치하는 세션이 없습니다.</div>}
         {groups.map((g) => (
           <div key={g.key} className="group">
-            <button className="group-title" aria-expanded={!folded.has(g.key)} onClick={() => fold(g.key)}>
-              {folded.has(g.key) ? <ChevronRight size={16} strokeWidth={1.5} /> : <ChevronDown size={16} strokeWidth={1.5} />}
+            <div className="group-head">
+            <button className="group-title" aria-expanded={!isFolded(g.key)} onClick={() => fold(g.key)}>
+              {isFolded(g.key) ? <ChevronRight size={16} strokeWidth={1.5} /> : <ChevronDown size={16} strokeWidth={1.5} />}
               <span className="ellipsis">{g.label}</span><span className="count">{g.sessions.length}</span>
-              {folded.has(g.key) && (() => {
+              {isFolded(g.key) && (() => {
                 const { mine, working } = groupSummary(g, now);
                 return (
                   <span className="group-sum">
@@ -70,17 +89,19 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
                 );
               })()}
             </button>
-            {!folded.has(g.key) && g.sessions.map((s) => (
+            {!g.isCommon && <button className="icon-btn group-add" aria-label={`New session in ${g.label}`} title={`New session · ${g.key}`} onClick={() => onNew(g.key)}><Plus size={14} strokeWidth={1.5} /></button>}
+            </div>
+            {!isFolded(g.key) && g.sessions.map((s) => (
               <SessionRow key={s.sessionId} s={s} now={now} focused={s.sessionId === focusedSession}
                 onClick={() => onFocus(s.sessionId)} onApprove={(a) => onApprove(s.sessionId, a)} onStop={() => onStop(s.sessionId)} />
             ))}
-            {!folded.has(g.key) && g.recent.length > 0 && (
+            {!isFolded(g.key) && g.recent.length > 0 && (
               <>
                 <button className="recent-toggle" onClick={() => toggle(g.key)}>
-                  {open.has(g.key) ? <ChevronDown size={16} strokeWidth={1.5} /> : <ChevronRight size={16} strokeWidth={1.5} />}
+                  {isOpen(g.key) ? <ChevronDown size={16} strokeWidth={1.5} /> : <ChevronRight size={16} strokeWidth={1.5} />}
                   Recent <span className="count">{g.recent.length}</span>
                 </button>
-                {open.has(g.key) && g.recent.map((s) => (
+                {isOpen(g.key) && g.recent.map((s) => (
                   <SessionRow key={s.sessionId} s={s} now={now} focused={s.sessionId === focusedSession}
                     onClick={() => onFocus(s.sessionId)} onApprove={(a) => onApprove(s.sessionId, a)} onStop={() => onStop(s.sessionId)} />
                 ))}

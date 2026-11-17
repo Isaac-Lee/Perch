@@ -11,7 +11,7 @@ test("fmtElapsed", () => {
 test("stateLabel", () => {
   const want = {
     running: "Working", thinking: "Thinking", tool: "Running", approval: "Needs approval",
-    question: "Question", idle: "Waiting", closed: "Closed", stale: "Not responding",
+    question: "Question", done: "Done", ready: "", closed: "Closed", stale: "Not responding",
   } as const;
   for (const [k, v] of Object.entries(want)) expect(stateLabel(k as keyof typeof want)).toBe(v);
 });
