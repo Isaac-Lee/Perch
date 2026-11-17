@@ -4,16 +4,18 @@
 
 ## 1. 한 줄 요약
 
-Perch는 여러 코딩 에이전트(Hermes, OpenCode)를 분할 터미널로 띄우고, 옆 패널에서 모든 세션 상태를 지켜보는 데스크톱 앱이다. **1~3단계(UI, Tauri + 실제 터미널, Hermes 연결)는 끝났다. 4단계(OpenCode)와 5단계(오프라인 설치 검증)가 남았다.** 작업 브랜치는 `phase2-tauri-pty`이고 아직 push하지 않았다.
+Perch는 여러 코딩 에이전트(Hermes, OpenCode)를 분할 터미널로 띄우고, 옆 패널에서 모든 세션 상태를 지켜보는 데스크톱 앱이다. **1~3단계(UI, Tauri + 실제 터미널, Hermes 연결)는 끝났다. 4단계(OpenCode)와 5단계(오프라인 설치 검증)가 남았다.** 모든 작업은 `main`에 병합돼 있다 (PR #1). `v0.1.0` 태그를 올렸고 릴리스는 초안 상태다 (6절).
 
 ## 2. 지금 있는 것
 
 | 위치 | 내용 | 상태 |
 |---|---|---|
-| `desk/src/` | 화면 (React 19 + TypeScript). 브라우저에서는 가짜 데이터, Tauri 창에서는 실제 백엔드 | 테스트 31개 통과 |
-| `desk/src-tauri/src/` | Rust 백엔드: `pty.rs`(터미널), `desk.rs`(칸·창), `sessions.rs`(상태 수집, state.db 보강), `hermes.rs`(실행 파일 찾기, 연결) | 테스트 29개 통과 |
+| `desk/src/` | 화면 (React 19 + TypeScript). 브라우저에서는 가짜 데이터, Tauri 창에서는 실제 백엔드 | 테스트 33개 통과 |
+| `desk/src-tauri/src/` | Rust 백엔드: `pty.rs`(터미널), `desk.rs`(칸·창), `sessions.rs`(상태 수집, state.db 보강), `hermes.rs`(실행 파일 찾기, 연결) | 테스트 30개 통과 |
 | `desk/src-tauri/hook/` | `perch-hook`: Hermes 셸 훅이 부르는 작은 바이너리. 상태 파일을 쓴다 | 테스트 3개 통과 |
 | `desk/scripts/build-hook.mjs` | 훅을 빌드해 Tauri 사이드카 위치로 복사 (`npm run hook`) | `tauri dev`/`build`가 자동 실행 |
+| `.github/workflows/build.yml` | Windows 설치 파일과 macOS(Apple Silicon) dmg를 만든다. PR과 수동 실행은 결과물만 남기고, `v*` 태그는 초안 릴리스에 붙인다 | PR #1에서 두 OS 모두 통과 |
+| `docs/ADAPTERS.md` | 다른 에이전트를 붙일 때의 계약과 손댈 곳 | OpenCode는 보류 |
 | `docs/superpowers/specs/2026-11-17-perch-design.md` | 설계 문서. 성능 기준은 9절 10번 | 메모리 기준 500MB로 변경됨 |
 | `docs/superpowers/plans/` | 단계별 계획. 2단계(`phase2-tauri-pty`), 3단계(`phase3-hermes`: 확인된 Hermes 사실 포함) | 2·3단계 완료 |
 | `prototype/dash.py` | 초기 Python 프로토타입 | `perch-hook`이 대체했다. 지워도 된다 |
@@ -79,6 +81,16 @@ npm run tauri build   # 릴리스 exe와 설치 파일
   - 가격표는 넣지 않는다. 비용은 에이전트가 기록한 값이 있을 때만 표시한다.
 - Stop 버튼, 패널 폭 조절, 묶음 접기, 새 세션 기본값(에이전트 + 폴더), 터미널 글꼴/크기 설정, git 브랜치 표시.
 
+**2026-11-17~18에 추가된 화면 결정 (사용자 검토)**
+- 세션 상태 표시: 턴을 끝낸 세션은 **Done**(초록 점, 깜빡임 없음), 열었지만 아직 요청하지 않은 세션은 문구 없는 중립 점, 상태 정보가 없는 칸(셸 등)도 중립 점이다. "waiting on you"는 승인과 질문만 센다. 상태 파일의 `state` 값은 그대로 `idle`이고, 화면이 `prompt` 유무로 Done과 요청 전을 가른다 (`groups.ts` `displayState`).
+- 시간 표시: 요청을 보낸 순간부터 흐르고, Done이 되면 걸린 시간에서 멈춘다. 훅이 턴 종료 때 `lastTurn`(초)을 상태 파일에 남긴다. 요청 전 세션, 셸, 닫힌 세션은 시간을 보여주지 않는다 (`groups.ts` `shownSeconds`).
+- 새 세션: 패널과 상단 바에 `+ New session | Hermes · 폴더 ▾`가 있다. 오른쪽을 누르면 폴더·에이전트 선택 메뉴가 열리고, 여기서 고른 값이 기본값이다. `Choose folder…`는 앱에서 OS 폴더 선택창을 연다. 패널의 묶음 제목 줄에도 그 폴더에서 바로 여는 `+`가 있다.
+- 검색: 세션 제목, 폴더, 브랜치만 본다. 띄어 쓴 단어는 모두 들어 있어야 한다. 제목은 에이전트가 붙인 것(Hermes `state.db`의 `sessions.title`)이고, 없으면 마지막 요청 문구를 대신 쓴다. 대화 기록 검색은 하지 않는다.
+- 단축키: `src/lib/shortcuts.ts`의 표 하나가 동작과 도움말을 모두 구동한다. 터미널 입력과 겹치지 않게 `Ctrl+Shift` 조합과 `Ctrl+Tab`, `Ctrl+1~9`만 쓴다. `Ctrl+N` 같은 키는 셸과 Hermes가 쓰므로 가로채지 않는다.
+- 토큰 단위는 앞에 붙는 `Ŧ`다 (`Ŧ 637.4k`). `₸`는 실제 통화 기호라 쓰지 않는다.
+- 설정 메뉴는 "라벨 왼쪽, 컨트롤 오른쪽" 2열 행이다. 직접 입력칸은 `Custom…`을 골랐을 때만 나온다.
+- 메모리 기준은 500MB(작업 집합 합계)로 올렸다. 줄이는 일은 미뤘다.
+
 ## 5. 반드시 지킬 규칙
 
 - **Claude Code 설정과 훅(`~/.claude/`)은 절대 건드리지 않는다.** 대상은 Hermes와 OpenCode 설정뿐이다. 이 프로젝트 초기에 Claude Code 훅을 등록했다가 훅 파일이 없어지면서 모든 도구 호출이 차단된 사고가 있었다.
@@ -97,6 +109,11 @@ npm run tauri build   # 릴리스 exe와 설치 파일
   - 사용자에게 하는 설명은 한국어로 한다.
 
 ## 6. 다음에 할 일
+
+**먼저: v0.1.0 릴리스 게시.** 태그 빌드가 끝나면 [Releases](https://github.com/Isaac-Lee/Perch/releases)의 초안 `Perch v0.1.0`에 설치 파일 두 개(`Perch_0.1.0_x64-setup.exe`, `Perch_0.1.0_aarch64.dmg`)가 붙는다. 확인한 뒤 웹에서 "Publish release"를 누르거나 `gh release edit v0.1.0 --draft=false --latest`를 실행한다. 빌드가 실패했으면 Actions에서 단계를 확인한다. 다음 버전은 `tauri.conf.json`, `Cargo.toml`, `package.json`의 버전을 올리고 `v<버전>` 태그를 push하면 같은 과정이 돈다.
+
+- 저장소에 `LICENSE` 파일이 없다. 공개 저장소이므로 정해야 한다 (사용자 결정 대기). 포함된 폰트와 라이브러리는 OFL, MIT, ISC 계열이다.
+- Intel 맥용 빌드는 없다. 필요하면 워크플로 matrix에 줄을 추가한다.
 
 **4단계: OpenCode 연결.** 플러그인(`~/.config/opencode/plugins/`) 또는 로컬 서버 API를 쓴다. 이벤트 이름, resume 플래그, 토큰 DB 컬럼은 실제 설치본으로 확인해야 한다. 이 PC에는 OpenCode가 없다. 상태 파일 형식은 3단계 계획 2.1절과 같고 `agent`만 `opencode`다. 부분 지원(작업중/대기, 도구, 권한 대기)으로 출시해도 된다.
 
@@ -127,7 +144,7 @@ npm run tauri build   # 릴리스 exe와 설치 파일
 - 실제 키보드로 누른 단축키, 터미널에 포커스가 있을 때 앱이 먼저 받는지.
 - Tabby와의 메모리 비교.
 - WebView2의 WebGL 컨텍스트 상한 (8칸까지는 문제없었다).
-- macOS에서는 2단계 이후 한 번도 빌드하지 않았다.
+- macOS: CI에서 빌드와 테스트는 통과했다. 실제 맥에서 실행해 본 적은 없다 (터미널, Hermes 연결, 폴더 선택창, 단축키의 ⌘ 표기 모두 미확인).
 - OpenCode 전부.
 - 5단계 설치 검증을 어디서 할지 (Windows 10 가상머신 또는 실제 오프라인 PC).
 
@@ -140,3 +157,27 @@ npm run tauri build   # 릴리스 exe와 설치 파일
 - `agent-dash-win64.zip`은 `dash.py` 프로토타입의 Windows 빌드다. `.gitignore`로 저장소에서 제외했다.
 - README 스크린샷은 headless Edge로 찍었다. macOS에서는 Chrome으로 같은 방식을 쓸 수 있다: `--headless=new --window-size=1600,1000 --virtual-time-budget=6000 --screenshot=<경로> <URL>`
 - Vite 개발 서버가 파일을 크게 고친 직후 빈 모듈을 내보낸 적이 있다. 화면이 비면 파일을 다시 저장하거나 서버를 재시작한다.
+
+## 10. 다음 세션을 시작할 때 쓸 프롬프트
+
+새 PC에서 Claude Code를 열고 아래를 그대로 붙여 넣으면 된다. 마지막 줄만 하려는 일로 바꾼다.
+
+```text
+이 저장소는 Perch다. 먼저 docs/HANDOFF.md를 읽고 지금 상태를 파악해.
+계획 문서는 docs/superpowers/plans/, 설계는 docs/superpowers/specs/, 다른 에이전트 연결 계약은 docs/ADAPTERS.md에 있어.
+
+작업 방식:
+- 너는 설계, 계획, 검토를 맡고 구현은 Sonnet 서브에이전트에 맡겨. 지시는 수정할 파일, 동작, 완료 기준, 보고 형식까지 명확하게 내려. 토큰을 아끼기 위해서야.
+- 구현 전에 계획을 먼저 알려 줘. 다이어그램을 적극적으로 써.
+- 서브에이전트의 보고를 그대로 믿지 말고 테스트와 실제 앱으로 직접 확인해.
+- 설명은 한국어로, 짧게.
+- HANDOFF.md 5절의 규칙을 지켜. 특히 ~/.claude는 건드리지 말고, 훅은 어떤 경우에도 에이전트를 막으면 안 돼.
+
+오늘 할 일: <여기에 적는다. 예: v0.1.0 릴리스 초안 확인 후 게시 / 맥에서 앱 실행 확인 / 승인 버튼 확인 / 메모리 줄이기>
+```
+
+상황별로 덧붙이면 좋은 말:
+- 맥에서 처음 실행할 때: "desk에서 npm install, npm test, npm run tauri dev 순서로 돌려서 맥에서 처음 실행해 보는 거야. 8절의 macOS 미확인 항목을 하나씩 확인해."
+- Hermes를 실제로 건드릴 때: "실제 Hermes 설정을 바꾸거나 gateway를 재시작하기 전에는 먼저 물어봐."
+- 설치 파일을 시험할 때: "설치 파일은 네 셸에서 실행하지 말고 내가 탐색기에서 실행할게. 9절의 가상 폴더 문제 때문이야."
+
