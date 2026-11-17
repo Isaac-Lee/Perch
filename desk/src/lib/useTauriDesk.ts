@@ -69,7 +69,8 @@ export function useTauriDesk() {
     }
     const info = s.paneId ? infosRef.current.find((i) => i.id === s.paneId) : undefined;
     if (info) focusPaneInfo(info);
-    else paneCreate("hermes", s.cwd, sessionId).then(setFocused, console.error);
+    // 에이전트별 resume은 백엔드 `pane_create`의 resume 처리에 추가한다. 그 전까지 hermes 외에는 새 칸만 연다.
+    else (s.agent === "hermes" ? paneCreate("hermes", s.cwd, sessionId) : paneCreate(s.agent, s.cwd)).then(setFocused, console.error);
   }, [focusPaneInfo]);
   const stop = useCallback((sessionId: string) => {
     const paneId = sInfosRef.current.find((x) => x.sessionId === sessionId)?.paneId ?? sessionId;
