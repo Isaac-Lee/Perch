@@ -4,10 +4,10 @@ export interface Subagent { id: string; role: string; goal: string; start: numbe
 export interface Todo { text: string; status: "pending" | "in_progress" | "done" }
 export interface Pending { kind: "approval" | "question"; id: string; text: string }
 export interface Session {
-  agent: AgentKind; sessionId: string; cwd: string; repoRoot: string | null;
+  agent: AgentKind; sessionId: string; cwd: string; repoRoot: string | null; branch: string | null;
   state: SessionStateName; since: number; turnStart: number | null; steps: number;
   tool: string; toolDetail: string; prompt: string; pending: Pending | null;
   subagents: Subagent[]; todos: Todo[]; seen: number; paneId: string | null;
 }
-export interface Pane { id: string; agent: AgentKind; cwd: string; sessionId: string | null; title: string }
+export interface Pane { id: string; agent: AgentKind; cwd: string; sessionId: string | null; title: string; branch: string | null }
 export interface Group { key: string; label: string; isCommon: boolean; sessions: Session[]; recent: Session[] }

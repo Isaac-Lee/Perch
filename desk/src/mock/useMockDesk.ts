@@ -33,9 +33,9 @@ export function useMockDesk() {
     return () => clearInterval(id);
   }, []);
 
-  const addPaneFor = useCallback((agent: AgentKind, cwd: string, sessionId: string | null): string => {
+  const addPaneFor = useCallback((agent: AgentKind, cwd: string, sessionId: string | null, branch?: string | null): string => {
     const id = `p${++seq}`;
-    setPanes((p) => [...p, { id, agent, cwd, sessionId, title: folderName(cwd) }]);
+    setPanes((p) => [...p, { id, agent, cwd, sessionId, title: folderName(cwd), branch: branch ?? null }]);
     return id;
   }, []);
 
@@ -43,7 +43,7 @@ export function useMockDesk() {
     const s = sessions.find((x) => x.sessionId === sessionId);
     if (!s) return;
     if (s.paneId) return setFocused(s.paneId);
-    const id = addPaneFor(s.agent, s.cwd, s.sessionId);
+    const id = addPaneFor(s.agent, s.cwd, s.sessionId, s.branch);
     setSessions((all) => all.map((x) => (x.sessionId === sessionId ? { ...x, paneId: id } : x)));
     setFocused(id);
   }, [sessions, addPaneFor]);

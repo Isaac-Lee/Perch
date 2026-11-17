@@ -8,8 +8,8 @@ export default function Pane({ pane, session, now, focused, onFocus, onClose, st
 }) {
   return (
     <section className={`pane${focused ? " focused" : ""}`} style={style} onMouseDown={onFocus}>
-      <PaneHeader pane={pane} session={session} now={now} onClose={onClose} />
-      <TerminalView agent={pane.agent} />
+      <PaneHeader pane={pane} session={session} now={now} focused={focused} onClose={onClose} />
+      <TerminalView agent={pane.agent} focused={focused} />
       <PaneFooter session={session} now={now} />
     </section>
   );
