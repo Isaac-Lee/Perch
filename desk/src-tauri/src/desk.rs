@@ -1,5 +1,7 @@
 use crate::pty::{self, Pty};
+use crate::sessions::{self, Scan, SessionInfo, Sessions};
 use serde::Serialize;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -18,25 +20,71 @@ pub struct PaneInfo {
     pub branch: Option<String>,
     pub window: String,
     pub created_at: u64,
+    /// Connected Hermes session (full id, or the banner's prefix until the session shows up)
+    pub session_id: Option<String>,
 }
 
 struct Entry {
     info: PaneInfo,
     pty: Option<Pty>,
     chan: Chan,
+    created_ms: u64,
+    resume: Option<String>,
 }
 
 #[derive(Default)]
 struct Inner {
     entries: Vec<Entry>,
     next: u64,
+    /// Hermes pane whose PTY was started last; the next one waits until it is linked or 5s passed
+    gate: Option<(String, std::time::Instant)>,
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+}
+
+/// Links Hermes panes to sessions. Returns true if any pane changed.
+/// 1) a pane holding an id prefix gets the unique full id that starts with it;
+/// 2) a still unlinked pane gets the earliest unlinked session first seen after the pane was created.
+// ponytail: a session resumed from outside Perch already has a state file, so it is never guessed; only the banner links it.
+fn relink_entries(entries: &mut [Entry], sessions: &[SessionInfo], first_seen: &HashMap<String, u64>) -> bool {
+    let mut changed = false;
+    for e in entries.iter_mut().filter(|e| e.info.agent == "hermes") {
+        let Some(p) = e.info.session_id.clone() else { continue };
+        if sessions.iter().any(|s| s.session_id == p) {
+            continue;
+        }
+        let mut m = sessions.iter().filter(|s| s.session_id.starts_with(&p));
+        if let (Some(full), None) = (m.next(), m.next()) {
+            e.info.session_id = Some(full.session_id.clone());
+            changed = true;
+        }
+    }
+    let taken: HashSet<&str> = entries.iter().filter_map(|e| e.info.session_id.as_deref()).collect();
+    let mut free: Vec<(u64, String)> = sessions.iter()
+        .filter(|s| !taken.contains(s.session_id.as_str()))
+        .filter_map(|s| first_seen.get(&s.session_id).filter(|&&t| t > 0).map(|&t| (t, s.session_id.clone())))
+        .collect();
+    free.sort();
+    let mut order: Vec<usize> = (0..entries.len())
+        .filter(|&i| entries[i].info.agent == "hermes" && entries[i].info.session_id.is_none())
+        .collect();
+    order.sort_by_key(|&i| entries[i].created_ms);
+    for i in order {
+        if let Some(pos) = free.iter().position(|(t, _)| *t >= entries[i].created_ms) {
+            entries[i].info.session_id = Some(free.remove(pos).1);
+            changed = true;
+        }
+    }
+    changed
 }
 
 #[derive(Default)]
 pub struct Desk(Mutex<Inner>);
 
 impl Desk {
-    fn snapshot(&self) -> Vec<PaneInfo> {
+    pub fn snapshot(&self) -> Vec<PaneInfo> {
         self.0.lock().unwrap().entries.iter().map(|e| e.info.clone()).collect()
     }
 
@@ -51,6 +99,22 @@ impl Desk {
         !removed.is_empty()
     }
 
+    pub fn relink(&self, sessions: &[SessionInfo], first_seen: &HashMap<String, u64>) -> bool {
+        relink_entries(&mut self.0.lock().unwrap().entries, sessions, first_seen)
+    }
+
+    /// Records the id found in a pane's banner (only if the pane has none yet).
+    fn set_session(&self, pane: &str, id: String) -> bool {
+        let mut g = self.0.lock().unwrap();
+        match g.entries.iter_mut().find(|e| e.info.id == pane && e.info.session_id.is_none()) {
+            Some(e) => {
+                e.info.session_id = Some(id);
+                true
+            }
+            None => false,
+        }
+    }
+
     pub fn close_window(&self, app: &AppHandle, label: &str) {
         if self.remove(|i| i.window == label) {
             emit_snapshot(app);
@@ -58,7 +122,7 @@ impl Desk {
     }
 }
 
-fn emit_snapshot(app: &AppHandle) {
+pub fn emit_snapshot(app: &AppHandle) {
     let snap = app.state::<Desk>().snapshot();
     let _ = app.emit("desk://panes", snap);
 }
@@ -98,9 +162,15 @@ pub async fn pane_create(
     desk: State<'_, Desk>,
     agent: String,
     cwd: String,
+    resume: Option<String>,
 ) -> Result<String, String> {
     if !["hermes", "opencode", "shell"].contains(&agent.as_str()) {
         return Err(format!("알 수 없는 에이전트: {agent}"));
+    }
+    if let Some(r) = &resume {
+        if agent != "hermes" || r.is_empty() || r.starts_with('-') {
+            return Err("resume은 hermes 세션 id에만 쓸 수 있습니다".into());
+        }
     }
     let (repo_root, branch) = git_info(Path::new(&cwd));
     let created_at = std::time::SystemTime::now()
@@ -112,9 +182,14 @@ pub async fn pane_create(
         g.next += 1;
         let id = format!("p{}", g.next);
         g.entries.push(Entry {
-            info: PaneInfo { id: id.clone(), agent, cwd, repo_root, branch, window: window.label().to_string(), created_at },
+            info: PaneInfo {
+                id: id.clone(), agent, cwd, repo_root, branch, window: window.label().to_string(), created_at,
+                session_id: resume.clone(),
+            },
             pty: None,
             chan: Arc::default(),
+            created_ms: now_ms(),
+            resume,
         });
         id
     };
@@ -131,20 +206,56 @@ pub async fn pane_attach(
     rows: u16,
     on_data: Channel<InvokeResponseBody>,
 ) -> Result<(), String> {
-    let (chan, agent, cwd, running) = {
+    let (chan, agent, cwd, running, resume, linked) = {
         let g = desk.0.lock().unwrap();
         let e = g.entries.iter().find(|e| e.info.id == id).ok_or("칸이 없습니다")?;
-        (e.chan.clone(), e.info.agent.clone(), e.info.cwd.clone(), e.pty.is_some())
+        (e.chan.clone(), e.info.agent.clone(), e.info.cwd.clone(), e.pty.is_some(), e.resume.clone(), e.info.session_id.is_some())
     };
     *chan.lock().unwrap() = Some(on_data.clone());
     if running {
         return Ok(());
     }
-    let (prog, args) = pty::command_for(&agent, cfg!(windows));
+    let guess = agent == "hermes" && !linked;
+    if guess {
+        // One unlinked Hermes pane at a time, so that "first new session" can only be this pane's.
+        loop {
+            let busy = {
+                let mut g = desk.0.lock().unwrap();
+                let busy = g.gate.as_ref().is_some_and(|(gid, t)| {
+                    *gid != id && t.elapsed() < std::time::Duration::from_secs(5)
+                        && g.entries.iter().any(|e| e.info.id == *gid && e.info.session_id.is_none())
+                });
+                if !busy {
+                    g.gate = Some((id.clone(), std::time::Instant::now()));
+                }
+                busy
+            };
+            if !busy {
+                break;
+            }
+            let _ = tauri::async_runtime::spawn_blocking(|| std::thread::sleep(std::time::Duration::from_millis(100))).await;
+        }
+    }
+    let exe = if agent == "hermes" { crate::hermes::exe() } else { None };
+    let (prog, args) = match pty::launch(&agent, cfg!(windows), exe.as_deref(), resume.as_deref()) {
+        Ok(c) => c,
+        Err(err) => {
+            let _ = on_data.send(InvokeResponseBody::Raw(format!("\r\n[Perch] {err}\r\n").into_bytes()));
+            return Err(err);
+        }
+    };
     let (c1, app2, id2) = (chan.clone(), app.clone(), id.clone());
+    let (app3, id3) = (app.clone(), id.clone());
+    let mut scan = guess.then(Scan::new);
     let spawned = pty::spawn(
         &prog, &args, &cwd, &[("PERCH_PANE".into(), id.clone())], cols, rows,
         move |bytes| {
+            if let Some(found) = scan.as_mut().and_then(|s| s.feed(bytes)) {
+                scan = None;
+                if app3.state::<Desk>().set_session(&id3, found) {
+                    emit_snapshot(&app3);
+                }
+            }
             let ch = c1.lock().unwrap().clone();
             if let Some(ch) = ch {
                 let _ = ch.send(InvokeResponseBody::Raw(bytes.to_vec()));
@@ -166,6 +277,10 @@ pub async fn pane_attach(
         }
         Err(err) => {
             let _ = on_data.send(InvokeResponseBody::Raw(format!("\r\n[Perch] {err}\r\n").into_bytes()));
+            let mut g = desk.0.lock().unwrap();
+            if g.gate.as_ref().is_some_and(|(gid, _)| *gid == id) {
+                g.gate = None;
+            }
             Err(err)
         }
     }
@@ -182,6 +297,22 @@ fn with_pty(desk: &Desk, id: &str, f: impl FnOnce(&mut Pty) -> Result<(), String
 #[tauri::command]
 pub async fn pane_write(desk: State<'_, Desk>, id: String, data: String) -> Result<(), String> {
     with_pty(&desk, &id, |p| p.write(data.as_bytes()))
+}
+
+/// Answers a pending approval of a connected session by typing the menu number into its pane.
+#[tauri::command]
+pub async fn session_approve(
+    desk: State<'_, Desk>,
+    sessions: State<'_, Sessions>,
+    session_id: String,
+    allow: bool,
+) -> Result<(), String> {
+    let key = sessions::approve_key(&sessions.get(), &session_id, allow)?;
+    let mut g = desk.0.lock().unwrap();
+    match g.entries.iter_mut().find(|e| e.info.session_id.as_deref() == Some(&session_id)).and_then(|e| e.pty.as_mut()) {
+        Some(p) => p.write(key.as_bytes()),
+        None => Err("연결된 칸이 없습니다".into()),
+    }
 }
 
 #[tauri::command]
@@ -247,6 +378,47 @@ pub async fn home_dir() -> Result<String, String> {
 mod tests {
     use super::*;
     use std::fs;
+
+    fn entry(id: &str, agent: &str, created_ms: u64, session: Option<&str>) -> Entry {
+        Entry {
+            info: PaneInfo {
+                id: id.into(), agent: agent.into(), cwd: String::new(), repo_root: None, branch: None, window: "main".into(),
+                created_at: 0, session_id: session.map(String::from),
+            },
+            pty: None, chan: Arc::default(), created_ms, resume: None,
+        }
+    }
+
+    fn sess(id: &str) -> SessionInfo {
+        crate::sessions::parse_state(&serde_json::json!({ "sessionId": id })).unwrap()
+    }
+
+    #[test]
+    fn relink_prefix_and_guess() {
+        let (a, b, c) = ("local-aaaaaaaaaaaaaaaa1111", "local-bbbbbbbbbbbbbbbb2222", "local-cccccccccccccccc3333");
+        let ss = [sess(a), sess(b), sess(c)];
+        let fs: HashMap<String, u64> = [(a.to_string(), 0), (b.to_string(), 2000), (c.to_string(), 3000)].into();
+        let mut es = vec![
+            entry("p1", "hermes", 1500, None),
+            entry("p2", "hermes", 2500, None),
+            entry("p3", "hermes", 9000, None),
+            entry("p4", "shell", 1000, None),
+            entry("p5", "hermes", 100, Some("local-aaaaaaaaaaaaaaaa")),
+        ];
+        assert!(relink_entries(&mut es, &ss, &fs));
+        let got: Vec<_> = es.iter().map(|e| e.info.session_id.clone()).collect();
+        assert_eq!(got, [Some(b.into()), Some(c.into()), None, None, Some(a.into())]);
+        assert!(!relink_entries(&mut es, &ss, &fs), "stable");
+    }
+
+    #[test]
+    fn relink_ignores_old_and_ambiguous() {
+        let ss = [sess("local-aaaa1"), sess("local-aaaa2")];
+        let fs: HashMap<String, u64> = [("local-aaaa1".to_string(), 0), ("local-aaaa2".to_string(), 0)].into();
+        let mut es = vec![entry("p1", "hermes", 10, None), entry("p2", "hermes", 10, Some("local-aaaa"))];
+        assert!(!relink_entries(&mut es, &ss, &fs));
+        assert_eq!(es[1].info.session_id.as_deref(), Some("local-aaaa"));
+    }
 
     const HASH: &str = "0123456789abcdef0123456789abcdef01234567";
 

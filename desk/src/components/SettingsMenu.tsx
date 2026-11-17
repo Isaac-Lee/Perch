@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Minus, Plus, Settings } from "lucide-react";
 import type { AgentKind } from "../lib/types";
 import type { NewPaneDefaults } from "../lib/uiSettings";
+import { isTauri, hermesStatus, hermesConnect, hermesDisconnect, type HermesStatus } from "../lib/backend";
 import { FONT_CHOICES, clampSize, type TermSettings } from "../lib/termSettings";
 
 const CUSTOM = "__custom";
@@ -12,8 +13,12 @@ export default function SettingsMenu({ value, onChange, pane, onPane, folders }:
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const [hermes, setHermes] = useState<HermesStatus | null>(null);
+  const [error, setError] = useState("");
+  const hermesCall = (f: () => Promise<HermesStatus>) => { setError(""); f().then(setHermes, (e) => setError(String(e))); };
   useEffect(() => {
     if (!open) return;
+    if (isTauri) hermesCall(hermesStatus);
     const h = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
@@ -77,6 +82,19 @@ export default function SettingsMenu({ value, onChange, pane, onPane, folders }:
             )}
             <div className="menu-help">New session은 이 에이전트와 폴더로 열립니다.</div>
           </div>
+          {isTauri && (
+            <div className="set-group">
+              <div className="set-title">Hermes</div>
+              <div className="set-row"><span>Status</span><span className="set-value">{hermes?.connected ? "Connected" : "Not connected"}</span></div>
+              {hermes && !hermes.exe && <div className="menu-help">hermes 실행 파일을 찾지 못했습니다.</div>}
+              <div className="set-row"><span>Folder</span><span className="set-value ellipsis" title={hermes?.home}>{hermes?.home}</span></div>
+              <div className="set-row"><span />
+                <button className="btn" disabled={!hermes} onClick={() => hermesCall(hermes?.connected ? hermesDisconnect : hermesConnect)}>{hermes?.connected ? "Disconnect" : "Connect"}</button>
+              </div>
+              {error && <div className="menu-help set-error">{error}</div>}
+              <div className="menu-help">Hermes의 config.yaml에 훅을 추가합니다. 적용하려면 Hermes를 다시 시작해야 할 수 있습니다.</div>
+            </div>
+          )}
         </div>
       )}
     </div>

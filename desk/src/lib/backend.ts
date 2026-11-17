@@ -12,7 +12,17 @@ export async function pickFolder(): Promise<string | null> {
   return typeof p === "string" ? p : null;
 }
 
-export type PaneInfo = { id: string; agent: AgentKind; cwd: string; repoRoot: string | null; branch: string | null; window: string; createdAt: number };
+export type PaneInfo = { id: string; agent: AgentKind; cwd: string; repoRoot: string | null; branch: string | null; window: string; createdAt: number; sessionId: string | null };
+
+export type SessionInfo = {
+  agent: "hermes"; sessionId: string; state: string; since: number; turnStart: number | null; steps: number;
+  tool: string; toolDetail: string; prompt: string; pending: { kind: string; id: string; text: string } | null;
+  subagents: { id: string; role: string; goal: string; start: number; tool?: string }[];
+  todos: { text: string; status: string }[]; seen: number;
+  paneId: string | null; title: string | null; cwd: string; repoRoot: string | null; branch: string | null;
+  usage: { model: string; input: number; output: number; cacheRead: number; cacheWrite: number; reasoning: number; apiCalls: number; costUsd: number | null; startedAt: number } | null;
+};
+export type HermesStatus = { home: string; exe: string | null; connected: boolean; hookPath: string };
 
 export let HOME = "";
 export let WINDOW = "main";
@@ -22,7 +32,13 @@ export async function initBackend(): Promise<void> {
   WINDOW = getCurrentWindow().label;
 }
 
-export const paneCreate = (agent: AgentKind, cwd: string) => invoke<string>("pane_create", { agent, cwd });
+export const paneCreate = (agent: AgentKind, cwd: string, resume?: string) => invoke<string>("pane_create", { agent, cwd, resume });
+export const sessionsSnapshot = () => invoke<SessionInfo[]>("sessions_snapshot");
+export const onSessions = (cb: (s: SessionInfo[]) => void): Promise<() => void> => listen<SessionInfo[]>("desk://sessions", (e) => cb(e.payload));
+export const sessionApprove = (sessionId: string, allow: boolean) => invoke<void>("session_approve", { sessionId, allow });
+export const hermesStatus = () => invoke<HermesStatus>("hermes_status");
+export const hermesConnect = () => invoke<HermesStatus>("hermes_connect");
+export const hermesDisconnect = () => invoke<HermesStatus>("hermes_disconnect");
 export function paneAttach(id: string, cols: number, rows: number, onData: (bytes: Uint8Array) => void): Promise<void> {
   const channel = new Channel();
   channel.onmessage = (m) => onData(new Uint8Array(m as ArrayBuffer | number[]));
