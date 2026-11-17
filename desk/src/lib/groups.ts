@@ -1,6 +1,6 @@
 import type { Group, Session, SessionStateName } from "./types";
 
-export const COMMON_LABEL = "공통 작업 공간";
+export const COMMON_LABEL = "Shared workspace";
 export const MY_TURN: SessionStateName[] = ["approval", "question", "idle"];
 
 const STALE_SEC = 600;

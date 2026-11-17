@@ -23,7 +23,7 @@ button:focus-visible, .row:focus-visible { outline: 1px solid var(--accent); out
 .row.focused { background: var(--surface-2); border-top-color: var(--line); border-bottom-color: var(--line); border-left-color: var(--accent); }
 .row-top > * { flex: none; }
 .row-top > .row-branch { flex: 0 1 auto; }
-.row-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.row-top { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .row-agent { font-weight: 500; }
 .row-state { font-size: 12px; white-space: nowrap; }
 .row-state.ok { color: var(--ok); } .row-state.warn { color: var(--warn); } .row-state.idle { color: var(--idle); } .row-state.muted { color: var(--muted); }
@@ -160,3 +160,7 @@ button:focus-visible, .row:focus-visible { outline: 1px solid var(--accent); out
 .u-table tr.click { cursor: pointer; transition: background-color 0.12s; }
 .u-table tr.click:hover { background: rgba(255, 255, 255, 0.03); }
 .u-table tr.click:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.menu-help { color: var(--text-3); font-size: 12px; line-height: 16px; }
+.grid-empty { flex-direction: column; gap: 4px; text-align: center; }
+.empty-title { color: var(--text-2); font-weight: 500; }
+.empty-body { color: var(--text-3); }

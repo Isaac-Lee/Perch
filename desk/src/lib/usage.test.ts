@@ -100,7 +100,7 @@ test("lists sorted by total desc; project labels match groups, same-name repos d
     mk({ repoRoot: "D:\\b\\app", usage: u({ input: 1000 }) }),
     mk({ repoRoot: null, usage: u({ input: 500, model: "x" }) }),
   ], "all", NOW);
-  expect(r.byProject.map((x) => x.label)).toEqual(["app (b)", "공통 작업 공간", "app (a)"]);
+  expect(r.byProject.map((x) => x.label)).toEqual(["app (b)", "Shared workspace", "app (a)"]);
   expect(r.byModel[0]).toMatchObject({ key: "m", sessions: 2 });
   expect(r.byAgent[0]).toMatchObject({ key: "hermes", sessions: 3 });
 });

@@ -47,11 +47,11 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
     <aside className="sidebar" style={{ width }}>
       <div className="side-head">
         <div>
-          <div className="side-title">세션</div>
-          <div className="side-sum">작업중 {working} · 내 차례 {mine}</div>
-          <button className="side-tok" onClick={onUsage}>오늘 {fmtTokens(todayTok)} tok</button>
+          <div className="side-title">Sessions</div>
+          <div className="side-sum">{working} working · {mine} waiting on you</div>
+          <button className="side-tok" onClick={onUsage}>Today {fmtTokens(todayTok)} tok</button>
         </div>
-        <button className="icon-btn" aria-label="패널 접기" onClick={onCollapse}><PanelLeftClose size={16} strokeWidth={1.5} /></button>
+        <button className="icon-btn" aria-label="Collapse sidebar" onClick={onCollapse}><PanelLeftClose size={16} strokeWidth={1.5} /></button>
       </div>
       <div className="side-body" ref={bodyRef}>
         <div>
@@ -78,7 +78,7 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
               <>
                 <button className="recent-toggle" onClick={() => toggle(g.key)}>
                   {open.has(g.key) ? <ChevronDown size={16} strokeWidth={1.5} /> : <ChevronRight size={16} strokeWidth={1.5} />}
-                  최근 <span className="count">{g.recent.length}</span>
+                  Recent <span className="count">{g.recent.length}</span>
                 </button>
                 {open.has(g.key) && g.recent.map((s) => (
                   <SessionRow key={s.sessionId} s={s} now={now} focused={s.sessionId === focusedSession}
@@ -90,8 +90,8 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
         ))}
         </div>
       </div>
-      <div className="resize-handle" role="separator" aria-orientation="vertical" aria-label="패널 폭 조절" onPointerDown={drag} onDoubleClick={() => onResize(SIDEBAR_DEFAULT)} />
-      {more && <div className="side-more"><ChevronDown size={16} strokeWidth={1.5} />아래에 더 있음</div>}
+      <div className="resize-handle" role="separator" aria-orientation="vertical" aria-label="Resize sidebar" onPointerDown={drag} onDoubleClick={() => onResize(SIDEBAR_DEFAULT)} />
+      {more && <div className="side-more"><ChevronDown size={16} strokeWidth={1.5} />More below</div>}
     </aside>
   );
 }
