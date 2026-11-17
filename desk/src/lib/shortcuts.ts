@@ -1,4 +1,4 @@
-export type ShortcutId = "new" | "search" | "close" | "next" | "prev" | "sidebar" | "usage" | "help";
+export type ShortcutId = "new" | "search" | "close" | "window" | "next" | "prev" | "sidebar" | "usage" | "help";
 export interface Shortcut { id: ShortcutId; code: string; shift: boolean; key: string; label: string }
 
 // 모두 Ctrl(맥은 ⌘) 필수. 터미널 입력과 겹치지 않게 Ctrl+Shift 조합 또는 Ctrl+Tab만 쓴다.
@@ -6,6 +6,7 @@ export const SHORTCUTS: Shortcut[] = [
   { id: "new",     code: "KeyN",  shift: true,  key: "N",   label: "New session" },
   { id: "search",  code: "KeyF",  shift: true,  key: "F",   label: "Search sessions" },
   { id: "close",   code: "KeyW",  shift: true,  key: "W",   label: "Close session" },
+  { id: "window",  code: "KeyO",  shift: true,  key: "O",   label: "New window" },
   { id: "next",    code: "Tab",   shift: false, key: "Tab", label: "Next session" },
   { id: "prev",    code: "Tab",   shift: true,  key: "Tab", label: "Previous session" },
   { id: "sidebar", code: "KeyB",  shift: true,  key: "B",   label: "Toggle sidebar" },

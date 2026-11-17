@@ -1,9 +1,10 @@
 use crate::pty::{self, Pty};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::ipc::{Channel, InvokeResponseBody};
-use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 type Chan = Arc<Mutex<Option<Channel<InvokeResponseBody>>>>;
 
@@ -199,6 +200,42 @@ pub async fn pane_close(app: AppHandle, desk: State<'_, Desk>, id: String) -> Re
 #[tauri::command]
 pub async fn desk_snapshot(desk: State<'_, Desk>) -> Result<Vec<PaneInfo>, String> {
     Ok(desk.snapshot())
+}
+
+/// Opens another Perch window with a unique label (w1, w2, ...). Failures are only logged.
+pub fn open_window(app: &AppHandle) {
+    static N: AtomicU64 = AtomicU64::new(0);
+    let label = format!("w{}", N.fetch_add(1, Ordering::Relaxed) + 1);
+    let built = WebviewWindowBuilder::new(app, &label, WebviewUrl::default())
+        .title("Perch")
+        .inner_size(1280.0, 800.0)
+        .min_inner_size(800.0, 500.0)
+        .build();
+    match built {
+        Ok(w) => { let _ = w.set_focus(); }
+        Err(e) => eprintln!("[Perch] 새 창을 열지 못했습니다: {e}"),
+    }
+}
+
+#[tauri::command]
+pub async fn window_new(app: AppHandle) -> Result<(), String> {
+    open_window(&app);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn window_focus(app: AppHandle, label: String) -> Result<(), String> {
+    if let Some(w) = app.get_webview_window(&label) {
+        let _ = w.unminimize();
+        let _ = w.show();
+        let _ = w.set_focus();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn pane_focus(app: AppHandle, id: String) -> Result<(), String> {
+    app.emit("desk://focus", id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

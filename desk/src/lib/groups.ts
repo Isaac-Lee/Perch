@@ -17,6 +17,7 @@ function rank(s: Session, now: number): number {
     case "approval": return 0;
     case "question": return 1;
     case "idle": return 2;
+    case "plain": return 3.5;
     case "stale": return 4;
     case "closed": return 5;
     default: return 3;

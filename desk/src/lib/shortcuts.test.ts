@@ -8,6 +8,7 @@ describe("shortcuts", () => {
   it("matches", () => {
     expect(matchShortcut(ev("KeyN", { shiftKey: true }))).toBe("new");
     expect(matchShortcut(ev("KeyN"))).toBeNull();
+    expect(matchShortcut(ev("KeyO", { shiftKey: true }))).toBe("window");
     expect(matchShortcut(ev("Tab"))).toBe("next");
     expect(matchShortcut(ev("Tab", { shiftKey: true }))).toBe("prev");
     expect(matchShortcut(ev("KeyN", { shiftKey: true, altKey: true }))).toBeNull();

@@ -15,6 +15,7 @@ export default function PaneFooter({ session, now }: { session?: Session; now: n
       </div>
     );
   }
+  if (st === "plain") return <div className="pane-foot muted"><span>&nbsp;</span></div>;
   if (st === "idle") return <div className="pane-foot muted"><span>Waiting · {fmtElapsed(now - session.since)}</span></div>;
   return null;
 }

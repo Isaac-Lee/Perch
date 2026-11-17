@@ -3,7 +3,7 @@ import { flushSync } from "react-dom";
 import { ChartNoAxesColumn, PanelLeftOpen } from "lucide-react";
 import "./App.css";
 import { useDesk } from "./lib/useDesk";
-import { HOME, isTauri } from "./lib/backend";
+import { HOME, isTauri, windowNew } from "./lib/backend";
 import Sidebar from "./components/Sidebar";
 import PaneGrid from "./components/PaneGrid";
 import NewPaneMenu from "./components/NewPaneMenu";
@@ -45,6 +45,7 @@ export default function App() {
     if (id === "new") open(newPane.agent, newPane.cwd);
     else if (id === "search") { flushSync(() => setCollapsed(false)); document.getElementById("session-search")?.focus(); } // flushSync: the sidebar must be mounted before focusing
     else if (id === "close") { if (d.focusedPaneId) d.closePane(d.focusedPaneId); }
+    else if (id === "window") { if (isTauri) windowNew().catch(console.error); }
     else if (id === "next" || id === "prev") {
       const n = d.panes.length;
       if (!n) return;
