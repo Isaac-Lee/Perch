@@ -1,4 +1,4 @@
-# Agent Desk — 설계
+# Perch — 설계
 
 날짜: 2026-11-17 · 저장소: `Isaac-Lee/my-custom-agent`
 
@@ -66,14 +66,14 @@ my-custom-agent/
   desk/                     Tauri 앱
     src/                    React + TypeScript (Vite)
     src-tauri/              Rust: PTY, 창, 상태 수집, 설치 도우미
-    src-tauri/hook/         agent-desk-hook.exe (별도 작은 바이너리)
-  adapters/opencode/        OpenCode 플러그인 (agent-desk.ts)
+    src-tauri/hook/         perch-hook.exe (별도 작은 바이너리)
+  adapters/opencode/        OpenCode 플러그인 (perch.ts)
   docs/
 ```
 
 ### 5.1 공통 상태 형식 (에이전트 ↔ 앱의 유일한 계약)
 
-- 위치: `~/.agent-desk/sessions/<agent>-<sessionId>.json`. 환경변수 `AGENT_DESK_HOME`으로 바꿀 수 있다.
+- 위치: `~/.perch/sessions/<agent>-<sessionId>.json`. 환경변수 `PERCH_HOME`으로 바꿀 수 있다.
 - 쓰는 쪽은 어댑터다. 원자적으로 쓴다 (tmp 파일에 쓴 뒤 rename, 파일 잠금).
 - 읽는 쪽은 앱이다.
 
@@ -97,7 +97,7 @@ seen         마지막 이벤트 시각
 
 ### 5.2 Hermes 어댑터 = 셸 훅
 
-- `agent-desk-hook.exe hermes`로 실행된다. stdin JSON을 받아 상태 파일을 갱신한다. Rust로 작성하며 기존 `dash.py hook` 로직을 이식한다.
+- `perch-hook.exe hermes`로 실행된다. stdin JSON을 받아 상태 파일을 갱신한다. Rust로 작성하며 기존 `dash.py hook` 로직을 이식한다.
 - 이벤트별 매핑:
   - `on_session_open`: 세션 생성
   - `pre_llm_call`: turnStart, steps=0, prompt, state=thinking
@@ -117,7 +117,7 @@ seen         마지막 이벤트 시각
   - 어떤 입력이나 오류에도 exit 0으로 끝나고 stdout에는 아무것도 쓰지 않는다.
   - Hermes 소스(`agent/shell_hooks.py`)로 확인한 동작은 다음과 같다. 실행 실패와 시간 초과는 통과(fail open)이고, exit 2만 차단이다.
 - 연결 방법:
-  - 앱의 "Hermes 연결" 버튼이 HERMES_HOME의 `config.yaml`에 표시된 블록(`# >>> agent-desk` … `# <<< agent-desk`)을 추가한다.
+  - 앱의 "Hermes 연결" 버튼이 HERMES_HOME의 `config.yaml`에 표시된 블록(`# >>> perch` … `# <<< perch`)을 추가한다.
   - 같은 버튼이 `shell-hooks-allowlist.json`에 승인 항목도 넣는다.
   - 기존 `hooks:`가 있으면 자동으로 합치지 않고, 넣을 내용을 보여준다.
   - 연결 해제는 블록과 승인 항목을 제거한다.
@@ -128,17 +128,17 @@ seen         마지막 이벤트 시각
 
 ### 5.3 OpenCode 어댑터 = 플러그인
 
-- `adapters/opencode/agent-desk.ts`. "OpenCode 연결" 버튼이 `~/.config/opencode/plugins/`에 복사한다.
+- `adapters/opencode/perch.ts`. "OpenCode 연결" 버튼이 `~/.config/opencode/plugins/`에 복사한다.
 - 같은 상태 형식을 쓴다. 사용할 hook:
   - `tool.execute.before/after`
   - 권한 hook
   - session idle과 todo 이벤트: 정확한 이름은 미확인이다. 아래 9절 참고.
-- 플러그인은 칸과 같은 프로세스 쪽 환경을 볼 수 있으므로 `AGENT_DESK_PANE`을 상태 파일에 기록한다. 그래서 칸과 세션 연결이 정확하다.
+- 플러그인은 칸과 같은 프로세스 쪽 환경을 볼 수 있으므로 `PERCH_PANE`을 상태 파일에 기록한다. 그래서 칸과 세션 연결이 정확하다.
 - 플러그인은 어떤 오류도 OpenCode로 던지지 않는다 (try/catch로 무시).
 
 ### 5.4 칸 ↔ 세션 연결
 
-- 앱이 칸을 만들 때 `AGENT_DESK_PANE=<paneId>` 환경변수와 폴더를 지정해 PTY를 띄운다.
+- 앱이 칸을 만들 때 `PERCH_PANE=<paneId>` 환경변수와 폴더를 지정해 PTY를 띄운다.
 - Hermes: gateway가 칸 환경을 모르므로 앱이 PTY 출력에서 Hermes가 출력하는 세션 ID 줄(`Session: <id>`)을 찾아 연결한다.
   - 정확한 출력 형식은 구현 첫 단계에서 확인한다.
   - 찾지 못하면 "칸 생성 직후 처음 열린, 다른 칸이 갖지 않은 세션" 규칙으로 대체한다.
@@ -234,7 +234,7 @@ seen         마지막 이벤트 시각
 
 - `dash.py`는 3단계에서 Rust 훅이 대체한다.
   - 그때 저장소에서 제거한다 (감독자 결정).
-  - 상태 폴더도 `~/.agent-dash` → `~/.agent-desk`로 바뀐다.
+  - 상태 폴더도 `~/.agent-dash` → `~/.perch`로 바뀐다.
 - 그 전까지는 참고 구현으로 남긴다. 단, 형식은 새 공통 형식 기준이다.
 
 ## 9. 빌더 검토 반영 (결정 사항)
@@ -271,11 +271,11 @@ seen         마지막 이벤트 시각
 7. **OpenCode는 부분 지원을 허용한다 (감독자 결정)**
    - 최소 기준: 작업중/대기, 도구, 권한 대기 상태 표시와 칸 이동.
    - idle/todo 이벤트가 없으면 그 표시는 빼고 출시한다.
-   - `AGENT_DESK_PANE` 환경변수가 플러그인에 보이지 않으면, Hermes처럼 칸 생성 직렬화 + 출력 스캔으로 대체한다.
+   - `PERCH_PANE` 환경변수가 플러그인에 보이지 않으면, Hermes처럼 칸 생성 직렬화 + 출력 스캔으로 대체한다.
    - 이 PC에 OpenCode를 설치해 검증한다.
 8. **설치**
    - 빌드는 이 PC에서만 한다. 오프라인 PC는 실행만 한다.
-   - NSIS는 사용자별 설치다 (관리자 권한 불필요). 경로는 `%LOCALAPPDATA%\Programs\Agent Desk\`다.
+   - NSIS는 사용자별 설치다 (관리자 권한 불필요). 경로는 `%LOCALAPPDATA%\Programs\Perch\`다.
    - 훅 exe는 같은 폴더에 둔다. "Hermes 연결" 버튼은 앱 실행 파일 옆의 exe 경로를 쓴다. 앱 업데이트 시에도 경로가 같아야 하므로 버전 폴더를 쓰지 않는다.
    - 코드 서명은 없다. 그래서 SmartScreen 경고가 나오는 것은 알려진 한계로 둔다.
    - 깨끗한 Windows 10 검증 환경은 사용자 확인 사항이다 (10절).

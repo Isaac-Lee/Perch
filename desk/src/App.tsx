@@ -26,7 +26,7 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         {collapsed && <button className="icon-btn" aria-label="패널 펼치기" onClick={() => setCollapsed(false)}><PanelLeftOpen size={16} strokeWidth={1.5} /></button>}
-        <span className="app-name">Agent Desk</span>
+        <img src="/icon.svg" alt="" width={18} height={18} /><span className="app-name">Perch</span>
         <span className="muted">칸 {d.panes.length}</span>
         <span className="grow" />
         <button className={`icon-btn${usage ? " on" : ""}`} aria-label="토큰 사용량" aria-pressed={usage} title="토큰 사용량" onClick={() => setUsage((u) => !u)}><ChartNoAxesColumn size={16} strokeWidth={1.5} /></button>

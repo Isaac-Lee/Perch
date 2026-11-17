@@ -14,7 +14,7 @@ const fmtStart = (t: number) => {
 
 const RANGES: [ChartRange, string][] = [["14d", "14일"], ["30d", "30일"], ["1y", "1년"]];
 const BUCKETS: [ChartBucket, string][] = [["day", "일별"], ["week", "주별"]];
-const CHART_KEY = "agent-desk.usageChart";
+const CHART_KEY = "perch.usageChart";
 interface ChartPref { range: ChartRange; bucket: ChartBucket }
 
 function initialChart(): ChartPref {
