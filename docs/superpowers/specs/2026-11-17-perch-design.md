@@ -1,6 +1,6 @@
 # Perch — 설계
 
-날짜: 2026-11-17 · 저장소: `Isaac-Lee/my-custom-agent`
+날짜: 2026-11-17 · 저장소: `Isaac-Lee/perch`
 
 ## 1. 무엇을, 왜
 
@@ -62,7 +62,7 @@
 ## 5. 구조
 
 ```
-my-custom-agent/
+perch/
   desk/                     Tauri 앱
     src/                    React + TypeScript (Vite)
     src-tauri/              Rust: PTY, 창, 상태 수집, 설치 도우미

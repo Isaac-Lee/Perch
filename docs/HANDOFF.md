@@ -22,8 +22,8 @@ Perch는 여러 코딩 에이전트(Hermes, OpenCode)를 분할 터미널로 띄
 ## 3. 새 PC에서 시작하기
 
 ```bash
-git clone https://github.com/Isaac-Lee/my-custom-agent.git
-cd my-custom-agent/desk
+git clone https://github.com/Isaac-Lee/perch.git
+cd perch/desk
 npm install
 npm test          # 25개 통과해야 한다
 npm run dev       # http://localhost:5173
@@ -143,8 +143,7 @@ npm run dev       # http://localhost:5173
 
 ## 9. 사소하지만 알아둘 것
 
-- README 본문의 화면 설명에는 옛 한글 라벨(`[허용]`, "아래에 더 있음" 등)이 일부 남아 있다. 화면은 영어 라벨이다.
-- 저장소 이름은 `my-custom-agent`이고, 앱 폴더는 `desk/`다 (이름을 바꾸지 않았다).
+- 저장소 이름은 `perch`다 (이전 이름은 `my-custom-agent`). 앱 폴더는 `desk/`다.
 - `agent-dash-win64.zip`은 `dash.py` 프로토타입의 Windows 빌드다. `.gitignore`로 저장소에서 제외했다.
 - README 스크린샷은 headless Edge로 찍었다. macOS에서는 Chrome으로 같은 방식을 쓸 수 있다: `--headless=new --window-size=1600,1000 --virtual-time-budget=6000 --screenshot=<경로> <URL>`
 - Vite 개발 서버가 파일을 크게 고친 직후 빈 모듈을 내보낸 적이 있다. 화면이 비면 파일을 다시 저장하거나 서버를 재시작한다.
