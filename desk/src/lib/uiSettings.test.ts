@@ -7,7 +7,7 @@ test("clampSidebarWidth keeps 200..480", () => {
   expect(clampSidebarWidth(100)).toBe(200);
   expect(clampSidebarWidth(300)).toBe(300);
   expect(clampSidebarWidth(900)).toBe(480);
-  expect(clampSidebarWidth(NaN)).toBe(260);
+  expect(clampSidebarWidth(NaN)).toBe(320);
 });
 
 test("groupSummary counts my-turn and working sessions", () => {
