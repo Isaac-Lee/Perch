@@ -53,6 +53,8 @@ pub struct SessionInfo {
     pub state: String,
     pub since: u64,
     pub turn_start: Option<u64>,
+    /// seconds the last finished turn took; None if unknown
+    pub last_turn: Option<u64>,
     pub steps: u64,
     pub tool: String,
     pub tool_detail: String,
@@ -125,6 +127,7 @@ pub(crate) fn parse_state(v: &Value) -> Option<SessionInfo> {
         state: if v["state"].is_string() { s("state") } else { "idle".into() },
         since: n("since"),
         turn_start: v["turnStart"].as_u64(),
+        last_turn: v["lastTurn"].as_u64(),
         steps: n("steps"),
         tool: s("tool"),
         tool_detail: s("toolDetail"),
@@ -427,7 +430,7 @@ pub fn usage_history_from(db: &Path) -> Vec<SessionInfo> {
             (g.0, branch.or(g.1))
         };
         out.push(SessionInfo {
-            agent: "hermes".into(), session_id: id, state: "closed".into(), since: usage.started_at, turn_start: None, steps: 0,
+            agent: "hermes".into(), session_id: id, state: "closed".into(), since: usage.started_at, turn_start: None, last_turn: None, steps: 0,
             tool: String::new(), tool_detail: String::new(), prompt: String::new(), pending: None, subagents: vec![], todos: vec![],
             seen: usage.started_at, pane_id: None, pane: None, title, cwd, repo_root, branch, usage: Some(usage),
         });
@@ -452,7 +455,7 @@ mod tests {
     use std::fs;
 
     fn state(id: &str, st: &str) -> String {
-        format!(r#"{{"agent":"hermes","sessionId":"{id}","state":"{st}","since":5,"turnStart":null,"steps":2,"tool":"","toolDetail":"",
+        format!(r#"{{"agent":"hermes","sessionId":"{id}","state":"{st}","since":5,"turnStart":null,"lastTurn":42,"steps":2,"tool":"","toolDetail":"",
             "prompt":"p","pending":null,"subagents":{{"c1":{{"role":"leaf","goal":"g","start":3,"tool":"terminal"}}}},
             "todos":[{{"text":"t","status":"done"}}],"seen":9}}"#)
     }
@@ -489,6 +492,7 @@ mod tests {
         assert_eq!(s[0].session_id, "local-0");
         assert_eq!((s[0].state.as_str(), s[0].steps, s[0].subagents[0].tool.as_deref()), ("thinking", 2, Some("terminal")));
         assert_eq!(s[0].todos[0].status, "done");
+        assert_eq!(s[0].last_turn, Some(42));
         assert!(p.first_seen.values().all(|&v| v == 0));
         assert!(!p.scan(2000), "unchanged -> no change");
         // a new file after the first pass gets a real first-seen time; removal is a change

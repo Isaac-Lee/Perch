@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { COMMON_LABEL, displayState, groupSessions, groupSummary, matchSession } from "./groups";
+import { COMMON_LABEL, displayState, groupSessions, groupSummary, matchSession, shownSeconds } from "./groups";
 import type { Session } from "./types";
 
 const NOW = 1_000_000;
@@ -91,4 +91,14 @@ test("matchSession searches title, folder and branch only", () => {
   expect(matchSession(s, "unrelated")).toBe(false);
   expect(matchSession(s, "")).toBe(true);
   expect(matchSession(mk({ prompt: "fix login bug" }), "login")).toBe(true);
+});
+
+test("shownSeconds: done is frozen at lastTurn, working counts from turnStart, ready/plain blank", () => {
+  const d = mk({ state: "idle", prompt: "p", lastTurn: 42 });
+  expect([shownSeconds(d, NOW), shownSeconds(d, NOW + 500)]).toEqual([42, 42]);
+  expect(shownSeconds(mk({ state: "idle", prompt: "p" }), NOW)).toBeNull();
+  expect(shownSeconds(mk({ state: "tool", turnStart: NOW - 30, since: NOW - 5 }), NOW)).toBe(30);
+  expect(shownSeconds(mk({ state: "approval", since: NOW - 7 }), NOW)).toBe(7);
+  expect(shownSeconds(mk(), NOW)).toBeNull();
+  expect(shownSeconds(mk({ state: "closed" }), NOW)).toBeNull();
 });

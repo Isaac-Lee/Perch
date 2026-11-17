@@ -15,6 +15,16 @@ export function displayState(s: Session, now: number): DisplayState {
   return working && now - s.seen > STALE_SEC ? "stale" : s.state;
 }
 
+/** 화면에 보여줄 경과 초. null이면 시간을 표시하지 않는다. */
+export function shownSeconds(s: Session, now: number): number | null {
+  switch (displayState(s, now)) {
+    case "running": case "thinking": case "tool": return now - (s.turnStart ?? s.since);
+    case "approval": case "question": case "stale": return now - s.since;
+    case "done": return s.lastTurn ?? null;
+    default: return null;
+  }
+}
+
 function rank(s: Session, now: number): number {
   switch (displayState(s, now)) {
     case "approval": return 0;

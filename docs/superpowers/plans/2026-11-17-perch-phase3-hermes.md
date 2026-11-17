@@ -64,6 +64,7 @@
   "state": "thinking",            // thinking | tool | approval | question | idle | closed
   "since": 1794925073,            // state가 시작된 시각 (epoch 초)
   "turnStart": 1794925070,        // null 가능
+  "lastTurn": 42,            // 마지막으로 끝난 턴에 걸린 초. 없으면 null
   "steps": 3,
   "tool": "terminal", "toolDetail": "npm test",   // toolDetail 최대 80자
   "prompt": "실패하는 테스트를 …",                 // 마지막 요청 앞 80자
@@ -84,7 +85,7 @@
 | `post_tool_call` | `state = thinking`. 도구 이름이 `todo`면 `todos` 갱신 (인자 형태를 모르면 건드리지 않는다) |
 | `on_human_input_request` | `state = approval`(kind가 approval 계열) 또는 `question`, `pending` 설정 |
 | `on_human_input_resolved` | `pending = null`, `state = thinking` |
-| `on_session_end` | `state = idle`, `turnStart = null`, `tool = ""`, `toolDetail = ""` |
+| `on_session_end` | `state = idle`, `lastTurn = now - turnStart`, `turnStart = null`, `tool = ""`, `toolDetail = ""` |
 | `on_session_finalize` | `state = closed` |
 | `on_session_delete` | 파일 삭제 (`deleted_ids`가 있으면 그 파일들도) |
 | `subagent_start` | **부모** 파일의 `subagents[childId]` 추가 |
