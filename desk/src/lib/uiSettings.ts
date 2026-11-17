@@ -6,7 +6,7 @@ const read = <T>(key: string, fallback: T): T => {
 };
 const write = (key: string, v: unknown) => { try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* ignore */ } };
 
-export const SIDEBAR_DEFAULT = 260;
+export const SIDEBAR_DEFAULT = 320;
 export const clampSidebarWidth = (w: number) => (Number.isFinite(w) ? Math.min(480, Math.max(200, Math.round(w))) : SIDEBAR_DEFAULT);
 export const loadSidebarWidth = () => clampSidebarWidth(read("perch.sidebarWidth", SIDEBAR_DEFAULT));
 export const saveSidebarWidth = (w: number) => write("perch.sidebarWidth", w);
