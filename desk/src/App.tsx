@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { ChartNoAxesColumn, PanelLeftOpen } from "lucide-react";
 import "./App.css";
-import { useMockDesk } from "./mock/useMockDesk";
+import { useDesk } from "./lib/useDesk";
+import { HOME, isTauri } from "./lib/backend";
 import Sidebar from "./components/Sidebar";
 import PaneGrid from "./components/PaneGrid";
 import NewPaneMenu from "./components/NewPaneMenu";
@@ -15,8 +16,10 @@ import type { AgentKind } from "./lib/types";
 import { recentFolders } from "./mock/sessions";
 import { TermCtx, loadTerm, saveTerm } from "./lib/termSettings";
 
+const seedFolders = isTauri ? [HOME] : recentFolders;
+
 export default function App() {
-  const d = useMockDesk();
+  const d = useDesk();
   const [collapsed, setCollapsed] = useState(false);
   const [usage, setUsage] = useState(() => window.location.hash.startsWith("#usage")); // #usage opens the usage view directly
   const [help, setHelp] = useState(false);
@@ -24,9 +27,9 @@ export default function App() {
   useEffect(() => saveTerm(term), [term]);
   const [width, setWidth] = useState(loadSidebarWidth);
   useEffect(() => saveSidebarWidth(width), [width]);
-  const [newPane, setNewPane] = useState(() => loadNewPane(recentFolders[0]));
+  const [newPane, setNewPane] = useState(() => loadNewPane(seedFolders[0]));
   useEffect(() => saveNewPane(newPane), [newPane]);
-  const [folders, setFolders] = useState(() => loadRecentFolders(recentFolders));
+  const [folders, setFolders] = useState(() => loadRecentFolders(seedFolders));
   useEffect(() => saveRecentFolders(folders), [folders]);
   const open = (agent: AgentKind, cwd: string) => { d.addPane(agent, cwd); setFolders((l) => pushRecent(l, cwd)); };
   const chooseFolder = (cwd: string) => { setNewPane((p) => ({ ...p, cwd })); setFolders((l) => pushRecent(l, cwd)); };

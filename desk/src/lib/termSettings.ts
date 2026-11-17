@@ -1,4 +1,6 @@
 import { createContext } from "react";
+import type { Terminal } from "@xterm/xterm";
+import { WebglAddon } from "@xterm/addon-webgl";
 
 export interface TermSettings { fontFamily: string; fontSize: number }
 export const DEFAULT_TERM: TermSettings = { fontFamily: "D2Coding", fontSize: 13 };
@@ -19,3 +21,8 @@ export function saveTerm(s: TermSettings) {
 /** CSS font stack: chosen/custom family first, then the fallbacks. */
 export const fontStack = (f: string) => `"${f.replace(/"/g, "")}", "D2Coding", "Cascadia Mono", Consolas, Menlo, monospace`;
 export const TermCtx = createContext<TermSettings>(DEFAULT_TERM);
+
+/** GPU renderer; falls back to the DOM renderer if WebGL is unavailable. Call right after term.open(). */
+export function loadWebgl(term: Terminal) {
+  try { const gl = new WebglAddon(); gl.onContextLoss(() => gl.dispose()); term.loadAddon(gl); } catch { /* DOM renderer */ }
+}
