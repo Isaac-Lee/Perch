@@ -258,3 +258,35 @@ export function useMockDesk(): {
    - 저장: 지금은 localStorage에 저장한다. 2단계에서 Tauri 설정 파일로 옮긴다. localStorage 접근은 try/catch로 감싼다.
    - 기본값: 글꼴 "D2Coding", 크기 13.
    - D2Coding(SIL OFL 1.1, naver/d2codingfont)을 `desk/public/fonts/`에 넣고 @font-face로 로컬에서 불러온다. 라이선스 파일도 함께 넣는다. 한글 자간 문제를 이것으로 해결한다.
+
+### Task 5: 사용자 검토 2차 반영
+
+사용자 요청과 감독자가 정한 구현 방식이다.
+
+1. **입력 줄과 스크롤바 간격**
+   - 터미널 오른쪽에 12px 여백을 둔다. 입력 줄 배경 띠와 마지막 글자가 스크롤바와 붙지 않게 한다.
+   - xterm 6의 자체 스크롤바(`.xterm .scrollbar`, `.xterm .slider` — VS Code scrollable element 구조)도 Task 4와 같은 규칙을 따른다. 평소에는 투명하고, 스크롤 중에만 6px 폭의 rgba(255,255,255,0.18)로 보인다. 지금은 회색 막대가 항상 보인다.
+2. **중지 버튼**
+   - 작업중 계열 상태(running, thinking, tool)일 때만 보인다. 위치는 두 곳이다.
+     - 칸 헤더 오른쪽, 닫기 버튼 왼쪽: lucide `Square` 14px, 라벨 "중지"
+     - 패널의 세션 행 hover 시 오른쪽
+   - 누르면 `stop(sessionId)`를 호출한다. 가짜 구현은 state를 idle로, turnStart를 null로, tool을 비운다. 칸의 가짜 터미널에는 "⏹ 중지됨"을 쓴다.
+   - 실제 전송 방식은 2단계에서 정한다: Hermes `/stop` 또는 Ctrl+C, OpenCode Esc.
+3. **패널 폭 조절**
+   - 패널 오른쪽 경계에 4px 드래그 핸들을 둔다. hover 시 강조색 1px 선, 커서는 col-resize.
+   - 폭은 200~480px 범위다. 더블클릭하면 260으로 돌아간다.
+   - localStorage `agent-desk.sidebarWidth`에 저장한다 (try/catch). 드래그하는 동안 터미널 fit이 따라오게 한다.
+4. **묶음 접기/펼치기**
+   - 묶음 제목 왼쪽에 `ChevronRight`/`ChevronDown`(16px)을 둔다. 제목을 클릭하면 접히거나 펼쳐진다.
+   - 접힌 묶음은 제목 줄 오른쪽에 상태 요약을 보여준다. 내 차례가 있으면 경고색 점과 숫자, 작업중이면 초록 점과 숫자를 표시하므로 접어도 놓치지 않는다.
+   - 접힘 상태는 localStorage `agent-desk.collapsedGroups`에 저장한다.
+   - 기존 "최근" 하위 토글은 그대로 둔다.
+5. **새 칸 기본 실행 + 모델 표시**
+   - 설정 패널에 "새 칸 기본 실행"(Hermes / OpenCode / 셸)과 "기본 폴더"(최근 폴더 목록 + 직접 입력)를 추가한다.
+   - 상단 [+]를 누르면 기본값으로 바로 칸을 연다. [+] 옆의 작은 `ChevronDown` 버튼은 기존 메뉴(다른 에이전트나 폴더 선택)를 연다.
+   - 기본값은 Hermes와 최근 폴더 첫 번째다. 저장은 localStorage `agent-desk.newPane`.
+   - 모델 표시: Hermes CLI는 자체 상태줄에 `☤ 모델명`·경과시간·컨텍스트를 이미 표시한다 (`hermes_cli/cli_status_bar_mixin.py`). 그래서 칸 안에는 추가하지 않는다 (사용자 지시: 이미 있으면 구현하지 않음).
+   - 가짜 Hermes 터미널 출력 맨 위에 그 상태줄 모양(`☤ qwen3:8b · 4m · ctx 12%`)을 넣어 실제와 비슷하게 보이게 한다.
+6. **Hermes 기준 정보** (`D:\ysl\hermes-offline` 참고)
+   - Hermes v0.23.2 + oh-my-hermes, 설치 위치 `D:\hermes-cli`, HERMES_HOME `D:\hermes-cli\home`.
+   - 모델은 사내/로컬 OpenAI 호환 서버다 (예: `qwen3:8b`). 가짜 데이터의 모델명과 버전을 이 값으로 맞춘다.
