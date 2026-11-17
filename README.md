@@ -9,6 +9,32 @@ Hermes Agent 세션을 한눈에 보는 터미널 대시보드. Tabby 같은 아
 
 Python 표준 라이브러리만 사용한다. Windows는 `dash.exe` 빌드를 쓰면 Python이 없어도 된다.
 
+## 요구 사항
+
+- Hermes Agent 0.23 이상 (셸 훅의 `on_human_input_request`, `subagent_start` 이벤트 필요)
+- Windows 10/11 또는 macOS
+- Python 3.10 이상. Windows에서 `dash.exe` 빌드를 쓰면 Python이 필요 없다.
+
+## 파일 구성
+
+| 파일 | 설명 |
+|---|---|
+| `dash.py` | 대시보드, 탭 래퍼, 훅, 설치/제거가 모두 들어 있는 단일 스크립트 |
+| `install.cmd` | Windows 오프라인 설치용. 압축 푼 `dash\dash.exe`로 설치를 실행한다 |
+
+명령 요약:
+
+| 명령 | 하는 일 |
+|---|---|
+| `dash` | 대시보드 (Ctrl+C로 종료) |
+| `dash tab [hermes 인자...]` | 탭 안에서 hermes 실행 + 탭 제목 갱신 |
+| `dash hook` | Hermes가 호출하는 훅 (직접 실행할 일 없음) |
+| `dash install [HERMES_HOME]` | 프로그램 복사 + Hermes 설정에 훅 등록 |
+| `dash uninstall [HERMES_HOME]` | Hermes 설정에서 훅 제거 |
+| `dash demo` | 자체 점검 |
+
+상태 파일 위치는 `~/.agent-dash/`이다. `AGENT_DASH_HOME` 환경변수로 바꿀 수 있다.
+
 ## 동작 방식
 
 Hermes 0.23은 에이전트를 공용 gateway 프로세스에서 실행한다.
@@ -41,9 +67,17 @@ python dash.py install ~/.hermes
 
 ## Tabby 설정
 
-- 대시보드용 프로필: 명령은 `dash.exe`(또는 `python dash.py`)로 한다. 화면을 분할해 한쪽에 띄워 둔다.
-- Hermes용 프로필: 명령은 `dash.exe tab`이다. 인자는 hermes에 그대로 전달된다. 예: `dash.exe tab --resume <ID>`
-- 탭 제목이 바뀌지 않으면 Tabby 설정에서 동적 탭 제목(터미널이 정한 제목 사용)이 켜져 있는지 확인한다.
+Settings → Profiles & connections → New profile → Local terminal에서 프로필 두 개를 만든다.
+
+| 프로필 | Command | 비고 |
+|---|---|---|
+| Hermes Dash | `%LOCALAPPDATA%\agent-dash\dash.exe` | 화면을 분할해 한쪽에 띄워 둔다 |
+| Hermes | `%LOCALAPPDATA%\agent-dash\dash.exe`, Arguments: `tab` | 작업할 폴더를 Working directory로 지정한다 |
+
+- macOS에서는 Command를 `python3`, Arguments를 `~/agent-dash/dash.py tab`처럼 지정한다.
+- `tab` 뒤의 인자는 hermes에 그대로 전달된다. 예: `tab --resume <ID>`
+- 탭 제목 끝에 붙는 이름은 Working directory의 폴더 이름이다.
+- 탭 제목이 바뀌지 않으면 Settings → Appearance(또는 Terminal)에서 터미널이 정하는 동적 탭 제목을 쓰도록 되어 있는지 확인한다. 탭 이름을 직접 바꾼 탭은 제목이 고정된다.
 
 ## 로컬 테스트
 
@@ -76,6 +110,19 @@ python dash.py               # ⚠ 승인대기 + 🤖1 표시 확인, Ctrl+C로
    - 위험한 명령: 승인대기
    - 서브에이전트를 쓰는 요청: 🤖 개수가 바뀜
 5. 끝나면 `python dash.py uninstall <HERMES_HOME>`을 실행한다.
+
+## 문제 해결
+
+| 증상 | 확인할 것 |
+|---|---|
+| 대시보드에 아무것도 안 나옴 | `hermes hooks list`에서 agent-dash 훅이 승인(approved) 상태인지 확인한다. 설치 후 새로 연 세션부터 적용된다 |
+| 훅이 승인되지 않음 | 설치 명령에 넘긴 HERMES_HOME이 실제 사용하는 프로필 경로가 맞는지 확인한다. 다른 프로필은 `profiles/<이름>/`에 따로 있다 |
+| `hooks: 항목이 이미 있음`으로 설치 중단 | 출력된 이벤트 목록을 기존 `hooks:` 아래에 직접 추가하고, `hermes hooks list`에서 승인한다 |
+| 탭 제목이 안 바뀜 | Tabby 프로필을 `dash tab`으로 실행했는지, 동적 탭 제목이 켜져 있는지 확인한다 |
+| 탭이 엉뚱한 세션을 보여줌 | 탭을 하나씩 열거나 `tab --resume <ID>`로 연다 |
+| `hermes`를 못 찾음 | `hermes`가 PATH에 있어야 한다. 새 터미널에서 `hermes --version`을 실행해 확인한다 |
+
+훅 출력은 Hermes 로그(`hermes logs`)에 경고로 남는다. 훅이 실패해도 Hermes 작업은 계속 진행된다.
 
 ## 알려진 한계
 
