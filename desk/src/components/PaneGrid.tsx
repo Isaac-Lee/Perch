@@ -7,7 +7,7 @@ export default function PaneGrid({ panes, sessions, now, focusedPaneId, stopped,
   stopped: Record<string, number>; onStop: (sessionId: string) => void;
 }) {
   const { cols, rows, cells } = gridLayout(panes.length);
-  if (!panes.length) return <div className="grid-empty"><div className="empty-title">No panes</div><div className="empty-body">오른쪽 위 + 버튼으로 새 칸을 엽니다.</div></div>;
+  if (!panes.length) return <div className="grid-empty"><div className="empty-title">No open sessions</div><div className="empty-body">오른쪽 위 + 버튼으로 새 세션을 엽니다.</div></div>;
   return (
     <div className="grid" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))` }}>
       {panes.map((p, i) => (

@@ -27,7 +27,7 @@ export default function App() {
       <header className="topbar">
         {collapsed && <button className="icon-btn" aria-label="Expand sidebar" onClick={() => setCollapsed(false)}><PanelLeftOpen size={16} strokeWidth={1.5} /></button>}
         <img src="/icon.svg" alt="" width={18} height={18} /><span className="app-name">Perch</span>
-        <span className="muted">{d.panes.length === 1 ? "1 pane" : `${d.panes.length} panes`}</span>
+        <span className="muted">{`${d.panes.length} open`}</span>
         <span className="grow" />
         <button className={`icon-btn${usage ? " on" : ""}`} aria-label="Token usage" aria-pressed={usage} title="Token usage" onClick={() => setUsage((u) => !u)}><ChartNoAxesColumn size={16} strokeWidth={1.5} /></button>
         <SettingsMenu value={term} onChange={setTerm} pane={newPane} onPane={setNewPane} />

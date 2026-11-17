@@ -42,7 +42,7 @@ export default function SettingsMenu({ value, onChange, pane, onPane }: {
           <select className="field" aria-label="Default agent" value={pane.agent} onChange={(e) => onPane({ ...pane, agent: e.target.value as AgentKind })}>
             {AGENT_CHOICES.map(([a, n]) => <option key={a} value={a}>{n}</option>)}
           </select>
-          <div className="menu-help">+ 버튼을 누르면 이 에이전트와 폴더로 바로 칸이 열립니다.</div>
+          <div className="menu-help">+ 버튼을 누르면 이 에이전트와 폴더로 바로 세션이 열립니다.</div>
           <div className="menu-label">Default folder</div>
           <select className="field" aria-label="Default folder" value={recentFolders.includes(pane.cwd) ? pane.cwd : ""} onChange={(e) => e.target.value && onPane({ ...pane, cwd: e.target.value })}>
             {!recentFolders.includes(pane.cwd) && <option value="">Custom</option>}
