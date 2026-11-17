@@ -74,7 +74,7 @@ export default function TerminalView({ agent, stopCount = 0, session }: { agent:
     if (stopCount === lastStop.current) return;
     lastStop.current = stopCount;
     if (agent === "hermes") return; // the idle composer redrawn by the state change is Hermes's own answer to a stop
-    api.current?.term.write("\r\n\x1b[90m⏹ 중지됨\x1b[0m\r\n");
+    api.current?.term.write("\r\n\x1b[90m⏹ Stopped\x1b[0m\r\n");
   }, [stopCount, agent]);
 
   useEffect(() => {

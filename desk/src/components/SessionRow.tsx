@@ -4,7 +4,7 @@ import { displayState } from "../lib/groups";
 import { fmtElapsed, stateLabel } from "../lib/format";
 import { fmtTokens, totalTokens } from "../lib/usage";
 
-export const agentName = (a: AgentKind) => (a === "hermes" ? "Hermes" : a === "opencode" ? "OpenCode" : "셸");
+export const agentName = (a: AgentKind) => (a === "hermes" ? "Hermes" : a === "opencode" ? "OpenCode" : "Shell");
 
 const TONE = { running: "ok", thinking: "ok", tool: "ok", approval: "warn", question: "warn", idle: "idle", closed: "muted", stale: "muted" } as const;
 const TODO_ICON: Record<Todo["status"], typeof Circle> = { done: CircleCheck, in_progress: CircleDot, pending: Circle };
@@ -23,14 +23,14 @@ export default function SessionRow({ s, now, focused, onClick, onApprove, onStop
         {s.branch && <span className="row-branch ellipsis">{s.branch}</span>}
         <span className={`row-state ${tone}`}>{stateLabel(st)}</span>
         <span className="row-time">{fmtElapsed(now - s.since)}</span>
-        {tone === "ok" && <button className="row-stop" aria-label="중지" title="중지" onClick={(e) => { e.stopPropagation(); onStop(); }}><Square size={14} strokeWidth={1.5} /></button>}
+        {tone === "ok" && <button className="row-stop" aria-label="Stop" title="진행 중인 작업을 멈춥니다." onClick={(e) => { e.stopPropagation(); onStop(); }}><Square size={14} strokeWidth={1.5} /></button>}
       </div>
-      <div className="row-line"><span className="row-prompt ellipsis">{s.prompt}</span>{s.subagents.length > 0 && <span className="row-sub">에이전트 {s.subagents.length}</span>}{s.usage && <span className="row-tok">{fmtTokens(totalTokens(s.usage))} tok</span>}</div>
+      <div className="row-line"><span className="row-prompt ellipsis">{s.prompt}</span>{s.subagents.length > 0 && <span className="row-sub">{s.subagents.length === 1 ? "1 agent" : `${s.subagents.length} agents`}</span>}{s.usage && <span className="row-tok">{fmtTokens(totalTokens(s.usage))} tok</span>}</div>
       {s.pending && <div className="row-pending ellipsis">{s.pending.text}</div>}
       {s.state === "approval" && (
         <div className="row-actions">
-          <button className="btn primary" onClick={(e) => { e.stopPropagation(); onApprove(true); }}>허용</button>
-          <button className="btn" onClick={(e) => { e.stopPropagation(); onApprove(false); }}>거절</button>
+          <button className="btn primary" onClick={(e) => { e.stopPropagation(); onApprove(true); }}>Allow</button>
+          <button className="btn" onClick={(e) => { e.stopPropagation(); onApprove(false); }}>Deny</button>
         </div>
       )}
       {s.subagents.map((a) => (

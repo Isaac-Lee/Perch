@@ -41,7 +41,7 @@ export function summarize(sessions: Session[], period: Period, now: number) {
   const inPeriod = withUsage.filter((s) => s.usage.startedAt >= from);
   const labels = projectLabels(inPeriod.flatMap((s) => (s.repoRoot ? [s.repoRoot] : [])));
 
-  const total = blank("total", "합계");
+  const total = blank("total", "Total");
   const groups = { project: new Map<string, UsageRow>(), model: new Map<string, UsageRow>(), agent: new Map<string, UsageRow>() };
   const bump = (m: Map<string, UsageRow>, key: string, label: string, u: Usage) => {
     let r = m.get(key);

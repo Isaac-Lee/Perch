@@ -4,7 +4,7 @@ import type { AgentKind } from "../lib/types";
 import { attachScrollReveal } from "../lib/useScrollReveal";
 import { folderName, recentFolders } from "../mock/sessions";
 
-const AGENTS: [AgentKind, string, typeof Bot][] = [["hermes", "Hermes", Bot], ["opencode", "OpenCode", SquareTerminal], ["shell", "셸", Terminal]];
+const AGENTS: [AgentKind, string, typeof Bot][] = [["hermes", "Hermes", Bot], ["opencode", "OpenCode", SquareTerminal], ["shell", "Shell", Terminal]];
 
 export default function NewPaneMenu({ onAdd, defaults }: { onAdd: (agent: AgentKind, cwd: string) => void; defaults: { agent: AgentKind; cwd: string } }) {
   const [open, setOpen] = useState(false);
@@ -19,16 +19,16 @@ export default function NewPaneMenu({ onAdd, defaults }: { onAdd: (agent: AgentK
   return (
     <div className="menu-wrap" ref={ref}>
       <div className="split">
-        <button className="icon-btn" aria-label="새 칸" title={`${defaults.agent} · ${folderName(defaults.cwd)}`} onClick={() => onAdd(defaults.agent, defaults.cwd)}><Plus size={16} strokeWidth={1.5} /></button>
-        <button className="icon-btn" aria-label="새 칸 메뉴" aria-expanded={open} onClick={() => setOpen(!open)}><ChevronDown size={16} strokeWidth={1.5} /></button>
+        <button className="icon-btn" aria-label="New pane" title={`${defaults.agent} · ${folderName(defaults.cwd)}`} onClick={() => onAdd(defaults.agent, defaults.cwd)}><Plus size={16} strokeWidth={1.5} /></button>
+        <button className="icon-btn" aria-label="New pane options" aria-expanded={open} onClick={() => setOpen(!open)}><ChevronDown size={16} strokeWidth={1.5} /></button>
       </div>
       {open && (
         <div className="menu" ref={(el) => { if (el) attachScrollReveal(el); }}>
-          <div className="menu-label">에이전트</div>
+          <div className="menu-label">Agent</div>
           {AGENTS.map(([a, name, Icon]) => (
             <button key={a} className="menu-item" onClick={() => pick(a, recentFolders[0])}><Icon size={16} strokeWidth={1.5} />{name}</button>
           ))}
-          <div className="menu-label">최근 폴더</div>
+          <div className="menu-label">Recent folders</div>
           {recentFolders.map((f) => (
             <button key={f} className="menu-item" title={f} onClick={() => pick("hermes", f)}><Folder size={16} strokeWidth={1.5} /><span className="ellipsis">{folderName(f)}</span></button>
           ))}

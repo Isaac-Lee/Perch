@@ -5,7 +5,7 @@ import type { NewPaneDefaults } from "../lib/uiSettings";
 import { recentFolders } from "../mock/sessions";
 import { FONT_CHOICES, clampSize, type TermSettings } from "../lib/termSettings";
 
-const AGENT_CHOICES: [AgentKind, string][] = [["hermes", "Hermes"], ["opencode", "OpenCode"], ["shell", "셸"]];
+const AGENT_CHOICES: [AgentKind, string][] = [["hermes", "Hermes"], ["opencode", "OpenCode"], ["shell", "Shell"]];
 
 export default function SettingsMenu({ value, onChange, pane, onPane }: {
   value: TermSettings; onChange: (s: TermSettings) => void; pane: NewPaneDefaults; onPane: (v: NewPaneDefaults) => void;
@@ -22,32 +22,33 @@ export default function SettingsMenu({ value, onChange, pane, onPane }: {
   const size = (n: number) => onChange({ ...value, fontSize: clampSize(n) });
   return (
     <div className="menu-wrap" ref={ref}>
-      <button className="icon-btn" aria-label="설정" aria-expanded={open} onClick={() => setOpen(!open)}><Settings size={16} strokeWidth={1.5} /></button>
+      <button className="icon-btn" aria-label="Settings" aria-expanded={open} onClick={() => setOpen(!open)}><Settings size={16} strokeWidth={1.5} /></button>
       {open && (
         <div className="menu settings">
-          <div className="menu-label">터미널 글꼴</div>
+          <div className="menu-label">Terminal font</div>
           <select className="field" value={preset ? value.fontFamily : ""} onChange={(e) => e.target.value && onChange({ ...value, fontFamily: e.target.value })}>
-            {!preset && <option value="">직접 입력</option>}
+            {!preset && <option value="">Custom</option>}
             {FONT_CHOICES.map((f) => <option key={f} value={f}>{f}</option>)}
           </select>
-          <input className="field" placeholder="직접 입력" aria-label="글꼴 직접 입력" defaultValue={preset ? "" : value.fontFamily}
+          <input className="field" placeholder="Custom" aria-label="Custom font" defaultValue={preset ? "" : value.fontFamily}
             onChange={(e) => e.target.value.trim() && onChange({ ...value, fontFamily: e.target.value.trim() })} />
-          <div className="menu-label">글자 크기</div>
+          <div className="menu-label">Font size</div>
           <div className="stepper">
-            <button className="icon-btn" aria-label="줄이기" onClick={() => size(value.fontSize - 1)}><Minus size={16} strokeWidth={1.5} /></button>
+            <button className="icon-btn" aria-label="Decrease" onClick={() => size(value.fontSize - 1)}><Minus size={16} strokeWidth={1.5} /></button>
             <input className="field num" type="number" min={10} max={24} value={value.fontSize} onChange={(e) => size(e.target.valueAsNumber)} />
-            <button className="icon-btn" aria-label="키우기" onClick={() => size(value.fontSize + 1)}><Plus size={16} strokeWidth={1.5} /></button>
+            <button className="icon-btn" aria-label="Increase" onClick={() => size(value.fontSize + 1)}><Plus size={16} strokeWidth={1.5} /></button>
           </div>
-          <div className="menu-label">새 칸 기본 실행</div>
-          <select className="field" aria-label="새 칸 기본 실행" value={pane.agent} onChange={(e) => onPane({ ...pane, agent: e.target.value as AgentKind })}>
+          <div className="menu-label">Default agent</div>
+          <select className="field" aria-label="Default agent" value={pane.agent} onChange={(e) => onPane({ ...pane, agent: e.target.value as AgentKind })}>
             {AGENT_CHOICES.map(([a, n]) => <option key={a} value={a}>{n}</option>)}
           </select>
-          <div className="menu-label">기본 폴더</div>
-          <select className="field" aria-label="기본 폴더" value={recentFolders.includes(pane.cwd) ? pane.cwd : ""} onChange={(e) => e.target.value && onPane({ ...pane, cwd: e.target.value })}>
-            {!recentFolders.includes(pane.cwd) && <option value="">직접 입력</option>}
+          <div className="menu-help">+ 버튼을 누르면 이 에이전트와 폴더로 바로 칸이 열립니다.</div>
+          <div className="menu-label">Default folder</div>
+          <select className="field" aria-label="Default folder" value={recentFolders.includes(pane.cwd) ? pane.cwd : ""} onChange={(e) => e.target.value && onPane({ ...pane, cwd: e.target.value })}>
+            {!recentFolders.includes(pane.cwd) && <option value="">Custom</option>}
             {recentFolders.map((f) => <option key={f} value={f}>{f}</option>)}
           </select>
-          <input className="field" placeholder="직접 입력" aria-label="기본 폴더 직접 입력" defaultValue={recentFolders.includes(pane.cwd) ? "" : pane.cwd}
+          <input className="field" placeholder="Custom" aria-label="Custom folder" defaultValue={recentFolders.includes(pane.cwd) ? "" : pane.cwd}
             onChange={(e) => e.target.value.trim() && onPane({ ...pane, cwd: e.target.value.trim() })} />
         </div>
       )}
