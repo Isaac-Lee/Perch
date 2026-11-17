@@ -17,11 +17,11 @@
 
 ### Perch UI 시제품
 
-![Perch UI 시제품](docs/images/desk-prototype.png)
+![Perch UI 시제품](docs/images/perch-grid.png)
 
 토큰 사용량 화면 (상단 바의 사용량 버튼):
 
-![토큰 사용량](docs/images/desk-usage.png)
+![토큰 사용량](docs/images/perch-usage.png)
 
 이 화면은 가짜 데이터로 그린 것이다. 실제 터미널과 에이전트 연결은 2단계부터 붙는다.
 
