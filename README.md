@@ -53,6 +53,8 @@ npm test           # 격자, 묶음, 시간 표시 로직 테스트
   - 실제 데이터는 Hermes `state.db`의 세션 토큰 컬럼에서 읽을 예정이다. 방식은 [codeburn](https://github.com/getagentseal/codeburn)(MIT)을 참고했고, 코드는 새로 작성했다.
   - 가격표는 넣지 않았다. 비용은 에이전트가 기록한 값이 있을 때만 표시한다.
 - 사용 중인 모델은 Hermes CLI가 자체 상태줄에 표시하므로 앱에서 따로 표시하지 않는다.
+- 화면 언어: 짧은 라벨, 상태, 버튼은 영어로 쓰고, 설명 문장(안내, 툴팁)은 한글로 쓴다.
+- UI 글꼴: 영어는 IBM Plex Sans, 한글은 IBM Plex Sans KR이다 (둘 다 SIL OFL 1.1, 앱에 포함).
 - 터미널 기본 글꼴은 [D2Coding](https://github.com/naver/d2-coding-font)(SIL OFL 1.1, NAVER)이다. 앱에 포함되어 있어 오프라인에서도 한글이 고르게 표시된다.
 
 ### Perch 요약
