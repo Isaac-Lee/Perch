@@ -1,6 +1,6 @@
 # Perch — 설계
 
-날짜: 2026-11-17 · 저장소: `Isaac-Lee/perch`
+날짜: 2026-11-17 · 저장소: `Isaac-Lee/Perch`
 
 ## 1. 무엇을, 왜
 
