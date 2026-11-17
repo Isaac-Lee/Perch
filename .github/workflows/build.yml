@@ -40,6 +40,9 @@ jobs:
           workspaces: desk/src-tauri
       - run: npm ci
       - run: npm test
+      # The Tauri build script needs the hook sidecar and the built frontend, also when only testing.
+      - run: npm run hook
+      - run: npm run build
       - name: Rust tests
         run: cargo test --workspace
         working-directory: desk/src-tauri
