@@ -55,6 +55,7 @@ npm test           # 격자, 묶음, 시간 표시 로직 테스트
 - 사용 중인 모델은 Hermes CLI가 자체 상태줄에 표시하므로 앱에서 따로 표시하지 않는다.
 - 화면 언어: 짧은 라벨, 상태, 버튼은 영어로 쓰고, 설명 문장(안내, 툴팁)은 한글로 쓴다.
 - UI 글꼴: 영어는 IBM Plex Sans, 한글은 IBM Plex Sans KR이다 (둘 다 SIL OFL 1.1, 앱에 포함).
+- 터미널 글꼴로 Monoplex KR(SIL OFL 1.1, IBM Plex Mono + Plex Sans KR 합성)도 설정에서 고를 수 있다. 앱에 포함되어 있다.
 - 터미널 기본 글꼴은 [D2Coding](https://github.com/naver/d2-coding-font)(SIL OFL 1.1, NAVER)이다. 앱에 포함되어 있어 오프라인에서도 한글이 고르게 표시된다.
 
 ### Perch 요약
