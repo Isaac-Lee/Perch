@@ -6,7 +6,7 @@ import { fmtTok, totalTokens } from "../lib/usage";
 
 export const agentName = (a: AgentKind) => (a === "hermes" ? "Hermes" : a === "opencode" ? "OpenCode" : "Shell");
 
-const TONE = { running: "ok", thinking: "ok", tool: "ok", approval: "warn", question: "warn", idle: "idle", plain: "muted", closed: "muted", stale: "muted" } as const;
+const TONE = { running: "ok", thinking: "ok", tool: "ok", approval: "warn", question: "warn", done: "ok", ready: "muted", plain: "muted", closed: "muted", stale: "muted" } as const;
 const TODO_ICON: Record<Todo["status"], typeof Circle> = { done: CircleCheck, in_progress: CircleDot, pending: Circle };
 
 export default function SessionRow({ s, now, focused, onClick, onApprove, onStop }: {
@@ -14,16 +14,17 @@ export default function SessionRow({ s, now, focused, onClick, onApprove, onStop
 }) {
   const st = displayState(s, now);
   const tone = TONE[st];
+  const working = st === "running" || st === "thinking" || st === "tool";
   return (
     <div className={`row${focused ? " focused" : ""}`} role="button" tabIndex={0} onClick={onClick}
       onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) onClick(); }}>
       <div className="row-top">
-        <span className={`dot ${tone}${tone === "ok" ? " blink" : ""}`} />
+        <span className={`dot ${tone}${working ? " blink" : ""}`} />
         <span className="row-agent">{agentName(s.agent)}</span>
         {s.branch && <span className="row-branch ellipsis">{s.branch}</span>}
-        {st !== "plain" && <span className={`row-state ${tone}`}>{stateLabel(st)}</span>}
+        {st !== "plain" && st !== "ready" && <span className={`row-state ${tone}`}>{stateLabel(st)}</span>}
         <span className="row-time">{fmtElapsed(now - s.since)}</span>
-        {tone === "ok" && <button className="row-stop" aria-label="Stop" title="진행 중인 작업을 멈춥니다." onClick={(e) => { e.stopPropagation(); onStop(); }}><Square size={14} strokeWidth={1.5} /></button>}
+        {working && <button className="row-stop" aria-label="Stop" title="진행 중인 작업을 멈춥니다." onClick={(e) => { e.stopPropagation(); onStop(); }}><Square size={14} strokeWidth={1.5} /></button>}
       </div>
       <div className="row-line"><span className="row-prompt ellipsis" title={s.prompt}>{sessionTitle(s)}</span>{s.subagents.length > 0 && <span className="row-sub">{s.subagents.length === 1 ? "1 agent" : `${s.subagents.length} agents`}</span>}{s.usage && <span className="row-tok" title="Tokens">{fmtTok(totalTokens(s.usage))}</span>}</div>
       {s.pending && <div className="row-pending ellipsis">{s.pending.text}</div>}

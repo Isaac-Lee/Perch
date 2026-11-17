@@ -1,13 +1,16 @@
 import type { Group, Session, SessionStateName } from "./types";
 
 export const COMMON_LABEL = "Shared workspace";
-export const MY_TURN: SessionStateName[] = ["approval", "question", "idle"];
+export const MY_TURN: SessionStateName[] = ["approval", "question"];
 
 const STALE_SEC = 600;
 const RECENT_SEC = 86400;
 const DROP_SEC = 604800;
 
-export function displayState(s: Session, now: number): SessionStateName | "stale" {
+export type DisplayState = Exclude<SessionStateName, "idle"> | "stale" | "done" | "ready";
+
+export function displayState(s: Session, now: number): DisplayState {
+  if (s.state === "idle") return s.prompt ? "done" : "ready";
   const working = s.state === "running" || s.state === "thinking" || s.state === "tool";
   return working && now - s.seen > STALE_SEC ? "stale" : s.state;
 }
@@ -16,8 +19,9 @@ function rank(s: Session, now: number): number {
   switch (displayState(s, now)) {
     case "approval": return 0;
     case "question": return 1;
-    case "idle": return 2;
-    case "plain": return 3.5;
+    case "done": return 2;
+    case "plain":
+    case "ready": return 3.5;
     case "stale": return 4;
     case "closed": return 5;
     default: return 3;

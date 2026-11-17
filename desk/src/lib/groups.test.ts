@@ -31,23 +31,30 @@ test("null repoRoot goes to common group", () => {
 
 test("groups with my-turn sessions come first; inner order by state then since", () => {
   const busy = mk({ repoRoot: "D:\\r\\busy", state: "running" });
-  const a = mk({ repoRoot: "D:\\r\\wait", state: "idle", since: NOW - 50 });
+  const a = mk({ repoRoot: "D:\\r\\wait", state: "idle", prompt: "x", since: NOW - 50 });
   const b = mk({ repoRoot: "D:\\r\\wait", state: "approval", since: NOW - 40 });
   const c = mk({ repoRoot: "D:\\r\\wait", state: "question", since: NOW - 30 });
   const d = mk({ repoRoot: "D:\\r\\wait", state: "tool", since: NOW - 20 });
   const e = mk({ repoRoot: "D:\\r\\wait", state: "tool", seen: NOW - 700, since: NOW - 900 });
   const f = mk({ repoRoot: "D:\\r\\wait", state: "closed", paneId: "p1" });
-  const g1 = mk({ repoRoot: "D:\\r\\wait", state: "idle", since: NOW - 90 });
-  const g = groupSessions([busy, a, b, c, d, e, f, g1], NOW);
+  const g1 = mk({ repoRoot: "D:\\r\\wait", state: "idle", prompt: "x", since: NOW - 90 });
+  const rd = mk({ repoRoot: "D:\\r\\wait", state: "idle", since: NOW - 10 });
+  const g = groupSessions([busy, a, b, c, d, e, f, g1, rd], NOW);
   expect(g[0].label).toBe("wait");
-  expect(g[0].sessions).toEqual([b, c, g1, a, d, e, f]);
+  expect(g[0].sessions).toEqual([b, c, g1, a, d, rd, e, f]);
   expect(g[1].label).toBe("busy");
 });
 
 test("displayState: working state with no event for 10+ minutes is stale", () => {
   expect(displayState(mk({ state: "tool", seen: NOW - 601 }), NOW)).toBe("stale");
   expect(displayState(mk({ state: "tool", seen: NOW - 600 }), NOW)).toBe("tool");
-  expect(displayState(mk({ state: "idle", seen: NOW - 5000 }), NOW)).toBe("idle");
+  expect(displayState(mk({ state: "idle", seen: NOW - 5000 }), NOW)).toBe("ready");
+  expect(displayState(mk({ state: "idle", prompt: "hi" }), NOW)).toBe("done");
+});
+
+test("done and ready are not counted as mine", () => {
+  const [g] = groupSessions([mk({ prompt: "x" }), mk()], NOW);
+  expect(groupSummary(g, NOW)).toEqual({ mine: 0, working: 0 });
 });
 
 test("plain sessions are neither mine nor working in groupSummary", () => {
