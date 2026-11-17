@@ -9,7 +9,7 @@ import { attachScrollReveal } from "../lib/useScrollReveal";
 
 const BAND = "#23262b"; // xterm decorations take opaque #RRGGBB only
 
-export default function TerminalView({ agent, focused }: { agent: AgentKind; focused: boolean }) {
+export default function TerminalView({ agent, focused, stopCount = 0 }: { agent: AgentKind; focused: boolean; stopCount?: number }) {
   const ref = useRef<HTMLDivElement>(null);
   const cfg = useContext(TermCtx);
   const cfgRef = useRef(cfg);
@@ -63,6 +63,13 @@ export default function TerminalView({ agent, focused }: { agent: AgentKind; foc
   }, [agent]);
 
   useEffect(() => { api.current?.band(); }, [focused]);
+
+  const lastStop = useRef(stopCount);
+  useEffect(() => {
+    if (stopCount === lastStop.current) return;
+    lastStop.current = stopCount;
+    api.current?.term.write("\r\n\x1b[90m⏹ 중지됨\x1b[0m\r\n");
+  }, [stopCount]);
 
   useEffect(() => {
     const a = api.current;

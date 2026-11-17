@@ -10,6 +10,7 @@ export function useMockDesk() {
   const [now, setNow] = useState(sec);
   const [sessions, setSessions] = useState<Session[]>(mockSessions);
   const [panes, setPanes] = useState<Pane[]>(mockPanes);
+  const [stopped, setStopped] = useState<Record<string, number>>({}); // per-session stop counter; terminals print "중지됨" on change
   const [focusedPaneId, setFocused] = useState<string | null>(mockPanes[0]?.id ?? null);
 
   useEffect(() => {
@@ -24,11 +25,12 @@ export function useMockDesk() {
         setSessions((all) => all.map((s) => (s.sessionId === sid ? { ...s, ...f(s) } : s)));
       if (tick % 8 === 0)
         patch("s2", (s) => {
+          if (s.state !== "tool") return {};
           const i = TOOLS.findIndex(([n, dt]) => n === s.tool && dt === s.toolDetail);
           const [tool, toolDetail] = TOOLS[(i + 1) % TOOLS.length];
           return { steps: s.steps + 1, tool, toolDetail, seen: t };
         });
-      if (tick % 12 === 0) patch("s3", (s) => ({ state: s.state === "thinking" ? "tool" : "thinking", since: t, seen: t }));
+      if (tick % 12 === 0) patch("s3", (s) => (s.state === "thinking" || s.state === "tool" ? { state: s.state === "thinking" ? "tool" : "thinking", since: t, seen: t } : {}));
     }, 1000);
     return () => clearInterval(id);
   }, []);
@@ -63,5 +65,12 @@ export function useMockDesk() {
       all.map((s) => (s.sessionId === sessionId ? { ...s, pending: null, state: "thinking", since: t, seen: t, turnStart: s.turnStart ?? t } : s)));
   }, []);
 
-  return { now, sessions, panes, focusedPaneId, focusPane: setFocused, focusSession, addPane, closePane, approve };
+  const stop = useCallback((sessionId: string) => {
+    const t = sec();
+    setSessions((all) =>
+      all.map((s) => (s.sessionId === sessionId ? { ...s, state: "idle", since: t, seen: t, turnStart: null, tool: "", toolDetail: "" } : s)));
+    setStopped((m) => ({ ...m, [sessionId]: (m[sessionId] ?? 0) + 1 }));
+  }, []);
+
+  return { now, sessions, panes, focusedPaneId, focusPane: setFocused, focusSession, addPane, closePane, approve, stop, stopped };
 }

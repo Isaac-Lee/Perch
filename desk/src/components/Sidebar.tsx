@@ -1,16 +1,28 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, PanelLeftClose } from "lucide-react";
 import type { Pane, Session } from "../lib/types";
-import { MY_TURN, displayState, groupSessions } from "../lib/groups";
+import { MY_TURN, displayState, groupSessions, groupSummary } from "../lib/groups";
 import SessionRow from "./SessionRow";
+import { clampSidebarWidth, SIDEBAR_DEFAULT, loadCollapsed, saveCollapsed } from "../lib/uiSettings";
 import { useScrollReveal } from "../lib/useScrollReveal";
 
-export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, onApprove, onCollapse }: {
+export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, onApprove, onStop, onCollapse, width, onResize }: {
   sessions: Session[]; panes: Pane[]; now: number; focusedPaneId: string | null;
-  onFocus: (id: string) => void; onApprove: (id: string, allow: boolean) => void; onCollapse: () => void;
+  onFocus: (id: string) => void; onApprove: (id: string, allow: boolean) => void; onStop: (id: string) => void; onCollapse: () => void;
+  width: number; onResize: (w: number) => void;
 }) {
   const groups = useMemo(() => groupSessions(sessions, now), [sessions, now]);
   const [open, setOpen] = useState<Set<string>>(new Set());
+  const [folded, setFolded] = useState<Set<string>>(() => new Set(loadCollapsed()));
+  const fold = (k: string) => setFolded((o) => { const n = new Set(o); if (!n.delete(k)) n.add(k); saveCollapsed([...n]); return n; });
+  const drag = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const x0 = e.clientX, w0 = width;
+    const move = (m: PointerEvent) => onResize(clampSidebarWidth(w0 + m.clientX - x0));
+    const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
   const bodyRef = useRef<HTMLDivElement>(null);
   useScrollReveal(bodyRef);
   const [more, setMore] = useState(false);
@@ -30,7 +42,7 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
   const mine = live.filter((s) => MY_TURN.includes(s.state)).length;
   const toggle = (k: string) => setOpen((o) => { const n = new Set(o); if (!n.delete(k)) n.add(k); return n; });
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" style={{ width }}>
       <div className="side-head">
         <div>
           <div className="side-title">세션</div>
@@ -42,12 +54,24 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
         <div>
         {groups.map((g) => (
           <div key={g.key} className="group">
-            <div className="group-title"><span className="ellipsis">{g.label}</span><span className="count">{g.sessions.length}</span></div>
-            {g.sessions.map((s) => (
+            <button className="group-title" aria-expanded={!folded.has(g.key)} onClick={() => fold(g.key)}>
+              {folded.has(g.key) ? <ChevronRight size={16} strokeWidth={1.5} /> : <ChevronDown size={16} strokeWidth={1.5} />}
+              <span className="ellipsis">{g.label}</span><span className="count">{g.sessions.length}</span>
+              {folded.has(g.key) && (() => {
+                const { mine, working } = groupSummary(g, now);
+                return (
+                  <span className="group-sum">
+                    {mine > 0 && <span className="sum-item warn"><span className="dot warn" />{mine}</span>}
+                    {working > 0 && <span className="sum-item ok"><span className="dot ok" />{working}</span>}
+                  </span>
+                );
+              })()}
+            </button>
+            {!folded.has(g.key) && g.sessions.map((s) => (
               <SessionRow key={s.sessionId} s={s} now={now} focused={s.sessionId === focusedSession}
-                onClick={() => onFocus(s.sessionId)} onApprove={(a) => onApprove(s.sessionId, a)} />
+                onClick={() => onFocus(s.sessionId)} onApprove={(a) => onApprove(s.sessionId, a)} onStop={() => onStop(s.sessionId)} />
             ))}
-            {g.recent.length > 0 && (
+            {!folded.has(g.key) && g.recent.length > 0 && (
               <>
                 <button className="recent-toggle" onClick={() => toggle(g.key)}>
                   {open.has(g.key) ? <ChevronDown size={16} strokeWidth={1.5} /> : <ChevronRight size={16} strokeWidth={1.5} />}
@@ -55,7 +79,7 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
                 </button>
                 {open.has(g.key) && g.recent.map((s) => (
                   <SessionRow key={s.sessionId} s={s} now={now} focused={s.sessionId === focusedSession}
-                    onClick={() => onFocus(s.sessionId)} onApprove={(a) => onApprove(s.sessionId, a)} />
+                    onClick={() => onFocus(s.sessionId)} onApprove={(a) => onApprove(s.sessionId, a)} onStop={() => onStop(s.sessionId)} />
                 ))}
               </>
             )}
@@ -63,6 +87,7 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
         ))}
         </div>
       </div>
+      <div className="resize-handle" role="separator" aria-orientation="vertical" aria-label="패널 폭 조절" onPointerDown={drag} onDoubleClick={() => onResize(SIDEBAR_DEFAULT)} />
       {more && <div className="side-more"><ChevronDown size={16} strokeWidth={1.5} />아래에 더 있음</div>}
     </aside>
   );

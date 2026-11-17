@@ -2,8 +2,9 @@ import type { Pane as PaneT, Session } from "../lib/types";
 import { gridLayout } from "../lib/grid";
 import Pane from "./Pane";
 
-export default function PaneGrid({ panes, sessions, now, focusedPaneId, onFocus, onClose }: {
+export default function PaneGrid({ panes, sessions, now, focusedPaneId, stopped, onFocus, onClose, onStop }: {
   panes: PaneT[]; sessions: Session[]; now: number; focusedPaneId: string | null; onFocus: (id: string) => void; onClose: (id: string) => void;
+  stopped: Record<string, number>; onStop: (sessionId: string) => void;
 }) {
   const { cols, rows, cells } = gridLayout(panes.length);
   if (!panes.length) return <div className="grid-empty">칸 없음 · + 버튼으로 새 칸</div>;
@@ -13,6 +14,7 @@ export default function PaneGrid({ panes, sessions, now, focusedPaneId, onFocus,
         <Pane key={p.id} pane={p} now={now}
           session={sessions.find((s) => s.sessionId === p.sessionId)}
           focused={p.id === focusedPaneId} onFocus={() => onFocus(p.id)} onClose={() => onClose(p.id)}
+          stopCount={stopped[p.sessionId ?? ""] ?? 0} onStop={() => p.sessionId && onStop(p.sessionId)}
           style={{ gridColumn: `${cells[i].col + 1} / span ${cells[i].colSpan}`, gridRow: cells[i].row + 1 }} />
       ))}
     </div>

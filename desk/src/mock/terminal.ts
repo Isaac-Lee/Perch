@@ -6,7 +6,7 @@ const c = (s: string) => `\x1b[36m${s}\x1b[0m`;
 const y = (s: string) => `\x1b[33m${s}\x1b[0m`;
 
 const hermes = [
-  `${c("hermes")} ${d("v0.9 · session ready")}`, "",
+  `${d("☤ qwen3:8b · 4m · ctx 12%")}`, `${c("hermes")} ${d("v0.23.2 · oh-my-hermes · session ready")}`, "",
   `${g("> ")}실패하는 테스트를 고쳐 주세요`, "",
   `${d("●")} read_file  src/app.ts`, `${d("  142 lines")}`,
   `${d("●")} read_file  src/app.test.ts`, `${d("  88 lines")}`,
