@@ -19,9 +19,9 @@ Hermes 연결까지 동작한다. 분할 터미널에서 Hermes, OpenCode, 셸�
 | 단계 | 내용 | 상태 |
 |---|---|---|
 | 1 | UI 시제품 | 완료 |
-| 2 | Tauri 셸 + 실제 터미널, 여러 창 | 완료 |
-| 3 | Hermes 연결 (상태 표시, resume, 토큰 사용량) | 완료. 패널의 승인 버튼은 실제 승인 화면으로 확인하지 못했다 |
-| 4 | OpenCode 연결 | 보류. 칸에서 실행은 되고 상태 표시는 없다 ([붙이는 방법](docs/ADAPTERS.md)) |
+| 2 | Tauri 셸 + 실제 터미널, 여러 창, 설치 파일(Windows·macOS) | 완료. [v0.1.0](https://github.com/Isaac-Lee/Perch/releases) |
+| 3 | Hermes 연결 (상태 표시, 제목, resume, 토큰 사용량) | 완료. 패널의 승인 버튼은 실제 승인 화면으로 확인하지 못했다 |
+| 4 | OpenCode 연결 | 하지 않음. 칸에서 실행은 되고 상태 표시는 없다 ([붙이는 방법](docs/ADAPTERS.md)) |
 | 5 | 오프라인 Windows 10 설치 검증 | 설치 파일은 만들어진다. 깨끗한 PC에서의 검증은 아직 |
 
 ## 설치
@@ -63,19 +63,22 @@ Node 20 이상이 필요하다. 앱 창과 빌드에는 Rust와 OS별 빌드 도
 
 **세션 패널 (Sessions)**
 - 모든 세션을 작업 디렉토리(git 저장소)별로 묶어 보여준다. 묶음은 접을 수 있다.
-- 세션마다 상태(`Working`, `Thinking`, `Running`, `Needs approval`, `Question`, `Waiting`), 경과시간, git 브랜치, 토큰 수, 서브에이전트, todo가 표시된다.
+- 세션마다 상태(`Working`, `Thinking`, `Running`, `Needs approval`, `Question`, `Done`, `Closed`), 걸린 시간(요청부터 턴 종료까지), git 브랜치, 토큰 수, 서브에이전트, todo가 표시된다.
 - 세션을 클릭하면 그 세션으로 이동한다. 닫힌 세션이면 새로 연다.
 - 승인 요청은 [Allow] / [Deny]로 바로 처리한다.
 - 패널 폭은 경계를 끌어서 조절한다.
+- 검색은 세션 제목, 폴더, 브랜치만 본다.
 
 **세션 격자**
 - 세션 수에 따라 자동으로 격자가 바뀐다. 개수 제한은 없다.
-- [+]는 기본 에이전트와 폴더로 바로 세션을 연다.
+- `+ New session`은 기본 에이전트와 폴더로 바로 세션을 연다. 오른쪽 `▾`에서 에이전트와 폴더를 고른다.
+- 단축키는 `Ctrl+Shift` 조합과 `Ctrl+Tab`, `Ctrl+1~9`만 쓴다 (도움말에서 목록 확인). 터미널 입력과 겹치지 않게 했다.
 - 세션마다 헤더(에이전트, 폴더, 브랜치, 상태 점, `Thinking` 표시, [Stop])와 하단 진행 줄(지금 하는 일 · 단계 수 · 경과시간)이 있다.
 - 승인·질문 내용, 입력창, 모델 표시는 에이전트의 자체 터미널 화면에 맡긴다.
 
 **토큰 사용량 (Token usage)**
 - 기간별 합계, 토큰 추이 차트(`14d` / `30d` / `1y`, `1y`는 `Daily` / `Weekly`), 프로젝트·모델·에이전트·세션별 표를 보여준다.
+- 표의 세션을 클릭하면 그 세션으로 이동하고, 기록에만 남은 세션은 resume으로 다시 연다.
 - 가격표는 넣지 않았다. 비용은 에이전트가 기록한 값이 있을 때만 표시한다.
 
 **설정 (Settings)**
@@ -87,10 +90,9 @@ Node 20 이상이 필요하다. 앱 창과 빌드에는 Rust와 OS별 빌드 도
 |---|---|
 | [docs/HANDOFF.md](docs/HANDOFF.md) | 이어서 작업할 때 먼저 읽는 문서. 현재 상태, 결정 사항, 지킬 규칙, 다음 할 일 |
 | [설계 문서](docs/superpowers/specs/2026-11-17-perch-design.md) | 전체 5단계의 설계 |
-| [1단계 계획](docs/superpowers/plans/2026-11-17-perch-ui-prototype.md) | UI 시제품 계획과 검토 반영 기록 |
+| [단계별 계획](docs/superpowers/plans/) | 1단계(UI 시제품), 2단계(Tauri + 터미널), 3단계(Hermes, 확인된 Hermes 동작 포함) |
+| [docs/ADAPTERS.md](docs/ADAPTERS.md) | 다른 에이전트(OpenCode 등)를 붙이는 계약과 손댈 곳 |
 | [desk/HERMES_UI_NOTES.md](desk/HERMES_UI_NOTES.md) | Hermes CLI가 자체적으로 그리는 화면 요소 정리 |
-
-`prototype/`에는 초기에 만든 Hermes용 CLI 대시보드(`dash.py`)가 있다. 3단계에서 훅 로직을 옮길 때 참고하는 용도다.
 
 ## 사용한 것
 
@@ -102,3 +104,10 @@ Node 20 이상이 필요하다. 앱 창과 빌드에는 Rust와 OS별 빌드 도
 | IBM Plex Sans, IBM Plex Sans KR | UI 글꼴 | SIL OFL 1.1 |
 | [D2Coding](https://github.com/naver/d2-coding-font), [Monoplex KR](https://github.com/y-kim/monoplex) | 터미널 글꼴 | SIL OFL 1.1 |
 | xterm.js, lucide | 터미널, 아이콘 | MIT, ISC |
+
+## 라이선스
+
+[MIT + Commons Clause](LICENSE).
+- 개인과 회사가 무료로 쓰고, 고치고, 내부에 배포할 수 있다. 회사 업무에 쓰는 것도 된다.
+- Perch 자체 또는 Perch가 주된 가치인 제품·서비스(호스팅, 유료 지원 포함)를 돈을 받고 파는 것은 안 된다.
+- 포함된 글꼴(`desk/public/fonts/`)과 의존 라이브러리는 각자의 라이선스를 따른다.
