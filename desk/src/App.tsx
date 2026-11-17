@@ -14,7 +14,7 @@ import { TermCtx, loadTerm, saveTerm } from "./lib/termSettings";
 export default function App() {
   const d = useMockDesk();
   const [collapsed, setCollapsed] = useState(false);
-  const [usage, setUsage] = useState(() => window.location.hash === "#usage"); // #usage opens the usage view directly
+  const [usage, setUsage] = useState(() => window.location.hash.startsWith("#usage")); // #usage opens the usage view directly
   const [term, setTerm] = useState(loadTerm);
   useEffect(() => saveTerm(term), [term]);
   const [width, setWidth] = useState(loadSidebarWidth);

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { X } from "lucide-react";
 import type { Session } from "../lib/types";
 import { COMMON_LABEL, projectLabels } from "../lib/groups";
-import { fmtTokens, summarize, type Period, type UsageRow } from "../lib/usage";
+import { chartSeries, fmtTokens, summarize, type ChartBucket, type ChartPoint, type ChartRange, type Period, type UsageRow } from "../lib/usage";
 import { agentName } from "./SessionRow";
 
 const PERIODS: [Period, string][] = [["today", "오늘"], ["7d", "7일"], ["30d", "30일"], ["all", "전체"]];
@@ -12,8 +12,35 @@ const fmtStart = (t: number) => {
   return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 };
 
-function Chart({ days }: { days: { day: string; total: number }[] }) {
-  const max = Math.max(1, ...days.map((d) => d.total));
+const RANGES: [ChartRange, string][] = [["14d", "14일"], ["30d", "30일"], ["1y", "1년"]];
+const BUCKETS: [ChartBucket, string][] = [["day", "일별"], ["week", "주별"]];
+const CHART_KEY = "agent-desk.usageChart";
+interface ChartPref { range: ChartRange; bucket: ChartBucket }
+
+function initialChart(): ChartPref {
+  let range: ChartRange = "14d", bucket: ChartBucket = "week";
+  try {
+    const o = JSON.parse(localStorage.getItem(CHART_KEY) ?? "{}");
+    if (RANGES.some(([k]) => k === o.range)) range = o.range;
+    if (o.bucket === "day" || o.bucket === "week") bucket = o.bucket;
+  } catch { /* ignore */ }
+  const h = new URLSearchParams(window.location.hash.split("&").slice(1).join("&")); // #usage&chart=1y&bucket=week overrides the stored choice
+  const c = h.get("chart"), b = h.get("bucket");
+  if (RANGES.some(([k]) => k === c)) range = c as ChartRange;
+  if (b === "day" || b === "week") bucket = b;
+  return { range, bucket: range === "1y" ? bucket : "day" };
+}
+
+// at most ~14 labels: daily 1y -> month starts, weekly 1y -> every 4th week counted from the newest
+function showLabel(p: ChartPoint, i: number, n: number, pref: ChartPref): boolean {
+  if (n <= 30) return true;
+  return pref.bucket === "day" ? p.label.includes("/") && p.key.endsWith("-01") : (n - 1 - i) % 4 === 0;
+}
+
+function Chart({ points, pref }: { points: ChartPoint[]; pref: ChartPref }) {
+  const max = Math.max(1, ...points.map((d) => d.total));
+  const n = points.length;
+  const gap = n <= 30 ? 4 : n <= 60 ? 1 : 0;
   return (
     <div className="chart">
       <div className="chart-y"><span>{fmtTokens(max)}</span><span>{fmtTokens(Math.round(max / 2))}</span><span>0</span></div>
@@ -21,15 +48,15 @@ function Chart({ days }: { days: { day: string; total: number }[] }) {
         <div className="chart-line" style={{ top: 0 }} />
         <div className="chart-line" style={{ top: "calc(50% - 10px)" }} />
         <div className="chart-line" style={{ bottom: 20 }} />
-        <div className="chart-bars">
-          {days.map((d) => (
-            <div key={d.day} className="chart-col" title={`${d.day}  ${fmtTokens(d.total)} tok`}>
+        <div className="chart-bars" style={{ gap }}>
+          {points.map((d) => (
+            <div key={d.key} className="chart-col" title={`${d.title} · ${fmtTokens(d.total)} tok`}>
               <div className="chart-bar" style={{ height: `${(d.total / max) * 100}%` }} />
             </div>
           ))}
         </div>
         <div className="chart-x">
-          {days.map((d, i) => <span key={d.day}>{i === 0 || d.day.endsWith("-01") ? `${+d.day.slice(5, 7)}/${+d.day.slice(8)}` : +d.day.slice(8)}</span>)}
+          {points.map((d, i) => showLabel(d, i, n, pref) && <span key={d.key} style={{ left: `${((i + 0.5) / n) * 100}%` }}>{d.label}</span>)}
         </div>
       </div>
     </div>
@@ -58,6 +85,12 @@ function Table({ title, rows, showCost, labelOf }: { title: string; rows: UsageR
 
 export default function UsageView({ sessions, now, onPick, onClose }: { sessions: Session[]; now: number; onPick: (sessionId: string) => void; onClose: () => void }) {
   const [period, setPeriod] = useState<Period>("7d");
+  const [pref, setPref] = useState<ChartPref>(initialChart);
+  const pick = (next: ChartPref) => {
+    setPref(next);
+    try { localStorage.setItem(CHART_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+  };
+  const points = useMemo(() => chartSeries(sessions, pref.range, pref.bucket, now), [sessions, pref, now]);
   const r = useMemo(() => summarize(sessions, period, now), [sessions, period, now]);
   const byId = useMemo(() => new Map(sessions.map((s) => [s.sessionId, s])), [sessions]);
   const labels = useMemo(() => projectLabels(sessions.flatMap((s) => (s.repoRoot ? [s.repoRoot] : []))), [sessions]);
@@ -79,7 +112,21 @@ export default function UsageView({ sessions, now, onPick, onClose }: { sessions
       </div>
       <div className="usage-body">
         <div className="stats">{stats.map(([k, v]) => <div key={k} className="stat"><span className="stat-k">{k}</span><span className="stat-v">{v}</span></div>)}</div>
-        <section className="u-sec"><h3>일별 토큰 · 최근 14일</h3><Chart days={r.byDay} /></section>
+        <section className="u-sec">
+          <div className="chart-head">
+            <h3>토큰 추이</h3>
+            <span className="grow" />
+            {pref.range === "1y" && (
+              <div className="seg" role="group" aria-label="집계 단위">
+                {BUCKETS.map(([k, l]) => <button key={k} className={k === pref.bucket ? "on" : ""} aria-pressed={k === pref.bucket} onClick={() => pick({ ...pref, bucket: k })}>{l}</button>)}
+              </div>
+            )}
+            <div className="seg" role="group" aria-label="차트 범위">
+              {RANGES.map(([k, l]) => <button key={k} className={k === pref.range ? "on" : ""} aria-pressed={k === pref.range} onClick={() => pick({ range: k, bucket: k === "1y" ? "week" : "day" })}>{l}</button>)}
+            </div>
+          </div>
+          <Chart points={points} pref={pref} />
+        </section>
         <Table title="프로젝트별" rows={r.byProject} showCost={showCost} />
         <Table title="모델별" rows={r.byModel} showCost={showCost} />
         <Table title="에이전트별" rows={r.byAgent} showCost={showCost} labelOf={(x) => agentName(x.key as Session["agent"])} />
