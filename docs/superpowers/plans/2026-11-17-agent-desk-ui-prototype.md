@@ -290,3 +290,59 @@ export function useMockDesk(): {
 6. **Hermes 기준 정보** (`D:\ysl\hermes-offline` 참고)
    - Hermes v0.23.2 + oh-my-hermes, 설치 위치 `D:\hermes-cli`, HERMES_HOME `D:\hermes-cli\home`.
    - 모델은 사내/로컬 OpenAI 호환 서버다 (예: `qwen3:8b`). 가짜 데이터의 모델명과 버전을 이 값으로 맞춘다.
+
+### Task 6: 중복 표시 정리 + 토큰 사용량
+
+**A. 중복 표시 정리 (사용자 결정)**
+- 제거: 승인·질문 대기 시 칸 헤더의 경고색 배경과 pending 문구, 입력 줄 배경 띠(xterm decoration과 관련 코드, `allowProposedApi`도 다른 곳에서 안 쓰면 제거), 헤더의 "입력 중" 라벨.
+- 유지: 칸 하단 진행 줄, 칸 상단 생각 중 아이콘, 포커스 칸 강조 테두리, 중지 버튼.
+- 승인·질문 대기 칸은 헤더의 상태 점(경고색, 8px)만으로 구분한다. 자세한 내용은 Hermes 자체 패널이 보여준다.
+
+**B. 토큰 사용량** (참고: getagentseal/codeburn, MIT. 코드는 가져오지 않고 방식만 참고해 새로 구현한다.)
+
+데이터 출처 (2~4단계에서 실제 연결, 지금은 가짜 데이터):
+- Hermes: `HERMES_HOME/state.db`의 `sessions` 테이블. 컬럼은 `input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, api_call_count, model, estimated_cost_usd, actual_cost_usd, started_at, cwd, git_repo_root`. 이 PC의 Hermes 소스 `hermes_state_common.py`에서 확인했다.
+- OpenCode: 데이터 폴더의 sqlite(`session` 계열 테이블의 tokens_*, cost, model). 4단계에서 확인한다.
+- 비용: 가격표를 넣지 않는다 (오프라인, 로컬 모델). 에이전트가 기록한 비용이 있을 때만 표시하고, 없으면 토큰만 보여준다.
+
+타입 (`lib/types.ts`):
+```ts
+export interface Usage { model: string; input: number; output: number; cacheRead: number; cacheWrite: number; reasoning: number; apiCalls: number; costUsd: number | null; startedAt: number }
+// Session에 usage: Usage | null 추가
+```
+
+순수 로직 (`lib/usage.ts` + `usage.test.ts`):
+```ts
+export type Period = "today" | "7d" | "30d" | "all";
+export function totalTokens(u: Usage): number;            // input + output + cacheRead + cacheWrite (reasoning은 output에 포함된 값이라 더하지 않음)
+export function fmtTokens(n: number): string;             // 0→"0", 950→"950", 12_400→"12.4k", 2_150_000→"2.15M"
+export interface UsageRow { key: string; label: string; sessions: number; input: number; output: number; cache: number; total: number; costUsd: number | null }
+export function summarize(sessions: Session[], period: Period, now: number): {
+  total: UsageRow; byProject: UsageRow[]; byModel: UsageRow[]; byAgent: UsageRow[];
+  bySession: (UsageRow & { sessionId: string; agent: AgentKind; startedAt: number })[];
+  byDay: { day: string; total: number }[];                // 최근 14일, 로컬 날짜 YYYY-MM-DD, 빈 날은 0
+};
+```
+- 기간 필터는 `usage.startedAt` 기준이다. today는 로컬 자정 이후다.
+- 각 목록은 total 내림차순이다.
+- costUsd는 값이 있는 세션만 합산하고, 하나도 없으면 null이다.
+- byProject의 키는 `groupSessions`와 같은 규칙(repoRoot, 없으면 common)과 같은 라벨을 쓴다.
+- 테스트: fmtTokens 경계값, 기간 필터, cost null 합산, usage가 null인 세션 제외, byDay 14칸.
+
+화면:
+- 패널 세션 행: usage가 있으면 둘째 줄 오른쪽에 muted로 `12.4k tok`을 표시한다 (tabular-nums).
+- 패널 상단 요약 줄 아래에 "오늘 1.2M tok" 한 줄을 둔다. 클릭하면 사용량 화면이 열린다.
+- 상단 바에 사용량 버튼(lucide `ChartNoAxesColumn` 또는 `BarChart3`)을 둔다. 누르면 칸 격자 자리에 사용량 화면이 전체로 뜨고, 다시 누르거나 닫기를 누르면 격자로 돌아간다. 칸은 유지된다 (unmount하지 말고 숨김).
+- 사용량 화면 구성:
+  - 기간 전환: 오늘 / 7일 / 30일 / 전체
+  - 합계 줄: 총 토큰, 입력, 출력, 캐시, 세션 수, API 호출 수. 비용은 있을 때만 표시
+  - 일별 막대 차트 14일: 순수 div/SVG, 강조색 한 가지, 격자선 muted, 애니메이션 없음
+  - 표 3개(프로젝트별, 모델별, 에이전트별)와 세션 표(에이전트, 프로젝트, 프롬프트 말줄임, 모델, 입력, 출력, 캐시, 합계, 시작 시각)
+  - 세션 행을 클릭하면 격자로 돌아가서 `focusSession`을 호출한다
+- unslop 규칙: 숫자는 tabular-nums 오른쪽 정렬, 카드 장식 없음, 표는 헤어라인 구분선, 색 pill 없음.
+- 가짜 데이터: 세션마다 usage를 넣는다.
+  - 모델: `qwen3:8b`, `qwen3-coder:32b`, OpenCode는 `gpt-oss:20b`
+  - startedAt은 최근 14일에 분산한다
+  - 한 세션만 costUsd 값을 넣고 나머지는 null
+  - 최근/종료 세션도 포함한다
+  - 실행 중인 세션은 mock 타이머에서 토큰이 조금씩 늘어난다
