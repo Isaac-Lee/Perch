@@ -2,21 +2,27 @@ import { useContext, useEffect, useRef } from "react";
 import { Terminal, type IDecoration, type IMarker } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
-import type { AgentKind } from "../lib/types";
-import { terminalLines, terminalPrompt } from "../mock/terminal";
+import type { AgentKind, Session } from "../lib/types";
+import { hermesScreen, terminalLines, terminalPrompt, type HermesView } from "../mock/terminal";
 import { TermCtx, fontStack } from "../lib/termSettings";
 import { attachScrollReveal } from "../lib/useScrollReveal";
 
 const BAND = "#23262b"; // xterm decorations take opaque #RRGGBB only
 
-export default function TerminalView({ agent, focused, stopCount = 0 }: { agent: AgentKind; focused: boolean; stopCount?: number }) {
+/** Re-render a Hermes pane only when something the screen shows changes (not on the 1s heartbeat). */
+const hermesKey = (s?: Session) => (s ? [s.state, s.prompt, s.tool, s.toolDetail, s.pending?.id, s.subagents.length].join("|") : "");
+const emptyView: HermesView = { state: "idle", prompt: "", tool: "", toolDetail: "", pending: null, subagents: [], cwd: "", branch: null, since: 0, turnStart: null };
+
+export default function TerminalView({ agent, focused, stopCount = 0, session }: { agent: AgentKind; focused: boolean; stopCount?: number; session?: Session }) {
   const ref = useRef<HTMLDivElement>(null);
   const cfg = useContext(TermCtx);
   const cfgRef = useRef(cfg);
   cfgRef.current = cfg;
   const focusedRef = useRef(focused);
   focusedRef.current = focused;
-  const api = useRef<{ term: Terminal; fit: () => void; band: () => void } | null>(null);
+  const viewRef = useRef<HermesView>(session ?? emptyView);
+  viewRef.current = session ?? emptyView;
+  const api = useRef<{ term: Terminal; fit: () => void; band: () => void; paint: () => void } | null>(null);
 
   useEffect(() => {
     const el = ref.current!;
@@ -35,7 +41,16 @@ export default function TerminalView({ agent, focused, stopCount = 0 }: { agent:
         const fitAddon = new FitAddon();
         term.loadAddon(fitAddon);
         term.open(el);
-        const fit = () => { if (el.clientWidth > 0 && el.clientHeight > 0) fitAddon.fit(); };
+        let drawnCols = 0;
+        // Hermes panels are sized from the terminal width, so redraw when the column count changes.
+        const paint = () => {
+          drawnCols = term.cols;
+          term.write(hermesScreen(viewRef.current, term.cols, term.rows, undefined, true), band);
+        };
+        const fit = () => {
+          if (el.clientWidth > 0 && el.clientHeight > 0) fitAddon.fit();
+          if (agent === "hermes" && drawnCols && term.cols !== drawnCols) paint();
+        };
         fit();
         const r = term.onRender(() => { r.dispose(); fit(); }); // re-measure once cell metrics have settled
         const vp = el.querySelector<HTMLElement>(".xterm-viewport");
@@ -50,13 +65,16 @@ export default function TerminalView({ agent, focused, stopCount = 0 }: { agent:
           marker = term.registerMarker(0); // 0 = cursor line
           if (marker) deco = term.registerDecoration({ marker, width: term.cols, height: 1, backgroundColor: BAND });
         };
-        terminalLines[agent].forEach((l) => term.writeln(l));
-        term.write(terminalPrompt(agent, term.cols), band);
+        if (agent === "hermes") paint();
+        else {
+          terminalLines[agent].forEach((l) => term.writeln(l));
+          term.write(terminalPrompt(agent, term.cols), band);
+        }
         term.onCursorMove(band);
         term.onData((d) => term.write(d === "\r" ? "\r\n" : d === "\x7f" ? "\b \b" : d)); // echo only
         const ro = new ResizeObserver(fit);
         ro.observe(el);
-        api.current = { term, fit, band };
+        api.current = { term, fit, band, paint };
         cleanup = () => { ro.disconnect(); detach(); deco?.dispose(); marker?.dispose(); term.dispose(); api.current = null; };
       });
     return () => { dead = true; cleanup(); };
@@ -64,12 +82,16 @@ export default function TerminalView({ agent, focused, stopCount = 0 }: { agent:
 
   useEffect(() => { api.current?.band(); }, [focused]);
 
+  const key = hermesKey(session);
+  useEffect(() => { if (agent === "hermes") api.current?.paint(); }, [agent, key]);
+
   const lastStop = useRef(stopCount);
   useEffect(() => {
     if (stopCount === lastStop.current) return;
     lastStop.current = stopCount;
+    if (agent === "hermes") return; // the idle composer redrawn by the state change is Hermes's own answer to a stop
     api.current?.term.write("\r\n\x1b[90m⏹ 중지됨\x1b[0m\r\n");
-  }, [stopCount]);
+  }, [stopCount, agent]);
 
   useEffect(() => {
     const a = api.current;
