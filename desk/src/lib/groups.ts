@@ -62,3 +62,13 @@ export function groupSessions(sessions: Session[], now: number): Group[] {
   // common group last; groups with a my-turn session first
   return groups.sort((a, b) => Number(a.isCommon) - Number(b.isCommon) || Number(mine(b)) - Number(mine(a)));
 }
+
+/** Counts shown on a collapsed group title so waiting/working sessions are not missed. */
+export function groupSummary(g: Group, now: number): { mine: number; working: number } {
+  let mine = 0, working = 0;
+  for (const s of g.sessions) {
+    if (MY_TURN.includes(s.state)) mine++;
+    else if (["running", "thinking", "tool"].includes(displayState(s, now))) working++;
+  }
+  return { mine, working };
+}

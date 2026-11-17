@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { Bot, Folder, Plus, SquareTerminal, Terminal } from "lucide-react";
+import { Bot, ChevronDown, Folder, Plus, SquareTerminal, Terminal } from "lucide-react";
 import type { AgentKind } from "../lib/types";
 import { attachScrollReveal } from "../lib/useScrollReveal";
 import { folderName, recentFolders } from "../mock/sessions";
 
 const AGENTS: [AgentKind, string, typeof Bot][] = [["hermes", "Hermes", Bot], ["opencode", "OpenCode", SquareTerminal], ["shell", "셸", Terminal]];
 
-export default function NewPaneMenu({ onAdd }: { onAdd: (agent: AgentKind, cwd: string) => void }) {
+export default function NewPaneMenu({ onAdd, defaults }: { onAdd: (agent: AgentKind, cwd: string) => void; defaults: { agent: AgentKind; cwd: string } }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -18,7 +18,10 @@ export default function NewPaneMenu({ onAdd }: { onAdd: (agent: AgentKind, cwd: 
   const pick = (a: AgentKind, cwd: string) => { onAdd(a, cwd); setOpen(false); };
   return (
     <div className="menu-wrap" ref={ref}>
-      <button className="icon-btn" aria-label="새 칸" aria-expanded={open} onClick={() => setOpen(!open)}><Plus size={16} strokeWidth={1.5} /></button>
+      <div className="split">
+        <button className="icon-btn" aria-label="새 칸" title={`${defaults.agent} · ${folderName(defaults.cwd)}`} onClick={() => onAdd(defaults.agent, defaults.cwd)}><Plus size={16} strokeWidth={1.5} /></button>
+        <button className="icon-btn" aria-label="새 칸 메뉴" aria-expanded={open} onClick={() => setOpen(!open)}><ChevronDown size={16} strokeWidth={1.5} /></button>
+      </div>
       {open && (
         <div className="menu" ref={(el) => { if (el) attachScrollReveal(el); }}>
           <div className="menu-label">에이전트</div>

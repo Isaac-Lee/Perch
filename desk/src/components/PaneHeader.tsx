@@ -1,11 +1,11 @@
-import { GitBranch, X } from "lucide-react";
+import { GitBranch, Square, X } from "lucide-react";
 import { ThinkingOrb } from "thinking-orbs";
 import type { Pane, Session } from "../lib/types";
 import { displayState } from "../lib/groups";
 import { fmtElapsed } from "../lib/format";
 import { agentName } from "./SessionRow";
 
-export default function PaneHeader({ pane, session, now, focused, onClose }: { pane: Pane; session?: Session; now: number; focused: boolean; onClose: () => void }) {
+export default function PaneHeader({ pane, session, now, focused, onClose, onStop }: { pane: Pane; session?: Session; now: number; focused: boolean; onClose: () => void; onStop: () => void }) {
   const st = session ? displayState(session, now) : null;
   const waiting = session?.pending && (st === "approval" || st === "question");
   return (
@@ -19,6 +19,9 @@ export default function PaneHeader({ pane, session, now, focused, onClose }: { p
           <ThinkingOrb state="working" size={20} theme="dark" />
           <span>생각 중 {fmtElapsed(now - session.since)}</span>
         </span>
+      )}
+      {(st === "running" || st === "thinking" || st === "tool") && (
+        <button className="stop-btn" aria-label="중지" onClick={(e) => { e.stopPropagation(); onStop(); }}><Square size={14} strokeWidth={1.5} />중지</button>
       )}
       <button className="icon-btn" aria-label="칸 닫기" onClick={onClose}><X size={16} strokeWidth={1.5} /></button>
     </div>
