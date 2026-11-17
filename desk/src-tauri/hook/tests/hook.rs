@@ -58,6 +58,9 @@ fn transitions() {
     assert_eq!(st["state"], "question");
 
     let st = step(st, ev("on_session_end", json!({})), 30);
+    assert_eq!(st["lastTurn"].as_u64(), Some(10));
+    let st = step(st, ev("on_session_end", json!({})), 35);
+    assert_eq!(st["lastTurn"].as_u64(), Some(10));
     assert_eq!((st["state"].as_str(), st["turnStart"].is_null(), st["tool"].as_str()), (Some("idle"), true, Some("")));
     let st = step(st, ev("on_session_finalize", json!({})), 31);
     assert_eq!(st["state"], "closed");
