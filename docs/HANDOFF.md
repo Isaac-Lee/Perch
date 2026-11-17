@@ -123,7 +123,6 @@ npm run tauri build   # 릴리스 exe와 설치 파일
 ## 8. 아직 확인하지 못한 것
 
 - **승인 버튼.** 패널의 Allow/Deny는 Hermes 승인 메뉴에 `1`/`4`를 보낸다. 이 PC의 Hermes가 승인 없이 실행하는 설정이라 승인 대기가 생기지 않아 확인하지 못했다. 승인 대기가 어떤 훅 이벤트로 오는지도 같은 이유로 미확인.
-- 훅 exe를 지운 상태에서 Hermes 도구가 정상 실행되는지 (소스상으로는 통과).
 - 서브에이전트와 todo 표시: 실제 Hermes에서 본 적이 없다. todo 도구의 인자 형태는 추정이다.
 - 실제 키보드로 누른 단축키, 터미널에 포커스가 있을 때 앱이 먼저 받는지.
 - Tabby와의 메모리 비교.
@@ -133,6 +132,9 @@ npm run tauri build   # 릴리스 exe와 설치 파일
 - 5단계 설치 검증을 어디서 할지 (Windows 10 가상머신 또는 실제 오프라인 PC).
 
 ## 9. 사소하지만 알아둘 것
+
+- 훅 실행 파일이 없어도 Hermes는 정상 동작한다 (실제로 확인함: 로그에 `shell hook failed … command not found` 경고만 남고 요청은 처리됐다).
+- **설치 파일을 Claude 데스크톱 앱의 셸에서 실행하면 안 된다.** 그 셸은 `%LOCALAPPDATA%`에 새로 쓰는 파일을 앱 전용 가상 폴더(`Packages\Claude_…\LocalCache\Local`)로 돌린다. 설치는 된 것처럼 보이지만 Hermes 같은 바깥 프로세스는 훅 파일을 찾지 못한다. 설치 검증은 탐색기에서 설치 파일을 직접 실행해서 한다. 설치 파일 자체는 조용한 설치(`/S`), 실행, 제거(`uninstall.exe /S`)까지 동작했다.
 
 - 프로젝트 이름은 Perch다 (이전 이름은 `my-custom-agent`). 저장소 주소는 `Isaac-Lee/Perch`다. 앱 폴더는 `desk/`다.
 - `agent-dash-win64.zip`은 `dash.py` 프로토타입의 Windows 빌드다. `.gitignore`로 저장소에서 제외했다.
