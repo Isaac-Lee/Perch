@@ -74,6 +74,8 @@ npm test           # 격자, 묶음, 시간 표시 로직 테스트
 
 ### 다른 PC에서 이어서 작업하기
 
+**먼저 [인수인계 문서](docs/HANDOFF.md)를 읽는다.** 현재 상태, 설계 이후 바뀐 결정, 지킬 규칙, 다음 할 일, macOS 주의점이 정리되어 있다.
+
 ```bash
 git clone https://github.com/Isaac-Lee/my-custom-agent.git
 ```
