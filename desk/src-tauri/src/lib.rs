@@ -29,9 +29,11 @@ pub fn run() {
       desk::pane_focus,
       desk::session_approve,
       sessions::sessions_snapshot,
+      sessions::usage_history,
       hermes::hermes_status,
       hermes::hermes_connect,
-      hermes::hermes_disconnect
+      hermes::hermes_disconnect,
+      hermes::hermes_gateway_stop
     ])
     .on_window_event(|window, event| {
       if let tauri::WindowEvent::Destroyed = event {

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Minus, Plus, Settings } from "lucide-react";
 import type { AgentKind } from "../lib/types";
 import type { NewPaneDefaults } from "../lib/uiSettings";
-import { isTauri, hermesStatus, hermesConnect, hermesDisconnect, type HermesStatus } from "../lib/backend";
+import { isTauri, hermesStatus, hermesConnect, hermesDisconnect, hermesGatewayStop, type HermesStatus } from "../lib/backend";
 import { FONT_CHOICES, clampSize, type TermSettings } from "../lib/termSettings";
 
 const CUSTOM = "__custom";
@@ -15,9 +15,13 @@ export default function SettingsMenu({ value, onChange, pane, onPane, folders }:
   const ref = useRef<HTMLDivElement>(null);
   const [hermes, setHermes] = useState<HermesStatus | null>(null);
   const [error, setError] = useState("");
-  const hermesCall = (f: () => Promise<HermesStatus>) => { setError(""); f().then(setHermes, (e) => setError(String(e))); };
+  const [restart, setRestart] = useState<"" | "ask" | "done">("");
+  const hermesCall = (f: () => Promise<HermesStatus>, changed = false) => {
+    setError("");
+    f().then((s) => { setHermes(s); if (changed) setRestart("ask"); }, (e) => setError(String(e)));
+  };
   useEffect(() => {
-    if (!open) return;
+    if (!open) { setRestart(""); return; }
     if (isTauri) hermesCall(hermesStatus);
     const h = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
     document.addEventListener("mousedown", h);
@@ -89,10 +93,17 @@ export default function SettingsMenu({ value, onChange, pane, onPane, folders }:
               {hermes && !hermes.exe && <div className="menu-help">hermes 실행 파일을 찾지 못했습니다.</div>}
               <div className="set-row"><span>Folder</span><span className="set-value ellipsis" title={hermes?.home}>{hermes?.home}</span></div>
               <div className="set-row"><span />
-                <button className="btn" disabled={!hermes} onClick={() => hermesCall(hermes?.connected ? hermesDisconnect : hermesConnect)}>{hermes?.connected ? "Disconnect" : "Connect"}</button>
+                <button className="btn" disabled={!hermes} onClick={() => hermesCall(hermes?.connected ? hermesDisconnect : hermesConnect, true)}>{hermes?.connected ? "Disconnect" : "Connect"}</button>
               </div>
+              {restart === "ask" && <div className="menu-help">변경을 적용하려면 Hermes gateway를 다시 시작해야 합니다. 실행 중인 Hermes 작업은 중단됩니다.</div>}
+              {restart === "ask" && (
+                <div className="set-row"><span />
+                  <button className="btn" onClick={() => { setError(""); hermesGatewayStop().then(() => setRestart("done"), (e) => setError(String(e))); }}>Restart gateway</button>
+                </div>
+              )}
+              {restart === "done" && <div className="menu-help">gateway를 멈췄습니다. 다음 Hermes 세션부터 적용됩니다.</div>}
               {error && <div className="menu-help set-error">{error}</div>}
-              <div className="menu-help">Hermes의 config.yaml에 훅을 추가합니다. 적용하려면 Hermes를 다시 시작해야 할 수 있습니다.</div>
+              <div className="menu-help">Hermes의 config.yaml에 훅을 추가합니다.</div>
             </div>
           )}
         </div>

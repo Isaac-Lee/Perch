@@ -392,6 +392,51 @@ pub fn start(app: AppHandle) {
     });
 }
 
+/// Every row of Hermes' state.db with tokens, as closed sessions (read-only; empty if the db is unusable).
+pub fn usage_history_from(db: &Path) -> Vec<SessionInfo> {
+    let Ok(c) = Connection::open_with_flags(db, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX) else { return vec![] };
+    let _ = c.busy_timeout(Duration::from_millis(200));
+    let Ok(mut q) = c.prepare(
+        "SELECT id, title, cwd, git_repo_root, git_branch, model, started_at, input_tokens, output_tokens, \
+         cache_read_tokens, cache_write_tokens, reasoning_tokens, api_call_count, \
+         COALESCE(actual_cost_usd, estimated_cost_usd) FROM sessions",
+    ) else { return vec![] };
+    let Ok(rows) = q.query_map([], |r| {
+        let st = |i: usize| r.get::<_, Option<String>>(i).ok().flatten().filter(|s| !s.is_empty());
+        let num = |i: usize| r.get::<_, Option<f64>>(i).ok().flatten().unwrap_or(0.0).max(0.0) as u64;
+        Ok((r.get::<_, String>(0)?, st(1), st(2), st(3), st(4), Usage {
+            model: st(5).unwrap_or_default(), started_at: num(6), input: num(7), output: num(8), cache_read: num(9),
+            cache_write: num(10), reasoning: num(11), api_calls: num(12), cost_usd: r.get::<_, Option<f64>>(13).ok().flatten(),
+        }))
+    }) else { return vec![] };
+    let mut git: HashMap<String, (Option<String>, Option<String>)> = HashMap::new();
+    let mut out = vec![];
+    for (id, title, cwd, root, branch, usage) in rows.flatten() {
+        if usage.input + usage.output + usage.cache_read + usage.cache_write + usage.reasoning == 0 {
+            continue;
+        }
+        let cwd = cwd.unwrap_or_default();
+        let (repo_root, branch) = if root.is_some() || cwd.is_empty() {
+            (root, branch)
+        } else {
+            let g = git.entry(cwd.clone()).or_insert_with(|| desk::git_info(Path::new(&cwd))).clone();
+            (g.0, branch.or(g.1))
+        };
+        out.push(SessionInfo {
+            agent: "hermes".into(), session_id: id, state: "closed".into(), since: usage.started_at, turn_start: None, steps: 0,
+            tool: String::new(), tool_detail: String::new(), prompt: String::new(), pending: None, subagents: vec![], todos: vec![],
+            seen: usage.started_at, pane_id: None, title, cwd, repo_root, branch, usage: Some(usage),
+        });
+    }
+    out
+}
+
+#[tauri::command]
+pub async fn usage_history() -> Result<Vec<SessionInfo>, String> {
+    let db = crate::hermes::home().join("state.db");
+    tauri::async_runtime::spawn_blocking(move || usage_history_from(&db)).await.map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn sessions_snapshot(sessions: State<'_, Sessions>) -> Result<Vec<SessionInfo>, String> {
     Ok(sessions.get())
@@ -475,6 +520,28 @@ mod tests {
         assert_eq!((u.model.as_str(), u.started_at, u.input, u.output, u.cache_read, u.cache_write, u.reasoning, u.api_calls, u.cost_usd),
                    ("m", 1700000000, 10, 20, 30, 40, 50, 6, Some(0.25)));
         assert!(s[1].usage.is_none() && s[1].title.is_none(), "no row -> no enrichment");
+    }
+
+    #[test]
+    fn history_rows() {
+        let t = tempfile::tempdir().unwrap();
+        let db = t.path().join("state.db");
+        make_db(&db, "a");
+        let c = Connection::open(&db).unwrap();
+        c.execute("INSERT INTO sessions (id, cwd, model, started_at, input_tokens, output_tokens) VALUES ('b', ?1, 'm2', 1700000100, 5, 0)",
+            [t.path().to_string_lossy().as_ref()]).unwrap();
+        c.execute("INSERT INTO sessions (id, started_at, input_tokens, output_tokens) VALUES ('z', 1, 0, 0)", []).unwrap();
+        drop(c);
+        let mut h = usage_history_from(&db);
+        h.sort_by(|x, y| x.session_id.cmp(&y.session_id));
+        assert_eq!(h.len(), 2);
+        let (a, b) = (&h[0], &h[1]);
+        assert_eq!((a.session_id.as_str(), a.state.as_str(), a.since, a.seen, a.title.as_deref(), a.cwd.as_str()), ("a", "closed", 1700000000, 1700000000, Some("T"), "/w"));
+        assert_eq!((a.repo_root.as_deref(), a.branch.as_deref(), a.pane_id.clone()), (Some("/r"), Some("main"), None));
+        let u = a.usage.clone().unwrap();
+        assert_eq!((u.input, u.output, u.api_calls, u.cost_usd), (10, 20, 6, Some(0.25)));
+        assert_eq!((b.session_id.as_str(), b.usage.clone().unwrap().input, b.repo_root.clone()), ("b", 5, None));
+        assert!(usage_history_from(&t.path().join("none.db")).is_empty());
     }
 
     #[test]
