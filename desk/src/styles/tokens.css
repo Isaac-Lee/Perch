@@ -4,6 +4,8 @@
 @font-face { font-family: "IBM Plex Sans KR"; font-weight: 500; font-style: normal; font-display: swap; src: url("/fonts/IBMPlexSansKR-Medium.woff2") format("woff2"); unicode-range: U+AC00-D7A3, U+1100-11FF, U+3130-318F, U+3000-303F; }
 @font-face { font-family: "D2Coding"; font-weight: 400; font-style: normal; font-display: block; src: url("/fonts/D2Coding-Regular.ttf") format("truetype"); }
 @font-face { font-family: "D2Coding"; font-weight: 700; font-style: normal; font-display: block; src: url("/fonts/D2Coding-Bold.ttf") format("truetype"); }
+@font-face { font-family: "Monoplex KR"; font-weight: 400; font-style: normal; font-display: block; src: url("/fonts/MonoplexKR-Regular.woff2") format("woff2"); }
+@font-face { font-family: "Monoplex KR"; font-weight: 700; font-style: normal; font-display: block; src: url("/fonts/MonoplexKR-Bold.woff2") format("woff2"); }
 :root {
   --bg: #111214;
   --surface-1: #17181b;
