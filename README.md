@@ -1,4 +1,4 @@
-# perch
+# Perch
 
 <img src="desk/public/icon.svg" alt="Perch 아이콘" width="72" align="left" />
 

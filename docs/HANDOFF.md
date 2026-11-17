@@ -143,7 +143,7 @@ npm run dev       # http://localhost:5173
 
 ## 9. 사소하지만 알아둘 것
 
-- 저장소 이름은 `perch`다 (이전 이름은 `my-custom-agent`). 앱 폴더는 `desk/`다.
+- 프로젝트 이름은 Perch다 (이전 이름은 `my-custom-agent`). 저장소 주소는 `Isaac-Lee/perch`다. 앱 폴더는 `desk/`다.
 - `agent-dash-win64.zip`은 `dash.py` 프로토타입의 Windows 빌드다. `.gitignore`로 저장소에서 제외했다.
 - README 스크린샷은 headless Edge로 찍었다. macOS에서는 Chrome으로 같은 방식을 쓸 수 있다: `--headless=new --window-size=1600,1000 --virtual-time-budget=6000 --screenshot=<경로> <URL>`
 - Vite 개발 서버가 파일을 크게 고친 직후 빈 모듈을 내보낸 적이 있다. 화면이 비면 파일을 다시 저장하거나 서버를 재시작한다.

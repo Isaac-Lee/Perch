@@ -62,7 +62,7 @@
 ## 5. 구조
 
 ```
-perch/
+Perch/
   desk/                     Tauri 앱
     src/                    React + TypeScript (Vite)
     src-tauri/              Rust: PTY, 창, 상태 수집, 설치 도우미
