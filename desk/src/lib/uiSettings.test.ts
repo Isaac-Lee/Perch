@@ -22,5 +22,5 @@ test("clampSidebarWidth keeps 200..480", () => {
 test("groupSummary counts my-turn and working sessions", () => {
   const mk = (state: Session["state"], seen = 1000) => ({ state, seen } as Session);
   const g = { sessions: [mk("approval"), mk("idle"), mk("tool"), mk("thinking"), mk("tool", 0), mk("closed")] } as Group;
-  expect(groupSummary(g, 1000)).toEqual({ mine: 2, working: 2 });
+  expect(groupSummary(g, 1000)).toEqual({ mine: 1, working: 2 });
 });

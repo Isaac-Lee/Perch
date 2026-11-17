@@ -26,14 +26,14 @@ button:focus-visible, .row:focus-visible { outline: 1px solid var(--accent); out
 .row-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .row-agent { font-weight: 500; }
 .row-state { font-size: 12px; white-space: nowrap; }
-.row-state.ok { color: var(--ok); } .row-state.warn { color: var(--warn); } .row-state.idle { color: var(--idle); } .row-state.muted { color: var(--muted); }
+.row-state.ok { color: var(--ok); } .row-state.warn { color: var(--warn); } .row-state.muted { color: var(--muted); }
 .row-time { margin-left: auto; color: var(--text-3); font-size: 12px; white-space: nowrap; }
 .row-top .row-time { margin-left: auto; }
 .row-sub { margin-left: auto; padding-left: 8px; flex: none; color: var(--text-3); font-size: 12px; white-space: nowrap; }
 .row-prompt { color: var(--text-2); font-size: 12px; line-height: 16px; }
 .row-pending { color: var(--text); font-size: 12px; line-height: 16px; }
 .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--muted); }
-.dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); } .dot.idle { background: var(--idle); }
+.dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); }
 .dot.blink { animation: blink 1.2s ease-in-out infinite; }
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 .row-actions { display: flex; gap: 8px; padding-top: 4px; }

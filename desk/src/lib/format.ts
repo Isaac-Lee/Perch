@@ -1,4 +1,4 @@
-import type { SessionStateName } from "./types";
+import type { DisplayState } from "./groups";
 
 export function fmtElapsed(sec: number): string {
   const s = Math.max(0, Math.floor(sec));
@@ -7,11 +7,11 @@ export function fmtElapsed(sec: number): string {
   return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
 }
 
-const LABELS: Record<SessionStateName | "stale", string> = {
+const LABELS: Record<DisplayState | "idle", string> = {
   running: "Working", thinking: "Thinking", tool: "Running", approval: "Needs approval",
-  question: "Question", idle: "Waiting", plain: "", closed: "Closed", stale: "Not responding",
+  question: "Question", idle: "Waiting", done: "Done", ready: "", plain: "", closed: "Closed", stale: "Not responding",
 };
 
-export function stateLabel(s: SessionStateName | "stale"): string {
+export function stateLabel(s: DisplayState): string {
   return LABELS[s];
 }
