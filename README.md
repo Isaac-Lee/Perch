@@ -2,249 +2,78 @@
 
 <img src="desk/public/icon.svg" alt="Perch 아이콘" width="72" align="left" />
 
-**Perch** — 여러 코딩 에이전트(Hermes, OpenCode)를 한 화면에서 띄워 쓰고 상태를 한눈에 지켜보는 데스크톱 앱이다. 이름은 높은 곳에서 전체를 내려다보는 자리인 횃대(perch)에서 따왔다.
+여러 코딩 에이전트(Hermes, OpenCode)를 분할 터미널로 띄우고, 옆 패널에서 모든 세션 상태를 한눈에 지켜보는 데스크톱 앱이다. 이름은 높은 곳에서 전체를 내려다보는 자리인 횃대(perch)에서 따왔다.
 
 <br clear="left" />
 
-이 저장소는 Perch와 그 주변 도구를 포함해, 개인 에이전트 작업 환경을 만드는 프로젝트다.
-
-## 현재 상태
-
-| 구성 | 상태 | 위치 |
-|---|---|---|
-| **Perch** — 분할 터미널 + 세션 상태 패널 데스크톱 앱 (Tauri) | 1단계 UI 시제품 완료 (가짜 데이터, 브라우저에서 실행) | [설계 문서](docs/superpowers/specs/2026-11-17-perch-design.md), [1단계 계획](docs/superpowers/plans/2026-11-17-perch-ui-prototype.md), `desk/` |
-| **dash.py** — Hermes 세션 CLI 대시보드 (프로토타입) | 동작함. Perch 3단계에서 대체 예정 | [dash.py](dash.py), 아래 설명 |
-
-### Perch UI 시제품
-
-![Perch UI 시제품](docs/images/perch-grid.png)
-
-토큰 사용량 화면 (상단 바의 사용량 버튼):
+![Perch 화면](docs/images/perch-grid.png)
 
 ![토큰 사용량](docs/images/perch-usage.png)
 
-이 화면은 가짜 데이터로 그린 것이다. 실제 터미널과 에이전트 연결은 2단계부터 붙는다.
+## 현재 상태
 
-실행 방법:
+1단계인 UI 시제품까지 끝났다. 화면은 가짜 데이터로 그리며 브라우저에서 실행한다. 실제 터미널과 에이전트 연결은 2단계부터 붙인다.
+
+| 단계 | 내용 | 상태 |
+|---|---|---|
+| 1 | UI 시제품 | 완료 |
+| 2 | Tauri 셸 + 실제 터미널 | 시작 전 |
+| 3 | Hermes 연결 | 시작 전 |
+| 4 | OpenCode 연결 | 시작 전 |
+| 5 | 오프라인 Windows 10 설치 파일 | 시작 전 |
+
+## 실행
 
 ```bash
-cd desk
+git clone https://github.com/Isaac-Lee/Perch.git
+cd Perch/desk
 npm install
 npm run dev        # http://localhost:5173
-npm test           # 격자, 묶음, 시간 표시 로직 테스트
+npm test
 ```
 
-화면에서 확인할 수 있는 동작:
+Node 20 이상이 필요하다.
+
+## 화면 구성
 
 **세션 패널 (Sessions)**
-- 세션을 클릭하면 해당 세션으로 이동한다. `Recent` 묶음의 닫힌 세션을 클릭하면 새로 열리고 격자가 재배치된다.
-- `Needs approval` 세션의 [Allow] 또는 [Deny]를 누르면 상태가 바뀐다.
-- 묶음 제목을 누르면 접히거나 펼쳐진다. 접힌 묶음에도 내 차례인 세션과 작업 중인 세션의 수가 표시된다.
-- 세션 행에 git 브랜치와 토큰 수가 표시된다.
-- 패널 오른쪽 경계를 끌면 폭이 바뀐다 (200~480px). 기본 폭은 320px이고, 더블클릭하면 기본 폭으로 돌아간다.
-- 스크롤바는 스크롤하는 동안에만 나타난다. 아래에 내용이 더 있으면 `More below`가 표시된다.
+- 모든 세션을 작업 디렉토리(git 저장소)별로 묶어 보여준다. 묶음은 접을 수 있다.
+- 세션마다 상태(`Working`, `Thinking`, `Running`, `Needs approval`, `Question`, `Waiting`), 경과시간, git 브랜치, 토큰 수, 서브에이전트, todo가 표시된다.
+- 세션을 클릭하면 그 세션으로 이동한다. 닫힌 세션이면 새로 연다.
+- 승인 요청은 [Allow] / [Deny]로 바로 처리한다.
+- 패널 폭은 경계를 끌어서 조절한다.
 
 **세션 격자**
-- 상단 바에 열린 세션 수가 `6 open`처럼 표시된다. 세션 수에 따라 격자가 자동으로 바뀐다 (6개는 3×2, 10개는 4×3).
-- [+]는 설정에서 정한 기본 에이전트와 폴더로 바로 세션을 연다. 옆의 화살표로 다른 에이전트나 폴더를 고를 수 있다.
-- 작업 중인 세션은 헤더의 [Stop] 또는 패널 세션 행의 Stop 버튼으로 멈출 수 있다.
-- 헤더에는 에이전트, 폴더, git 브랜치, 상태 점이 표시된다. 생각 중이면 `Thinking 12s`가 나오고, 하단 진행 줄에는 `terminal: npm test · 3 steps · 4m 8s`처럼 표시된다.
-- 가짜 세션 상태는 몇 초마다 바뀐다. 진행 줄의 단계 수와 `Thinking` 표시도 함께 바뀐다.
-- Hermes 세션의 터미널 내용은 실제 Hermes CLI(v0.23.2) 화면을 소스 기준으로 재현한 것이다. 근거는 [desk/HERMES_UI_NOTES.md](desk/HERMES_UI_NOTES.md)에 있다.
-- 승인·질문 내용, 입력창, 모델 표시는 Hermes 자체 화면에 맡긴다. 앱은 하단 진행 줄, `Thinking` 아이콘, 헤더 상태 점만 덧붙인다.
+- 세션 수에 따라 자동으로 격자가 바뀐다. 개수 제한은 없다.
+- [+]는 기본 에이전트와 폴더로 바로 세션을 연다.
+- 세션마다 헤더(에이전트, 폴더, 브랜치, 상태 점, `Thinking` 표시, [Stop])와 하단 진행 줄(지금 하는 일 · 단계 수 · 경과시간)이 있다.
+- 승인·질문 내용, 입력창, 모델 표시는 에이전트의 자체 터미널 화면에 맡긴다.
 
 **토큰 사용량 (Token usage)**
-- 상단 바의 막대 아이콘이나 패널의 `Today … tok`을 누르면 열린다.
-- 기간(`Today` / `7d` / `30d` / `All`)별 합계를 보여준다.
-- `Tokens over time` 차트는 `14d` / `30d` / `1y`로 전환한다. `1y`에서는 `Daily` / `Weekly`를 고를 수 있다.
-- 표는 `By project`, `By model`, `By agent`, `By session` 네 가지다. 세션 행을 누르면 그 세션으로 이동한다.
-- 실제 데이터는 Hermes `state.db`의 세션 토큰 컬럼에서 읽을 예정이다. 방식은 [codeburn](https://github.com/getagentseal/codeburn)(MIT)을 참고했고, 코드는 새로 작성했다.
+- 기간별 합계, 토큰 추이 차트(`14d` / `30d` / `1y`, `1y`는 `Daily` / `Weekly`), 프로젝트·모델·에이전트·세션별 표를 보여준다.
 - 가격표는 넣지 않았다. 비용은 에이전트가 기록한 값이 있을 때만 표시한다.
 
-**설정과 글꼴**
-- 오른쪽 위 톱니바퀴(Settings)에서 `Terminal font`, `Font size`(10~24), `Default agent`, `Default folder`를 바꿀 수 있다. 바꾸면 바로 적용되고, 다음 실행에도 유지된다.
-- 화면 언어: 짧은 라벨, 상태, 버튼은 영어로 쓰고, 설명 문장(안내, 툴팁)은 한글로 쓴다.
-- UI 글꼴: 영어는 IBM Plex Sans, 한글은 IBM Plex Sans KR이다 (둘 다 SIL OFL 1.1, 앱에 포함).
-- 터미널 기본 글꼴은 [D2Coding](https://github.com/naver/d2-coding-font)(SIL OFL 1.1, NAVER)이다. Monoplex KR(SIL OFL 1.1)도 고를 수 있다. 둘 다 앱에 포함되어 있어 오프라인에서도 한글이 고르게 표시된다.
+**설정 (Settings)**
+- 터미널 글꼴과 크기, 새 세션의 기본 에이전트와 폴더를 바꿀 수 있다.
 
-### Perch 요약
+## 문서
 
-설계 문서가 기준이다. 아래는 요약이다.
-
-- 앱 하나에서 `hermes`, `opencode`, 셸을 분할 화면으로 띄운다. 개수 제한은 없고 자동 격자로 배치하며, 창은 여러 개 띄울 수 있다.
-- 왼쪽 패널에 모든 창의 세션을 작업 디렉토리(git 저장소)별로 보여준다.
-  - 상태: `Working`, `Thinking`, `Running`, `Needs approval`, `Question`, `Waiting`과 각 경과시간
-  - 서브에이전트와 todo
-- 패널에서 세션을 누르면 해당 칸으로 이동한다. 닫힌 세션이면 resume으로 연다. Hermes 승인 요청은 패널의 [Allow] / [Deny]로 바로 처리할 수 있다.
-- 세션 헤더에는 `Thinking` 표시, 하단에는 진행 줄(지금 하는 일 · 단계 수 · 경과시간)이 있다.
-- 오프라인 Windows 10 PC용 설치 파일을 만든다 (WebView2 포함). macOS는 소스 빌드로 지원한다.
-- UI 부품은 [libraries.dev](https://libraries.dev/)(MIT)의 `thinking-orbs`를 쓴다. 디자인은 [unslop](https://github.com/heydamir/unslop)(CC BY 4.0, Damir Sokolovsky)의 규칙을 따른다.
-- 에이전트별 지원: 1차는 Hermes와 OpenCode다. oh-my-pi는 나중에 붙인다.
-
-### 다른 PC에서 이어서 작업하기
-
-**먼저 [인수인계 문서](docs/HANDOFF.md)를 읽는다.** 현재 상태, 설계 이후 바뀐 결정, 지킬 규칙, 다음 할 일, macOS 주의점이 정리되어 있다.
-
-```bash
-git clone https://github.com/Isaac-Lee/perch.git
-```
-
-빌드 PC에 필요한 것:
-
-| 도구 | 용도 |
+| 문서 | 내용 |
 |---|---|
-| Node 20 이상 | 프론트엔드 |
-| Rust (rustup) | Tauri 백엔드 |
-| Windows: Visual Studio Build Tools(C++) + Windows SDK | Rust와 네이티브 모듈 빌드 |
-| macOS: Xcode Command Line Tools | 같은 용도 |
+| [docs/HANDOFF.md](docs/HANDOFF.md) | 이어서 작업할 때 먼저 읽는 문서. 현재 상태, 결정 사항, 지킬 규칙, 다음 할 일 |
+| [설계 문서](docs/superpowers/specs/2026-11-17-perch-design.md) | 전체 5단계의 설계 |
+| [1단계 계획](docs/superpowers/plans/2026-11-17-perch-ui-prototype.md) | UI 시제품 계획과 검토 반영 기록 |
+| [desk/HERMES_UI_NOTES.md](desk/HERMES_UI_NOTES.md) | Hermes CLI가 자체적으로 그리는 화면 요소 정리 |
 
-구현 순서는 설계 문서 7절을 따른다: UI 시제품 → 실제 터미널 칸 → Hermes 연결 → OpenCode 연결 → 오프라인 설치 파일.
+`prototype/`에는 초기에 만든 Hermes용 CLI 대시보드(`dash.py`)가 있다. 3단계에서 훅 로직을 옮길 때 참고하는 용도다.
 
-### 지켜야 할 규칙
+## 사용한 것
 
-- Claude Code 설정과 훅은 절대 건드리지 않는다. 대상은 Hermes와 OpenCode 설정뿐이다.
-- 에이전트 훅은 어떤 경우에도 에이전트 작업을 막으면 안 된다.
-  - 훅 명령은 반드시 `.exe`로 등록하고 항상 exit 0으로 끝낸다.
-  - `python x.py` 형태는 금지다. 파일이 없으면 python이 exit 2를 내고, Hermes는 이를 도구 차단으로 처리한다.
-- 실행 중 네트워크 접속(자동 업데이트, 텔레메트리, CDN)은 없어야 한다.
-
----
-
-# dash.py (프로토타입)
-
-Hermes Agent 세션을 한눈에 보는 터미널 대시보드다. Tabby 같은 아무 터미널에서 동작한다.
-
-- 세션별 상태: ● 작업중 / ⚠ 승인대기 / ? 질문대기 / ◆ 답변대기, 상태가 이어진 시간
-- 지금 쓰는 도구, 마지막 요청
-- 서브에이전트 개수, 역할, 목표, 실행 시간
-- Tabby 탭 제목에 상태 표시 (`⚠ 승인대기 3m · 폴더명 🤖1`)
-
-Python 표준 라이브러리만 사용한다. Windows는 `dash.exe` 빌드를 쓰면 Python이 없어도 된다.
-
-## 요구 사항
-
-- Hermes Agent 0.23 이상 (셸 훅의 `on_human_input_request`, `subagent_start` 이벤트 필요)
-- Windows 10/11 또는 macOS
-- Python 3.10 이상. Windows에서 `dash.exe` 빌드를 쓰면 Python이 필요 없다.
-
-## 파일 구성
-
-| 파일 | 설명 |
-|---|---|
-| `dash.py` | 대시보드, 탭 래퍼, 훅, 설치/제거가 모두 들어 있는 단일 스크립트 |
-| `install.cmd` | Windows 오프라인 설치용. 압축 푼 `dash\dash.exe`로 설치를 실행한다 |
-
-명령 요약:
-
-| 명령 | 하는 일 |
-|---|---|
-| `dash` | 대시보드 (Ctrl+C로 종료) |
-| `dash tab [hermes 인자...]` | 탭 안에서 hermes 실행 + 탭 제목 갱신 |
-| `dash hook` | Hermes가 호출하는 훅 (직접 실행할 일 없음) |
-| `dash install [HERMES_HOME]` | 프로그램 복사 + Hermes 설정에 훅 등록 |
-| `dash uninstall [HERMES_HOME]` | Hermes 설정에서 훅 제거 |
-| `dash demo` | 자체 점검 |
-
-상태 파일 위치는 `~/.agent-dash/`이다. `AGENT_DASH_HOME` 환경변수로 바꿀 수 있다.
-
-## 동작 방식
-
-Hermes 0.23은 에이전트를 공용 gateway 프로세스에서 실행한다.
-
-1. Hermes `config.yaml`의 셸 훅이 `dash hook`을 호출하고, 세션 상태를 `~/.agent-dash/`에 기록한다.
-2. `dash`는 그 파일을 읽어서 화면에 그린다.
-3. `dash tab`은 탭 안에서 `hermes`를 실행하고, 자기 세션의 상태를 탭 제목에 쓴다.
-
-일부 이벤트는 일부러 쓰지 않는다. `pre_tool_call`은 실패하면 도구 호출을 막을 수 있으므로 등록하지 않는다. 그 밖의 훅은 오류가 나도 항상 exit 0으로 끝난다.
-
-## 설치
-
-```powershell
-# Windows (exe 빌드)
-install.cmd D:\hermes-cli\home        # HERMES_HOME 경로. 생략하면 %HERMES_HOME% 또는 ~/.hermes
-
-# 소스로 (Windows/macOS)
-python dash.py install ~/.hermes
-```
-
-설치 과정은 다음과 같다.
-
-- 프로그램을 `%LOCALAPPDATA%\agent-dash`(macOS는 `~/agent-dash`)에 복사한다.
-- Hermes `config.yaml`에 훅 블록을 추가한다. 원본은 `config.yaml.bak-agent-dash`로 백업한다.
-- `shell-hooks-allowlist.json`에 승인 항목을 넣는다.
-
-`config.yaml`에 이미 `hooks:` 항목이 있으면 자동으로 합치지 않는다. 대신 직접 넣을 내용을 출력한다. 설치 결과는 `hermes hooks list`로 확인한다.
-
-제거: `dash uninstall <HERMES_HOME>`
-
-## Tabby 설정
-
-Settings → Profiles & connections → New profile → Local terminal에서 프로필 두 개를 만든다.
-
-| 프로필 | Command | 비고 |
+| 이름 | 용도 | 라이선스 |
 |---|---|---|
-| Hermes Dash | `%LOCALAPPDATA%\agent-dash\dash.exe` | 화면을 분할해 한쪽에 띄워 둔다 |
-| Hermes | `%LOCALAPPDATA%\agent-dash\dash.exe`, Arguments: `tab` | 작업할 폴더를 Working directory로 지정한다 |
-
-- macOS에서는 Command를 `python3`, Arguments를 `~/agent-dash/dash.py tab`처럼 지정한다.
-- `tab` 뒤의 인자는 hermes에 그대로 전달된다. 예: `tab --resume <ID>`
-- 탭 제목 끝에 붙는 이름은 Working directory의 폴더 이름이다.
-- 탭 제목이 바뀌지 않으면 Settings → Appearance(또는 Terminal)에서 터미널이 정하는 동적 탭 제목을 쓰도록 되어 있는지 확인한다. 탭 이름을 직접 바꾼 탭은 제목이 고정된다.
-
-## 로컬 테스트
-
-### 1. 자체 점검 (Hermes 없이)
-
-```powershell
-python dash.py demo          # "ok"가 나오면 통과
-```
-
-### 2. 가짜 이벤트로 화면 확인 (Hermes 없이)
-
-실제 상태 폴더를 건드리지 않도록 `AGENT_DASH_HOME`을 따로 지정한다.
-
-```powershell
-$env:AGENT_DASH_HOME = "$env:TEMP\agent-dash-test"
-'{"hook_event_name":"on_session_open","session_id":"S1","profile":"default","extra":{}}' | python dash.py hook
-'{"hook_event_name":"pre_llm_call","session_id":"S1","extra":{"user_message":"빌드 고쳐줘"}}' | python dash.py hook
-'{"hook_event_name":"subagent_start","session_id":"S1","extra":{"child_session_id":"C1","child_role":"leaf","child_goal":"로그 분석"}}' | python dash.py hook
-'{"hook_event_name":"on_human_input_request","session_id":"S1","extra":{"kind":"approval"}}' | python dash.py hook
-python dash.py               # ⚠ 승인대기 + 🤖1 표시 확인, Ctrl+C로 종료
-```
-
-### 3. 실제 Hermes로
-
-1. `python dash.py install <HERMES_HOME>`을 실행하고, `hermes hooks list`에 훅 11개가 승인된 상태로 나오는지 확인한다.
-2. Tabby 탭 A에서 `python dash.py`를 실행한다 (대시보드).
-3. Tabby 탭 B, C에서 각각 `python dash.py tab`을 실행한다 (hermes 시작).
-4. 각 탭에서 다음을 시켜 보고 대시보드와 탭 제목이 바뀌는지 본다.
-   - 일반 요청: 작업중 → 답변대기
-   - 위험한 명령: 승인대기
-   - 서브에이전트를 쓰는 요청: 🤖 개수가 바뀜
-5. 끝나면 `python dash.py uninstall <HERMES_HOME>`을 실행한다.
-
-## 문제 해결
-
-| 증상 | 확인할 것 |
-|---|---|
-| 대시보드에 아무것도 안 나옴 | `hermes hooks list`에서 agent-dash 훅이 승인(approved) 상태인지 확인한다. 설치 후 새로 연 세션부터 적용된다 |
-| 훅이 승인되지 않음 | 설치 명령에 넘긴 HERMES_HOME이 실제 사용하는 프로필 경로가 맞는지 확인한다. 다른 프로필은 `profiles/<이름>/`에 따로 있다 |
-| `hooks: 항목이 이미 있음`으로 설치 중단 | 출력된 이벤트 목록을 기존 `hooks:` 아래에 직접 추가하고, `hermes hooks list`에서 승인한다 |
-| 탭 제목이 안 바뀜 | Tabby 프로필을 `dash tab`으로 실행했는지, 동적 탭 제목이 켜져 있는지 확인한다 |
-| 탭이 엉뚱한 세션을 보여줌 | 탭을 하나씩 열거나 `tab --resume <ID>`로 연다 |
-| `hermes`를 못 찾음 | `hermes`가 PATH에 있어야 한다. 새 터미널에서 `hermes --version`을 실행해 확인한다 |
-
-훅 출력은 Hermes 로그(`hermes logs`)에 경고로 남는다. 훅이 실패해도 Hermes 작업은 계속 진행된다.
-
-## 알려진 한계
-
-- 탭과 세션은 "탭을 연 직후 처음 열린 세션"으로 연결한다. 두 탭을 1~2초 안에 동시에 열면 연결이 뒤바뀔 수 있다. 정확하게 연결하려면 `--resume ID`를 쓴다.
-- `dash tab` 없이 연 세션(Desktop 등)은 "탭 없음"으로 표시된다. 최근 30분 안에 활동이 있었던 세션만 나온다.
-
-## Windows exe 빌드
-
-```powershell
-py -m venv .venv; .venv\Scripts\pip install pyinstaller
-.venv\Scripts\pyinstaller --noconfirm --onedir --console --name dash dash.py
-# dist\dash 폴더와 install.cmd를 같은 폴더에 두고 zip으로 묶는다
-```
+| [thinking-orbs](https://libraries.dev/) | 생각 중·진행 표시 | MIT |
+| [unslop](https://github.com/heydamir/unslop) (Damir Sokolovsky) | 디자인 규칙 | CC BY 4.0 |
+| [codeburn](https://github.com/getagentseal/codeburn) | 토큰 사용량 읽는 방식 참고 (코드는 새로 작성) | MIT |
+| IBM Plex Sans, IBM Plex Sans KR | UI 글꼴 | SIL OFL 1.1 |
+| [D2Coding](https://github.com/naver/d2-coding-font), [Monoplex KR](https://github.com/y-kim/monoplex) | 터미널 글꼴 | SIL OFL 1.1 |
+| xterm.js, lucide | 터미널, 아이콘 | MIT, ISC |

@@ -15,15 +15,15 @@ Perch는 여러 코딩 에이전트(Hermes, OpenCode)를 분할 터미널로 띄
 | `docs/superpowers/plans/2026-11-17-perch-ui-prototype.md` | 1단계 계획과 검토 반영 기록 (Task 1~6) | 완료 |
 | `desk/HERMES_UI_NOTES.md` | Hermes CLI가 자체적으로 그리는 화면 요소와 소스 출처 | 참고 자료 |
 | `desk/NOTES.md` | `thinking-orbs` 사용법 메모 | 참고 자료 |
-| `dash.py`, `install.cmd` | Hermes 셸 훅 + CLI 대시보드 프로토타입 (Python) | 동작함. 3단계에서 Rust 훅으로 대체 예정 |
+| `prototype/dash.py`, `prototype/install.cmd` | Hermes 셸 훅 + CLI 대시보드 프로토타입 (Python) | 동작함. 3단계에서 Rust 훅으로 대체 예정 |
 
 아직 없는 것: Tauri 셸, Rust 코드, 실제 PTY, Hermes/OpenCode 연결, 설치 파일.
 
 ## 3. 새 PC에서 시작하기
 
 ```bash
-git clone https://github.com/Isaac-Lee/perch.git
-cd perch/desk
+git clone https://github.com/Isaac-Lee/Perch.git
+cd Perch/desk
 npm install
 npm test          # 25개 통과해야 한다
 npm run dev       # http://localhost:5173
@@ -107,8 +107,8 @@ npm run dev       # http://localhost:5173
 7. 완료 기준: 셸 칸 8개를 띄웠을 때 유휴 메모리가 Tabby보다 적고, 유휴 CPU가 1% 미만이다.
 
 **3단계: Hermes 연결**
-- `perch-hook`(Rust)이 Hermes 셸 훅 이벤트를 받아 `~/.perch/sessions/<agent>-<sessionId>.json`을 쓴다. 형식은 설계 문서 5.1을 따른다. 로직은 `dash.py`의 `apply()`와 `hook()`을 옮긴다.
-- "Hermes 연결" 버튼은 HERMES_HOME의 `config.yaml`에 표시된 블록을 추가하고, `shell-hooks-allowlist.json`에 승인 항목을 넣는다 (`dash.py install` 로직).
+- `perch-hook`(Rust)이 Hermes 셸 훅 이벤트를 받아 `~/.perch/sessions/<agent>-<sessionId>.json`을 쓴다. 형식은 설계 문서 5.1을 따른다. 로직은 `prototype/dash.py`의 `apply()`와 `hook()`을 옮긴다.
+- "Hermes 연결" 버튼은 HERMES_HOME의 `config.yaml`에 표시된 블록을 추가하고, `shell-hooks-allowlist.json`에 승인 항목을 넣는다 (`prototype/dash.py`의 `install` 로직).
 - 토큰과 세션 폴더는 HERMES_HOME `state.db`의 `sessions` 테이블에서 읽는다: `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens`, `reasoning_tokens`, `api_call_count`, `model`, `estimated_cost_usd`, `actual_cost_usd`, `started_at`, `cwd`, `git_repo_root`.
 - 실제 Hermes로 확인할 것:
   - 세션 ID 출력 형식 (칸과 세션 연결용)
@@ -143,7 +143,7 @@ npm run dev       # http://localhost:5173
 
 ## 9. 사소하지만 알아둘 것
 
-- 프로젝트 이름은 Perch다 (이전 이름은 `my-custom-agent`). 저장소 주소는 `Isaac-Lee/perch`다. 앱 폴더는 `desk/`다.
+- 프로젝트 이름은 Perch다 (이전 이름은 `my-custom-agent`). 저장소 주소는 `Isaac-Lee/Perch`다. 앱 폴더는 `desk/`다.
 - `agent-dash-win64.zip`은 `dash.py` 프로토타입의 Windows 빌드다. `.gitignore`로 저장소에서 제외했다.
 - README 스크린샷은 headless Edge로 찍었다. macOS에서는 Chrome으로 같은 방식을 쓸 수 있다: `--headless=new --window-size=1600,1000 --virtual-time-budget=6000 --screenshot=<경로> <URL>`
 - Vite 개발 서버가 파일을 크게 고친 직후 빈 모듈을 내보낸 적이 있다. 화면이 비면 파일을 다시 저장하거나 서버를 재시작한다.
