@@ -39,6 +39,8 @@ export const sessionApprove = (sessionId: string, allow: boolean) => invoke<void
 export const hermesStatus = () => invoke<HermesStatus>("hermes_status");
 export const hermesConnect = () => invoke<HermesStatus>("hermes_connect");
 export const hermesDisconnect = () => invoke<HermesStatus>("hermes_disconnect");
+export const hermesGatewayStop = () => invoke<void>("hermes_gateway_stop");
+export const usageHistory = () => invoke<SessionInfo[]>("usage_history");
 export function paneAttach(id: string, cols: number, rows: number, onData: (bytes: Uint8Array) => void): Promise<void> {
   const channel = new Channel();
   channel.onmessage = (m) => onData(new Uint8Array(m as ArrayBuffer | number[]));

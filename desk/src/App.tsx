@@ -3,7 +3,9 @@ import { flushSync } from "react-dom";
 import { ChartNoAxesColumn, PanelLeftOpen } from "lucide-react";
 import "./App.css";
 import { useDesk } from "./lib/useDesk";
-import { HOME, isTauri, windowNew } from "./lib/backend";
+import { HOME, isTauri, usageHistory, windowNew } from "./lib/backend";
+import { toSession } from "./lib/useTauriDesk";
+import type { Session } from "./lib/types";
 import Sidebar from "./components/Sidebar";
 import PaneGrid from "./components/PaneGrid";
 import NewPaneMenu from "./components/NewPaneMenu";
@@ -22,6 +24,15 @@ export default function App() {
   const d = useDesk();
   const [collapsed, setCollapsed] = useState(false);
   const [usage, setUsage] = useState(() => window.location.hash.startsWith("#usage")); // #usage opens the usage view directly
+  const [history, setHistory] = useState<Session[]>([]);
+  useEffect(() => {
+    if (!isTauri) return;
+    if (!usage) { setHistory([]); return; }
+    let dead = false;
+    usageHistory().then((h) => { if (!dead) setHistory(h.map((s) => toSession(s))); }, console.error);
+    return () => { dead = true; };
+  }, [usage]);
+  const usageSessions = isTauri && history.length ? [...history.filter((h) => !d.sessions.some((s) => s.sessionId === h.sessionId)), ...d.sessions] : d.sessions;
   const [help, setHelp] = useState(false);
   const [term, setTerm] = useState(loadTerm);
   useEffect(() => saveTerm(term), [term]);
@@ -85,7 +96,7 @@ export default function App() {
         <PaneGrid panes={d.panes} sessions={d.sessions} now={d.now} focusedPaneId={d.focusedPaneId}
           onFocus={d.focusPane} onClose={d.closePane} stopped={d.stopped} onStop={d.stop} />
         </div>
-        {usage && <UsageView sessions={d.sessions} now={d.now} onPick={(id) => { d.focusSession(id); setUsage(false); }} onClose={() => setUsage(false)} />}
+        {usage && <UsageView sessions={usageSessions} now={d.now} onPick={(id) => { d.focusSession(id); setUsage(false); }} onClose={() => setUsage(false)} />}
       </div>
     </div>
     </TermCtx.Provider>

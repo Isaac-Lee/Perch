@@ -6,6 +6,14 @@ import { folderName } from "../mock/sessions";
 const sec = () => Math.floor(Date.now() / 1000);
 const stoppedNone: Record<string, number> = {};
 
+export function toSession(s: SessionInfo, pane?: PaneInfo): Session {
+  return {
+    ...s, cwd: s.cwd || pane?.cwd || "", title: s.title ?? undefined, state: s.state as Session["state"],
+    paneId: pane && pane.window === WINDOW ? pane.id : null,
+    pending: s.pending as Session["pending"], todos: s.todos as Session["todos"],
+  };
+}
+
 export function useTauriDesk() {
   const [now, setNow] = useState(sec);
   const [infos, setInfos] = useState<PaneInfo[]>([]);
@@ -35,14 +43,7 @@ export function useTauriDesk() {
     .map((i) => ({ id: i.id, agent: i.agent, cwd: i.cwd, sessionId: i.sessionId ?? i.id, title: folderName(i.cwd), branch: i.branch })), [infos]);
   const sessions = useMemo<Session[]>(() => {
     const byId = new Map(infos.map((i) => [i.id, i]));
-    const linked = sInfos.map((s): Session => {
-      const pane = s.paneId ? byId.get(s.paneId) : undefined;
-      return {
-        ...s, cwd: s.cwd || pane?.cwd || "", title: s.title ?? undefined, state: s.state as Session["state"],
-        paneId: pane && pane.window === WINDOW ? pane.id : null,
-        pending: s.pending as Session["pending"], todos: s.todos as Session["todos"],
-      };
-    });
+    const linked = sInfos.map((s) => toSession(s, s.paneId ? byId.get(s.paneId) : undefined));
     const plain = infos.filter((i) => !i.sessionId).map((i): Session => ({
       agent: i.agent, sessionId: i.id, cwd: i.cwd, repoRoot: i.repoRoot, branch: i.branch,
       state: "plain", since: i.createdAt, seen: i.createdAt, prompt: "", title: folderName(i.cwd), paneId: i.window === WINDOW ? i.id : null,

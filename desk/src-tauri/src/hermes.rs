@@ -61,7 +61,7 @@ pub fn status_of(home: &Path, hook: &Path, exe: Option<&Path>) -> Status {
     Status {
         home: home.to_string_lossy().into_owned(),
         exe: exe.map(|e| e.to_string_lossy().into_owned()),
-        connected: split_block(&text).1 && hook.is_file(),
+        connected: hook.is_file() && block_text(&text).is_some_and(|b| b.contains(&quoted(hook))),
         hook_path: hook.to_string_lossy().into_owned(),
     }
 }
@@ -71,11 +71,29 @@ fn command(hook: &Path) -> String {
     format!("\"{}\" hermes", hook.display())
 }
 
+/// The command as written inside the YAML single-quoted scalar.
+fn quoted(hook: &Path) -> String {
+    command(hook).replace('\'', "''")
+}
+
+/// The marked block (markers included), if present.
+fn block_text(text: &str) -> Option<&str> {
+    let a = text.find(BEGIN)?;
+    let b = text[a..].find(END).map_or(text.len(), |i| a + i + END.len());
+    Some(&text[a..b])
+}
+
+/// Commands listed in a marked block, YAML-unquoted.
+fn block_commands(blk: &str) -> Vec<String> {
+    blk.lines().filter_map(|l| l.trim().strip_prefix("- command: '")).filter_map(|r| r.trim_end().strip_suffix('\''))
+        .map(|c| c.replace("''", "'")).collect()
+}
+
 fn block(hook: &Path, nl: &str) -> String {
     // The command goes into a YAML single-quoted scalar: there a backslash is a plain character (no escapes),
     // so Windows paths survive unchanged; only `'` must be doubled. Hermes splits the decoded string with its
     // own split_command_line (not shlex), which keeps backslashes; the inner double quotes protect spaces.
-    let cmd = command(hook).replace('\'', "''");
+    let cmd = quoted(hook);
     let mut s = format!("{BEGIN}{nl}hooks:{nl}");
     for ev in EVENTS {
         s += &format!("  {ev}:{nl}    - command: '{cmd}'{nl}      timeout: 5{nl}");
@@ -160,6 +178,9 @@ pub fn connect(home: &Path, hook: &Path) -> Result<(), String> {
     let approvals = list.as_object_mut().ok_or("승인 목록 형식이 올바르지 않습니다")?
         .entry("approvals").or_insert_with(|| serde_json::json!([]))
         .as_array_mut().ok_or("승인 목록 형식이 올바르지 않습니다")?;
+    // an earlier perch block (maybe another hook path) is being replaced: drop its approvals
+    let stale = block_text(old.as_deref().unwrap_or("")).map(block_commands).unwrap_or_default();
+    approvals.retain(|e| !e["command"].as_str().is_some_and(|c| c != cmd && stale.iter().any(|s| s == c)));
     for ev in EVENTS {
         let same = |e: &serde_json::Value| e["event"] == ev && e["command"] == cmd.as_str();
         if !approvals.iter().any(same) {
@@ -197,6 +218,33 @@ pub fn disconnect(home: &Path, hook: &Path) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+#[tauri::command]
+pub async fn hermes_gateway_stop() -> Result<(), String> {
+    let exe = exe().ok_or("hermes 실행 파일을 찾지 못했습니다.")?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut c = std::process::Command::new(exe);
+        c.args(["gateway", "stop"]).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+        #[cfg(windows)]
+        std::os::windows::process::CommandExt::creation_flags(&mut c, 0x0800_0000); // CREATE_NO_WINDOW
+        let mut child = c.spawn().map_err(|e| format!("gateway를 멈추지 못했습니다: {e}"))?;
+        let end = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        loop {
+            match child.try_wait() {
+                Ok(Some(st)) if st.success() => return Ok(()),
+                Ok(Some(st)) => return Err(format!("gateway를 멈추지 못했습니다 (종료 코드 {}).", st.code().map_or("?".into(), |c| c.to_string()))),
+                Ok(None) if std::time::Instant::now() < end => std::thread::sleep(std::time::Duration::from_millis(100)),
+                Ok(None) => {
+                    let _ = child.kill();
+                    return Err("gateway를 멈추지 못했습니다: 30초 안에 끝나지 않았습니다.".into());
+                }
+                Err(e) => return Err(format!("gateway를 멈추지 못했습니다: {e}")),
+            }
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -287,6 +335,28 @@ mod tests {
         fs::write(home.join("config.yaml"), "a: 1\n").unwrap();
         connect(&home, &hook).unwrap();
         connect(&home, &hook).unwrap();
+    }
+
+    #[test]
+    fn moved_hook_is_not_connected_and_connect_replaces() {
+        let (t, home, hook) = setup();
+        let hook2 = t.path().join("new dir").join("perch-hook.exe");
+        fs::create_dir_all(hook2.parent().unwrap()).unwrap();
+        fs::write(&hook2, "x").unwrap();
+        connect(&home, &hook).unwrap();
+        assert!(status_of(&home, &hook, None).connected);
+        assert!(!status_of(&home, &hook2, None).connected);
+        connect(&home, &hook2).unwrap();
+        let cfg = fs::read_to_string(home.join("config.yaml")).unwrap();
+        assert_eq!(cfg.matches(BEGIN).count(), 1);
+        assert!(status_of(&home, &hook2, None).connected && !status_of(&home, &hook, None).connected);
+        let list: serde_json::Value = serde_json::from_str(&fs::read_to_string(home.join("shell-hooks-allowlist.json")).unwrap()).unwrap();
+        let a = list["approvals"].as_array().unwrap();
+        assert_eq!(a.len(), EVENTS.len());
+        assert!(a.iter().all(|e| e["command"] == command(&hook2).as_str()));
+        // hook file missing -> not connected
+        fs::remove_file(&hook2).unwrap();
+        assert!(!status_of(&home, &hook2, None).connected);
     }
 
     #[test]
