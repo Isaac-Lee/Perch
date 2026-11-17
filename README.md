@@ -1,6 +1,58 @@
-# agent-dash
+# my-custom-agent
 
-Hermes Agent 세션을 한눈에 보는 터미널 대시보드. Tabby 같은 아무 터미널에서 동작한다.
+여러 코딩 에이전트(Hermes, OpenCode)를 한 화면에서 띄워 쓰고 상태를 관리하는 개인 작업 환경을 만드는 프로젝트다.
+
+## 현재 상태
+
+| 구성 | 상태 | 위치 |
+|---|---|---|
+| **Agent Desk** — 분할 터미널 + 세션 상태 패널 데스크톱 앱 (Tauri) | 설계 완료, 구현 전 | [설계 문서](docs/superpowers/specs/2026-11-17-agent-desk-design.md) |
+| **dash.py** — Hermes 세션 CLI 대시보드 (프로토타입) | 동작함. Agent Desk 3단계에서 대체 예정 | [dash.py](dash.py), 아래 설명 |
+
+### Agent Desk 요약
+
+설계 문서가 기준이다. 아래는 요약이다.
+
+- 앱 하나에서 `hermes`, `opencode`, 셸을 분할 칸으로 띄운다. 칸 개수 제한은 없고 자동 격자로 배치하며, 창은 여러 개 띄울 수 있다.
+- 왼쪽 패널에 모든 창의 세션을 작업 디렉토리(git 저장소)별로 보여준다.
+  - 상태: 작업중, 생각중, 도구 실행, 승인대기, 질문대기, 답변대기와 각 경과시간
+  - 서브에이전트와 todo
+- 패널에서 세션을 누르면 해당 칸으로 이동한다. 닫힌 세션이면 resume으로 연다. Hermes 승인 요청은 패널에서 바로 허용하거나 거절할 수 있다.
+- 칸 상단에는 생각 중 표시, 하단에는 진행 줄(지금 하는 일 · N단계 · 경과시간)이 있다.
+- 오프라인 Windows 10 PC용 설치 파일을 만든다 (WebView2 포함). macOS는 소스 빌드로 지원한다.
+- UI 부품은 [libraries.dev](https://libraries.dev/)(MIT)의 `thinking-orbs`를 쓴다. 디자인은 [unslop](https://github.com/heydamir/unslop)(CC BY 4.0, Damir Sokolovsky)의 규칙을 따른다.
+- 에이전트별 지원: 1차는 Hermes와 OpenCode다. oh-my-pi는 나중에 붙인다.
+
+### 다른 PC에서 이어서 작업하기
+
+```bash
+git clone https://github.com/Isaac-Lee/my-custom-agent.git
+```
+
+빌드 PC에 필요한 것:
+
+| 도구 | 용도 |
+|---|---|
+| Node 20 이상 | 프론트엔드 |
+| Rust (rustup) | Tauri 백엔드 |
+| Windows: Visual Studio Build Tools(C++) + Windows SDK | Rust와 네이티브 모듈 빌드 |
+| macOS: Xcode Command Line Tools | 같은 용도 |
+
+구현 순서는 설계 문서 7절을 따른다: UI 시제품 → 실제 터미널 칸 → Hermes 연결 → OpenCode 연결 → 오프라인 설치 파일.
+
+### 지켜야 할 규칙
+
+- Claude Code 설정과 훅은 절대 건드리지 않는다. 대상은 Hermes와 OpenCode 설정뿐이다.
+- 에이전트 훅은 어떤 경우에도 에이전트 작업을 막으면 안 된다.
+  - 훅 명령은 반드시 `.exe`로 등록하고 항상 exit 0으로 끝낸다.
+  - `python x.py` 형태는 금지다. 파일이 없으면 python이 exit 2를 내고, Hermes는 이를 도구 차단으로 처리한다.
+- 실행 중 네트워크 접속(자동 업데이트, 텔레메트리, CDN)은 없어야 한다.
+
+---
+
+# dash.py (프로토타입)
+
+Hermes Agent 세션을 한눈에 보는 터미널 대시보드다. Tabby 같은 아무 터미널에서 동작한다.
 
 - 세션별 상태: ● 작업중 / ⚠ 승인대기 / ? 질문대기 / ◆ 답변대기, 상태가 이어진 시간
 - 지금 쓰는 도구, 마지막 요청
