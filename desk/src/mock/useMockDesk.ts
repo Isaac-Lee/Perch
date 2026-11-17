@@ -18,6 +18,8 @@ export function useMockDesk() {
       tick++;
       const t = sec();
       setNow(t);
+      // 가짜 세션이 검토 중에 "응답 없음"으로 바뀌지 않도록 활동 시각을 계속 갱신 (s8은 응답 없음 예시)
+      setSessions((all) => all.map((s) => (s.sessionId === "s8" || s.state === "closed" ? s : { ...s, seen: t })));
       const patch = (sid: string, f: (s: Session) => Partial<Session>) =>
         setSessions((all) => all.map((s) => (s.sessionId === sid ? { ...s, ...f(s) } : s)));
       if (tick % 8 === 0)

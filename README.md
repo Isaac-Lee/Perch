@@ -6,8 +6,29 @@
 
 | 구성 | 상태 | 위치 |
 |---|---|---|
-| **Agent Desk** — 분할 터미널 + 세션 상태 패널 데스크톱 앱 (Tauri) | 설계 완료, 구현 전 | [설계 문서](docs/superpowers/specs/2026-11-17-agent-desk-design.md) |
+| **Agent Desk** — 분할 터미널 + 세션 상태 패널 데스크톱 앱 (Tauri) | 1단계 UI 시제품 완료 (가짜 데이터, 브라우저에서 실행) | [설계 문서](docs/superpowers/specs/2026-11-17-agent-desk-design.md), [1단계 계획](docs/superpowers/plans/2026-11-17-agent-desk-ui-prototype.md), `desk/` |
 | **dash.py** — Hermes 세션 CLI 대시보드 (프로토타입) | 동작함. Agent Desk 3단계에서 대체 예정 | [dash.py](dash.py), 아래 설명 |
+
+### Agent Desk UI 시제품
+
+![Agent Desk UI 시제품](docs/images/desk-prototype.png)
+
+이 화면은 가짜 데이터로 그린 것이다. 실제 터미널과 에이전트 연결은 2단계부터 붙는다.
+
+실행 방법:
+
+```bash
+cd desk
+npm install
+npm run dev        # http://localhost:5173
+npm test           # 격자, 묶음, 시간 표시 로직 테스트
+```
+
+화면에서 확인할 수 있는 동작:
+- 패널의 세션을 클릭하면 해당 칸으로 이동한다. "최근" 묶음의 닫힌 세션을 클릭하면 칸이 추가되고 격자가 재배치된다.
+- 승인대기 세션의 [허용] 또는 [거절]을 누르면 상태가 바뀐다.
+- 오른쪽 위 [+]로 새 칸을 추가할 수 있다. 칸 수에 따라 격자가 자동으로 바뀐다 (6개는 3×2, 10개는 4×3).
+- 가짜 세션 상태는 몇 초마다 바뀐다. 진행 줄의 단계와 생각 중 표시도 함께 바뀐다.
 
 ### Agent Desk 요약
 
