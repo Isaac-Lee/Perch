@@ -7,13 +7,13 @@ import { agentName } from "./SessionRow";
 
 export default function PaneHeader({ pane, session, now, focused, onClose, onStop }: { pane: Pane; session?: Session; now: number; focused: boolean; onClose: () => void; onStop: () => void }) {
   const st = session ? displayState(session, now) : null;
-  const waiting = session?.pending && (st === "approval" || st === "question");
+  const waiting = st === "approval" || st === "question";
   return (
-    <div className={`pane-head${waiting ? " warn" : ""}${focused ? " focused" : ""}`}>
-      {focused && <span className="typing">입력 중</span>}
+    <div className={`pane-head${focused ? " focused" : ""}`}>
+      {waiting && <span className="dot warn" title={st === "approval" ? "승인대기" : "질문대기"} />}
       <span className="pane-title">{agentName(pane.agent)} · {pane.title}</span>
       {pane.branch && <span className="branch"><GitBranch size={13} strokeWidth={1.5} /><span className="ellipsis">{pane.branch}</span></span>}
-      {waiting ? <span className="pane-note ellipsis">{st === "approval" ? "승인 필요" : "질문"} · {session!.pending!.text}</span> : <span className="grow" />}
+      <span className="grow" />
       {st === "thinking" && session && (
         <span className="think">
           <ThinkingOrb state="working" size={20} theme="dark" />

@@ -20,7 +20,13 @@ export function useMockDesk() {
       const t = sec();
       setNow(t);
       // 가짜 세션이 검토 중에 "응답 없음"으로 바뀌지 않도록 활동 시각을 계속 갱신 (s8은 응답 없음 예시)
-      setSessions((all) => all.map((s) => (s.sessionId === "s8" || s.state === "closed" ? s : { ...s, seen: t })));
+      // 실행 중인 세션은 토큰이 조금씩 늘어난다
+      setSessions((all) => all.map((s) => {
+        if (s.sessionId === "s8" || s.state === "closed") return s;
+        const live = s.usage && (s.state === "running" || s.state === "thinking" || s.state === "tool");
+        const usage = live ? { ...s.usage!, input: s.usage!.input + 40 + (tick % 7) * 10, output: s.usage!.output + 12 + (tick % 5) * 4, cacheRead: s.usage!.cacheRead + 120, apiCalls: s.usage!.apiCalls + (tick % 6 === 0 ? 1 : 0) } : s.usage;
+        return { ...s, seen: t, usage };
+      }));
       const patch = (sid: string, f: (s: Session) => Partial<Session>) =>
         setSessions((all) => all.map((s) => (s.sessionId === sid ? { ...s, ...f(s) } : s)));
       if (tick % 8 === 0)

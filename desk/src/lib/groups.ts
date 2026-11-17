@@ -25,6 +25,18 @@ function rank(s: Session, now: number): number {
 
 const parts = (p: string) => p.split(/[\\/]+/).filter(Boolean);
 
+/** repoRoot -> display label; same-named repos get the parent folder appended. */
+export function projectLabels(roots: string[]): Map<string, string> {
+  const uniq = [...new Set(roots)];
+  const base = (r: string) => parts(r).at(-1) ?? r;
+  const count = new Map<string, number>();
+  for (const r of uniq) count.set(base(r), (count.get(base(r)) ?? 0) + 1);
+  return new Map(uniq.map((r) => {
+    const p = parts(r);
+    return [r, count.get(base(r))! > 1 && p.length >= 2 ? `${base(r)} (${p[p.length - 2]})` : base(r)];
+  }));
+}
+
 export function groupSessions(sessions: Session[], now: number): Group[] {
   const map = new Map<string, Group>();
   for (const s of sessions) {
@@ -42,16 +54,8 @@ export function groupSessions(sessions: Session[], now: number): Group[] {
   }
   const groups = [...map.values()];
 
-  // duplicate labels get the parent folder name appended
-  const byLabel = new Map<string, Group[]>();
-  for (const g of groups) if (!g.isCommon) byLabel.set(g.label, [...(byLabel.get(g.label) ?? []), g]);
-  for (const dup of byLabel.values()) {
-    if (dup.length < 2) continue;
-    for (const g of dup) {
-      const p = parts(g.key);
-      if (p.length >= 2) g.label = `${g.label} (${p[p.length - 2]})`;
-    }
-  }
+  const labels = projectLabels(groups.filter((g) => !g.isCommon).map((g) => g.key));
+  for (const g of groups) if (!g.isCommon) g.label = labels.get(g.key)!;
 
   const bySort = (a: Session, b: Session) => rank(a, now) - rank(b, now) || a.since - b.since;
   for (const g of groups) {
