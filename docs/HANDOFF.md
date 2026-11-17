@@ -4,7 +4,7 @@
 
 ## 1. 한 줄 요약
 
-Perch는 여러 코딩 에이전트(Hermes, OpenCode)를 분할 터미널로 띄우고, 옆 패널에서 모든 세션 상태를 지켜보는 데스크톱 앱이다. **1~3단계(UI, Tauri + 실제 터미널, Hermes 연결)는 끝났다. 4단계(OpenCode)와 5단계(오프라인 설치 검증)가 남았다.** 모든 작업은 `main`에 병합돼 있다 (PR #1). `v0.1.0` 태그를 올렸고 릴리스는 초안 상태다 (6절).
+Perch는 여러 코딩 에이전트(Hermes, OpenCode)를 분할 터미널로 띄우고, 옆 패널에서 모든 세션 상태를 지켜보는 데스크톱 앱이다. **1~3단계(UI, Tauri + 실제 터미널, Hermes 연결)는 끝났다. 4단계(OpenCode)는 하지 않기로 했다. 5단계(오프라인 설치 검증)와 맥 앱 실행 확인은 사용자가 직접 한다.** 모든 작업은 `main`에 병합돼 있다. `v0.1.0`은 게시됐다 (6절).
 
 ## 2. 지금 있는 것
 
@@ -15,10 +15,9 @@ Perch는 여러 코딩 에이전트(Hermes, OpenCode)를 분할 터미널로 띄
 | `desk/src-tauri/hook/` | `perch-hook`: Hermes 셸 훅이 부르는 작은 바이너리. 상태 파일을 쓴다 | 테스트 3개 통과 |
 | `desk/scripts/build-hook.mjs` | 훅을 빌드해 Tauri 사이드카 위치로 복사 (`npm run hook`) | `tauri dev`/`build`가 자동 실행 |
 | `.github/workflows/build.yml` | Windows 설치 파일과 macOS(Apple Silicon) dmg를 만든다. PR과 수동 실행은 결과물만 남기고, `v*` 태그는 초안 릴리스에 붙인다 | PR #1에서 두 OS 모두 통과 |
-| `docs/ADAPTERS.md` | 다른 에이전트를 붙일 때의 계약과 손댈 곳 | OpenCode는 보류 |
+| `docs/ADAPTERS.md` | 다른 에이전트를 붙일 때의 계약과 손댈 곳 | OpenCode는 하지 않음 |
 | `docs/superpowers/specs/2026-11-17-perch-design.md` | 설계 문서. 성능 기준은 9절 10번 | 메모리 기준 500MB로 변경됨 |
 | `docs/superpowers/plans/` | 단계별 계획. 2단계(`phase2-tauri-pty`), 3단계(`phase3-hermes`: 확인된 Hermes 사실 포함) | 2·3단계 완료 |
-| `prototype/dash.py` | 초기 Python 프로토타입 | `perch-hook`이 대체했다. 지워도 된다 |
 
 결과물 (Windows, 이 PC에서 빌드):
 - `desk/src-tauri/target/release/perch.exe` — 설치 없이 실행. 같은 폴더의 `perch-hook.exe`가 필요하다.
@@ -30,7 +29,7 @@ Perch는 여러 코딩 에이전트(Hermes, OpenCode)를 분할 터미널로 띄
 git clone https://github.com/Isaac-Lee/Perch.git
 cd Perch/desk
 npm install
-npm test          # 31개 통과해야 한다
+npm test          # 33개 통과해야 한다
 npm run dev       # 브라우저 모드 (가짜 데이터) http://localhost:5173
 npm run tauri dev # 앱 창 (실제 터미널). Rust 필요
 npm run tauri build   # 릴리스 exe와 설치 파일
@@ -110,24 +109,23 @@ npm run tauri build   # 릴리스 exe와 설치 파일
 
 ## 6. 다음에 할 일
 
-**먼저: v0.1.0 릴리스 게시.** 태그 빌드가 끝나면 [Releases](https://github.com/Isaac-Lee/Perch/releases)의 초안 `Perch v0.1.0`에 설치 파일 두 개(`Perch_0.1.0_x64-setup.exe`, `Perch_0.1.0_aarch64.dmg`)가 붙는다. 확인한 뒤 웹에서 "Publish release"를 누르거나 `gh release edit v0.1.0 --draft=false --latest`를 실행한다. 빌드가 실패했으면 Actions에서 단계를 확인한다. 다음 버전은 `tauri.conf.json`, `Cargo.toml`, `package.json`의 버전을 올리고 `v<버전>` 태그를 push하면 같은 과정이 돈다.
+**릴리스.** `v0.1.0`은 2026-11-18에 [Releases](https://github.com/Isaac-Lee/Perch/releases)에 게시됐다 (`Perch_0.1.0_x64-setup.exe`, `Perch_0.1.0_aarch64.dmg`). 태그 빌드는 초안 릴리스에 설치 파일을 붙이고, 확인 뒤 `gh release edit v<버전> --draft=false --latest`로 게시한다. 다음 버전은 `tauri.conf.json`, `Cargo.toml`, `package.json`의 버전을 올리고 `v<버전>` 태그를 push하면 같은 과정이 돈다.
 
-- 저장소에 `LICENSE` 파일이 없다. 공개 저장소이므로 정해야 한다 (사용자 결정 대기). 포함된 폰트와 라이브러리는 OFL, MIT, ISC 계열이다.
+- 라이선스는 MIT + Commons Clause다 (`LICENSE`). 회사 내부 사용은 허용, 판매는 금지 (사용자 결정, 2026-11-18).
 - Intel 맥용 빌드는 없다. 필요하면 워크플로 matrix에 줄을 추가한다.
 
-**4단계: OpenCode 연결.** 플러그인(`~/.config/opencode/plugins/`) 또는 로컬 서버 API를 쓴다. 이벤트 이름, resume 플래그, 토큰 DB 컬럼은 실제 설치본으로 확인해야 한다. 이 PC에는 OpenCode가 없다. 상태 파일 형식은 3단계 계획 2.1절과 같고 `agent`만 `opencode`다. 부분 지원(작업중/대기, 도구, 권한 대기)으로 출시해도 된다.
+**4단계: OpenCode 연결 — 하지 않기로 했다 (사용자 결정, 2026-11-18).** OpenCode는 칸에서 실행만 되고 상태 표시는 없다. 나중에 다시 하게 되면 `docs/ADAPTERS.md`를 따른다.
 
-**5단계: 오프라인 Windows 10 설치 검증.** 설치 파일은 이미 만들어진다. 깨끗한 Windows 10에서 설치, 실행, Hermes 연결을 확인한다. 설치 후에는 훅 경로가 달라지므로 앱에서 Connect를 다시 눌러야 한다.
+**5단계: 오프라인 Windows 10 설치 검증 (사용자가 직접).** 설치 파일은 이미 만들어진다. 깨끗한 Windows 10에서 설치, 실행, Hermes 연결을 확인한다. 설치 후에는 훅 경로가 달라지므로 앱에서 Connect를 다시 눌러야 한다.
 
 **미뤄 둔 것**
 - 메모리 줄이기. 셸 8칸 유휴 400MB(작업 집합 합계), 공유분 제외 117MB. 기준은 500MB로 올려 두었다.
 - 출력이 계속 쏟아질 때의 흐름 제어. 지금은 읽기를 4ms 모아 보내고 한도(1024 조각)에서 읽기가 멈춘다. 8칸 동시 폭주에서 프레임 간격 최대 104ms.
-- 사용량 화면에서 기록 속 세션을 클릭하면 아무 일도 없다. resume으로 열게 하면 된다.
 - 대화 기록 검색은 하지 않기로 했다. 검색은 세션 제목·폴더·브랜치만 본다 (사용자 결정).
 
 ## 7. macOS에서 작업할 때 알아둘 점
 
-- 1단계 시제품은 macOS에서 실행해 본 적이 없다. 브라우저 앱이라 그대로 돌 것으로 예상하지만, 확인된 것은 아니다.
+- 2026-11-18 맥(Node 26)에서 `npm install`과 `npm test`(33개)가 통과했다. 앱 창(`tauri dev`)은 이 맥에 Rust가 없어 아직 실행하지 못했다.
 - 터미널 글꼴 대체 목록에 Menlo가 들어 있다. UI 글꼴 대체 목록에는 Apple SD Gothic Neo가 들어 있다.
 - Hermes 설치 경로가 다르다.
   - Windows 빌드 PC: `D:\hermes-cli`, `HERMES_HOME=D:\hermes-cli\home`
@@ -135,7 +133,7 @@ npm run tauri build   # 릴리스 exe와 설치 파일
   - Windows용 오프라인 Hermes 설치 파일 작업은 별도 세션에서 `D:\ysl\hermes-offline`에 진행했다. 이 저장소에는 없다.
 - 코드에서 경로 구분자와 홈 폴더를 OS별로 처리해야 한다. 가짜 데이터의 경로는 Windows 형식(`D:\ysl\...`)이다. `folderName()` 같은 경로 처리는 `/`와 `\` 둘 다 다루는지 확인한다.
 - 다른 프로세스의 콘솔 제목을 바꾸는 방식(`dash.py tab`의 Windows 전용 코드)은 Perch에서는 필요 없다. 앱이 칸을 직접 가지기 때문이다.
-- 대상 사용자 환경은 Windows 10 오프라인 PC다. macOS는 개발용이므로, 2~4단계의 기능은 Windows에서도 한 번씩 확인해야 한다.
+- 대상 사용자 환경은 Windows 10 오프라인 PC다. macOS는 개발용이므로, 2~3단계의 기능은 Windows에서도 한 번씩 확인해야 한다.
 
 ## 8. 아직 확인하지 못한 것
 
@@ -145,7 +143,6 @@ npm run tauri build   # 릴리스 exe와 설치 파일
 - Tabby와의 메모리 비교.
 - WebView2의 WebGL 컨텍스트 상한 (8칸까지는 문제없었다).
 - macOS: CI에서 빌드와 테스트는 통과했다. 실제 맥에서 실행해 본 적은 없다 (터미널, Hermes 연결, 폴더 선택창, 단축키의 ⌘ 표기 모두 미확인).
-- OpenCode 전부.
 - 5단계 설치 검증을 어디서 할지 (Windows 10 가상머신 또는 실제 오프라인 PC).
 
 ## 9. 사소하지만 알아둘 것
@@ -154,7 +151,7 @@ npm run tauri build   # 릴리스 exe와 설치 파일
 - **설치 파일을 Claude 데스크톱 앱의 셸에서 실행하면 안 된다.** 그 셸은 `%LOCALAPPDATA%`에 새로 쓰는 파일을 앱 전용 가상 폴더(`Packages\Claude_…\LocalCache\Local`)로 돌린다. 설치는 된 것처럼 보이지만 Hermes 같은 바깥 프로세스는 훅 파일을 찾지 못한다. 설치 검증은 탐색기에서 설치 파일을 직접 실행해서 한다. 설치 파일 자체는 조용한 설치(`/S`), 실행, 제거(`uninstall.exe /S`)까지 동작했다.
 
 - 프로젝트 이름은 Perch다 (이전 이름은 `my-custom-agent`). 저장소 주소는 `Isaac-Lee/Perch`다. 앱 폴더는 `desk/`다.
-- `agent-dash-win64.zip`은 `dash.py` 프로토타입의 Windows 빌드다. `.gitignore`로 저장소에서 제외했다.
+- 초기 Python 프로토타입(`prototype/dash.py`)은 `perch-hook`이 대체해서 지웠다. 필요하면 git 기록(`03e610d`)에서 찾는다.
 - README 스크린샷은 headless Edge로 찍었다. macOS에서는 Chrome으로 같은 방식을 쓸 수 있다: `--headless=new --window-size=1600,1000 --virtual-time-budget=6000 --screenshot=<경로> <URL>`
 - Vite 개발 서버가 파일을 크게 고친 직후 빈 모듈을 내보낸 적이 있다. 화면이 비면 파일을 다시 저장하거나 서버를 재시작한다.
 
@@ -173,7 +170,7 @@ npm run tauri build   # 릴리스 exe와 설치 파일
 - 설명은 한국어로, 짧게.
 - HANDOFF.md 5절의 규칙을 지켜. 특히 ~/.claude는 건드리지 말고, 훅은 어떤 경우에도 에이전트를 막으면 안 돼.
 
-오늘 할 일: <여기에 적는다. 예: v0.1.0 릴리스 초안 확인 후 게시 / 맥에서 앱 실행 확인 / 승인 버튼 확인 / 메모리 줄이기>
+오늘 할 일: <여기에 적는다. 예: 맥에서 앱 실행 확인 / 승인 버튼 확인 / 메모리 줄이기>
 ```
 
 상황별로 덧붙이면 좋은 말:
