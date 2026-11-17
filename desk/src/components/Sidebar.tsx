@@ -5,10 +5,11 @@ import { MY_TURN, displayState, groupSessions, groupSummary } from "../lib/group
 import SessionRow from "./SessionRow";
 import { clampSidebarWidth, SIDEBAR_DEFAULT, loadCollapsed, saveCollapsed } from "../lib/uiSettings";
 import { useScrollReveal } from "../lib/useScrollReveal";
+import { fmtTokens, summarize } from "../lib/usage";
 
-export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, onApprove, onStop, onCollapse, width, onResize }: {
+export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, onApprove, onStop, onCollapse, onUsage, width, onResize }: {
   sessions: Session[]; panes: Pane[]; now: number; focusedPaneId: string | null;
-  onFocus: (id: string) => void; onApprove: (id: string, allow: boolean) => void; onStop: (id: string) => void; onCollapse: () => void;
+  onFocus: (id: string) => void; onApprove: (id: string, allow: boolean) => void; onStop: (id: string) => void; onCollapse: () => void; onUsage: () => void;
   width: number; onResize: (w: number) => void;
 }) {
   const groups = useMemo(() => groupSessions(sessions, now), [sessions, now]);
@@ -40,6 +41,7 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
   const live = groups.flatMap((g) => g.sessions);
   const working = live.filter((s) => ["running", "thinking", "tool"].includes(displayState(s, now))).length;
   const mine = live.filter((s) => MY_TURN.includes(s.state)).length;
+  const todayTok = useMemo(() => summarize(sessions, "today", now).total.total, [sessions, now]);
   const toggle = (k: string) => setOpen((o) => { const n = new Set(o); if (!n.delete(k)) n.add(k); return n; });
   return (
     <aside className="sidebar" style={{ width }}>
@@ -47,6 +49,7 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
         <div>
           <div className="side-title">세션</div>
           <div className="side-sum">작업중 {working} · 내 차례 {mine}</div>
+          <button className="side-tok" onClick={onUsage}>오늘 {fmtTokens(todayTok)} tok</button>
         </div>
         <button className="icon-btn" aria-label="패널 접기" onClick={onCollapse}><PanelLeftClose size={16} strokeWidth={1.5} /></button>
       </div>

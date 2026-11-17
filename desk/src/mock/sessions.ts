@@ -1,13 +1,18 @@
-import type { Pane, Session } from "../lib/types";
+import type { Pane, Session, Usage } from "../lib/types";
 
 export const T0 = Math.floor(Date.now() / 1000);
-const base: Pick<Session, "pending" | "subagents" | "todos" | "steps" | "tool" | "toolDetail" | "turnStart" | "paneId"> = { pending: null, subagents: [], todos: [], steps: 0, tool: "", toolDetail: "", turnStart: null, paneId: null };
+const base: Pick<Session, "pending" | "subagents" | "todos" | "steps" | "tool" | "toolDetail" | "turnStart" | "paneId" | "usage"> = { pending: null, subagents: [], todos: [], steps: 0, tool: "", toolDetail: "", turnStart: null, paneId: null, usage: null };
 
 const LONG_PROMPT =
   "src/ 아래의 모든 모듈에서 deprecated 된 설정 로더를 새 로더로 교체하고, 기존 테스트가 깨지지 않도록 호환 계층을 유지한 채 문서와 변경 로그까지 함께 정리해 주세요. 마이그레이션 중에 발견되는 순환 참조는 별도 이슈로 남겨 주세요.";
 const LONG_ARG = "src/config/loaders/legacy/" + "very-long-directory-name/".repeat(8) + "settings.generated.ts";
 
-export const mockSessions: Session[] = [
+const DAY = 86400;
+const use = (model: string, input: number, output: number, cacheRead: number, cacheWrite: number, apiCalls: number, daysAgo: number, costUsd: number | null = null): Usage =>
+  ({ model, input, output, cacheRead, cacheWrite, reasoning: Math.round(output * 0.3), apiCalls, costUsd, startedAt: T0 - Math.round(daysAgo * DAY) });
+const Q8 = "qwen3:8b", QC = "qwen3-coder:32b", GO = "gpt-oss:20b";
+
+const sessions0: Session[] = [
   { ...base, agent: "hermes", sessionId: "s1", cwd: "D:\\ysl\\todo-api", repoRoot: "D:\\ysl\\todo-api", branch: "main", state: "approval", since: T0 - 120, seen: T0 - 5,
     prompt: "빌드 산출물을 정리하고 다시 빌드해 주세요", pending: { kind: "approval", id: "a1", text: "rm -rf build/ 실행 허용?" }, paneId: "p1" },
   { ...base, agent: "hermes", sessionId: "s2", cwd: "D:\\ysl\\todo-api", repoRoot: "D:\\ysl\\todo-api", branch: "feature/login", state: "tool", since: T0 - 250, seen: T0 - 2,
@@ -25,6 +30,28 @@ export const mockSessions: Session[] = [
     tool: "terminal", toolDetail: "npm run lint", steps: 7, turnStart: T0 - 1500, prompt: "린트 오류를 모두 고쳐 주세요" },
   { ...base, agent: "hermes", sessionId: "s9", cwd: "D:\\ysl\\devops-lecture", repoRoot: "D:\\ysl\\devops-lecture", branch: "docs/readme", state: "closed", since: T0 - 7200, seen: T0 - 7200, prompt: "README 초안 작성" },
 ];
+
+const usages: Record<string, Usage> = {
+  s1: use(QC, 182_000, 9_400, 410_000, 36_000, 14, 0.05),
+  s2: use(QC, 420_000, 21_000, 1_150_000, 88_000, 31, 0.1),
+  s3: use(GO, 96_000, 7_300, 210_000, 19_000, 9, 0.06),
+  s4: use(Q8, 38_000, 2_800, 64_000, 6_500, 5, 0.2),
+  s5: use(Q8, 12_400, 1_100, 0, 0, 3, 0.01),
+  s6: use(GO, 8_900, 640, 22_000, 3_100, 2, 1.2),
+  s7: use(Q8, 5_300, 900, 0, 0, 2, 0.02),
+  s8: use(QC, 260_000, 14_000, 700_000, 52_000, 22, 1.5),
+  s9: use(Q8, 41_000, 6_200, 90_000, 9_000, 8, 2.1, 0.42),
+};
+const extras: Session[] = [
+  { ...base, agent: "hermes", sessionId: "x1", cwd: "D:\\ysl\\todo-api", repoRoot: "D:\\ysl\\todo-api", branch: "main", state: "closed", since: T0 - 3 * DAY, seen: T0 - 3 * DAY, prompt: "의존성 업데이트와 변경 로그 정리", usage: use(QC, 310_000, 18_000, 880_000, 70_000, 26, 3) },
+  { ...base, agent: "opencode", sessionId: "x2", cwd: "D:\\ysl\\devops-lecture", repoRoot: "D:\\ysl\\devops-lecture", branch: "main", state: "closed", since: T0 - 4.5 * DAY, seen: T0 - 4.5 * DAY, prompt: "슬라이드 예제 코드 점검", usage: use(GO, 74_000, 5_100, 150_000, 12_000, 7, 4.5) },
+  { ...base, agent: "hermes", sessionId: "x3", cwd: "D:\\a\\app", repoRoot: "D:\\a\\app", branch: "main", state: "closed", since: T0 - 6 * DAY, seen: T0 - 6 * DAY, prompt: "회원가입 폼 검증 추가", usage: use(Q8, 52_000, 4_400, 120_000, 8_000, 9, 6) },
+  { ...base, agent: "hermes", sessionId: "x4", cwd: "C:\\Users\\user", repoRoot: null, branch: null, state: "closed", since: T0 - 9 * DAY, seen: T0 - 9 * DAY, prompt: "환경 변수 정리", usage: use(Q8, 21_000, 2_000, 0, 0, 4, 9) },
+  { ...base, agent: "hermes", sessionId: "x5", cwd: "D:\\b\\app", repoRoot: "D:\\b\\app", branch: "develop", state: "closed", since: T0 - 11 * DAY, seen: T0 - 11 * DAY, prompt: "빌드 캐시 문제 조사", usage: use(QC, 145_000, 8_200, 380_000, 30_000, 12, 11) },
+  { ...base, agent: "opencode", sessionId: "x6", cwd: "D:\\ysl\\todo-api", repoRoot: "D:\\ysl\\todo-api", branch: "main", state: "closed", since: T0 - 13 * DAY, seen: T0 - 13 * DAY, prompt: "초기 프로젝트 구조 점검", usage: use(GO, 33_000, 2_500, 60_000, 5_000, 5, 13) },
+];
+
+export const mockSessions: Session[] = [...sessions0.map((s) => ({ ...s, usage: usages[s.sessionId] ?? null })), ...extras];
 
 export const folderName = (cwd: string) => cwd.split(/[\\/]+/).filter(Boolean).at(-1) ?? cwd;
 

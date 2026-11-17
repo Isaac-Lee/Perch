@@ -8,7 +8,7 @@ const mk = (o: Partial<Session> = {}): Session => ({
   agent: "hermes", sessionId: `s${n++}`, cwd: "", repoRoot: null, branch: null,
   state: "idle", since: NOW - 100, turnStart: null, steps: 0,
   tool: "", toolDetail: "", prompt: "", pending: null,
-  subagents: [], todos: [], seen: NOW - 10, paneId: null, ...o,
+  subagents: [], todos: [], seen: NOW - 10, paneId: null, usage: null, ...o,
 });
 
 test("same-named repos get disambiguated labels, key is full path", () => {
