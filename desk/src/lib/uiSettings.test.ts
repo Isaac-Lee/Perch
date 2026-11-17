@@ -1,5 +1,14 @@
 import { expect, test } from "vitest";
-import { clampSidebarWidth } from "./uiSettings";
+import { clampSidebarWidth, pushRecent } from "./uiSettings";
+
+test("pushRecent moves to front, dedupes, caps at 8", () => {
+  expect(pushRecent(["a", "b", "c"], "c")).toEqual(["c", "a", "b"]);
+  const nine = "abcdefghi".split("");
+  const r = pushRecent(nine, "z");
+  expect(r).toHaveLength(8);
+  expect(r[0]).toBe("z");
+  expect(r.at(-1)).toBe("g");
+});
 import { groupSummary } from "./groups";
 import type { Group, Session } from "./types";
 

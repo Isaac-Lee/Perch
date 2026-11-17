@@ -17,6 +17,8 @@ export function fmtTokens(n: number): string {
   return `${f(n / 1_000_000, 2)}M`;
 }
 
+export const fmtTok = (n: number) => `Ŧ ${fmtTokens(n)}`;
+
 export interface UsageRow { key: string; label: string; sessions: number; input: number; output: number; cache: number; total: number; costUsd: number | null }
 type SessionRow = UsageRow & { sessionId: string; agent: AgentKind; startedAt: number };
 

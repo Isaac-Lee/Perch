@@ -20,4 +20,10 @@ export const loadNewPane = (firstFolder: string): NewPaneDefaults => {
   const agent = v && (v.agent === "hermes" || v.agent === "opencode" || v.agent === "shell") ? v.agent : "hermes";
   return { agent, cwd: v && typeof v.cwd === "string" && v.cwd.trim() ? v.cwd : firstFolder };
 };
-export const saveNewPane = (v: NewPaneDefaults) => write("perch.newPane", v);
+export const pushRecent = (list: string[], f: string): string[] => [f, ...list.filter((x) => x !== f)].slice(0, 8);
+export const loadRecentFolders = (seed: string[]): string[] => {
+  const v = read<unknown>("perch.recentFolders", null);
+  return Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === "string") ? v : seed;
+};
+export const saveRecentFolders = (list: string[]) => write("perch.recentFolders", list);
+export const saveNewPane =(v: NewPaneDefaults) => write("perch.newPane", v);
