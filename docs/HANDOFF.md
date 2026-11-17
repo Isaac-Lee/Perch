@@ -1,23 +1,26 @@
-# 인수인계 — Perch (2026-11-17 기준)
+# 인수인계 — Perch (2026-11-18 기준)
 
 다른 PC(주로 macOS)에서 이어서 작업하기 위한 문서다. 이 문서만 읽고 시작할 수 있게 썼다.
 
 ## 1. 한 줄 요약
 
-Perch는 여러 코딩 에이전트(Hermes, OpenCode)를 분할 터미널로 띄우고, 옆 패널에서 모든 세션 상태를 지켜보는 데스크톱 앱이다. **1단계(UI 시제품)는 끝났고, 2단계(Tauri + 실제 터미널)는 아직 시작하지 않았다.**
+Perch는 여러 코딩 에이전트(Hermes, OpenCode)를 분할 터미널로 띄우고, 옆 패널에서 모든 세션 상태를 지켜보는 데스크톱 앱이다. **1~3단계(UI, Tauri + 실제 터미널, Hermes 연결)는 끝났다. 4단계(OpenCode)와 5단계(오프라인 설치 검증)가 남았다.** 작업 브랜치는 `phase2-tauri-pty`이고 아직 push하지 않았다.
 
 ## 2. 지금 있는 것
 
 | 위치 | 내용 | 상태 |
 |---|---|---|
-| `desk/` | Perch UI 시제품. Vite + React 19 + TypeScript. 가짜 데이터로 브라우저에서 실행 | 완료. 테스트 25개 통과 |
-| `docs/superpowers/specs/2026-11-17-perch-design.md` | 설계 문서 (전체 5단계의 기준) | 승인됨. 일부는 아래 4절의 결정으로 바뀜 |
-| `docs/superpowers/plans/2026-11-17-perch-ui-prototype.md` | 1단계 계획과 검토 반영 기록 (Task 1~6) | 완료 |
-| `desk/HERMES_UI_NOTES.md` | Hermes CLI가 자체적으로 그리는 화면 요소와 소스 출처 | 참고 자료 |
-| `desk/NOTES.md` | `thinking-orbs` 사용법 메모 | 참고 자료 |
-| `prototype/dash.py`, `prototype/install.cmd` | Hermes 셸 훅 + CLI 대시보드 프로토타입 (Python) | 동작함. 3단계에서 Rust 훅으로 대체 예정 |
+| `desk/src/` | 화면 (React 19 + TypeScript). 브라우저에서는 가짜 데이터, Tauri 창에서는 실제 백엔드 | 테스트 31개 통과 |
+| `desk/src-tauri/src/` | Rust 백엔드: `pty.rs`(터미널), `desk.rs`(칸·창), `sessions.rs`(상태 수집, state.db 보강), `hermes.rs`(실행 파일 찾기, 연결) | 테스트 29개 통과 |
+| `desk/src-tauri/hook/` | `perch-hook`: Hermes 셸 훅이 부르는 작은 바이너리. 상태 파일을 쓴다 | 테스트 3개 통과 |
+| `desk/scripts/build-hook.mjs` | 훅을 빌드해 Tauri 사이드카 위치로 복사 (`npm run hook`) | `tauri dev`/`build`가 자동 실행 |
+| `docs/superpowers/specs/2026-11-17-perch-design.md` | 설계 문서. 성능 기준은 9절 10번 | 메모리 기준 500MB로 변경됨 |
+| `docs/superpowers/plans/` | 단계별 계획. 2단계(`phase2-tauri-pty`), 3단계(`phase3-hermes`: 확인된 Hermes 사실 포함) | 2·3단계 완료 |
+| `prototype/dash.py` | 초기 Python 프로토타입 | `perch-hook`이 대체했다. 지워도 된다 |
 
-아직 없는 것: Tauri 셸, Rust 코드, 실제 PTY, Hermes/OpenCode 연결, 설치 파일.
+결과물 (Windows, 이 PC에서 빌드):
+- `desk/src-tauri/target/release/perch.exe` — 설치 없이 실행. 같은 폴더의 `perch-hook.exe`가 필요하다.
+- `desk/src-tauri/target/release/bundle/nsis/Perch_0.1.0_x64-setup.exe` — 사용자별 설치 파일, WebView2 오프라인 설치본 포함 (216MB). 설치 시험은 아직 안 했다.
 
 ## 3. 새 PC에서 시작하기
 
@@ -25,8 +28,10 @@ Perch는 여러 코딩 에이전트(Hermes, OpenCode)를 분할 터미널로 띄
 git clone https://github.com/Isaac-Lee/Perch.git
 cd Perch/desk
 npm install
-npm test          # 25개 통과해야 한다
-npm run dev       # http://localhost:5173
+npm test          # 31개 통과해야 한다
+npm run dev       # 브라우저 모드 (가짜 데이터) http://localhost:5173
+npm run tauri dev # 앱 창 (실제 터미널). Rust 필요
+npm run tauri build   # 릴리스 exe와 설치 파일
 ```
 
 - Node 20 이상이 필요하다 (개발은 Node 26에서 했다).
@@ -35,7 +40,7 @@ npm run dev       # http://localhost:5173
   - `#usage&chart=1y&bucket=week`: 1년 주별 차트 (`chart`는 `14d`/`30d`/`1y`, `bucket`은 `day`/`week`)
 - 설정은 브라우저 localStorage의 `perch.*` 키에 저장된다. 초기화하려면 그 키를 지운다.
 
-2단계부터 필요한 것:
+앱 창과 빌드에 필요한 것 (Windows 빌드 PC에는 Rust 1.100, VS 2022 Build Tools를 설치해 두었다):
 
 | 도구 | macOS | Windows |
 |---|---|---|
@@ -93,33 +98,15 @@ npm run dev       # http://localhost:5173
 
 ## 6. 다음에 할 일
 
-설계 문서 7절의 순서를 따른다. 각 단계를 시작하기 전에 계획 문서를 `docs/superpowers/plans/`에 쓴다.
+**4단계: OpenCode 연결.** 플러그인(`~/.config/opencode/plugins/`) 또는 로컬 서버 API를 쓴다. 이벤트 이름, resume 플래그, 토큰 DB 컬럼은 실제 설치본으로 확인해야 한다. 이 PC에는 OpenCode가 없다. 상태 파일 형식은 3단계 계획 2.1절과 같고 `agent`만 `opencode`다. 부분 지원(작업중/대기, 도구, 권한 대기)으로 출시해도 된다.
 
-**2단계: Tauri 셸 + 실제 터미널 칸**
-1. `desk/`에 Tauri 2를 추가한다 (`src-tauri/`). 단일 프로세스에 여러 창을 쓴다 (single-instance 플러그인).
-2. Rust 백엔드가 PTY를 관리한다 (`portable-pty`). 칸에서 `hermes`, `opencode`, 셸을 실행한다.
-3. `useMockDesk`를 실제 백엔드 연결로 바꾼다. 반환 형태(`sessions`, `panes`, `focusSession`, `addPane`, `closePane`, `approve`, `stop`)를 그대로 유지하면 화면 코드는 거의 안 바뀐다.
-4. xterm 설정을 고친다.
-   - WebGL 렌더러(`@xterm/addon-webgl`)를 켠다. 테두리 선과 블록을 앱이 직접 그리는 `customGlyphs`가 동작해서, 지금 보이는 세로선 끊김이 해결된다.
-   - 유니코드 폭 애드온으로 이모지를 2칸으로 맞춘다. Hermes는 `💻` 등을 2칸으로 계산하는데, xterm 기본값은 1칸이다. 가짜 터미널은 지금 이모지 뒤에 공백을 하나 더 넣어 맞추고 있다.
-5. git 브랜치는 `.git/HEAD`에서 읽고, 저장소 루트는 상위 폴더로 올라가며 `.git`을 찾아 계산한다.
-6. 아이콘 파일을 `icon.svg`에서 만든다.
-7. 완료 기준: 설계 문서 9절 10번의 성능 기준을 모두 만족한다 (유휴 메모리와 CPU, 시작 시간, 칸 수에 따른 반응, 출력이 쏟아질 때). 스크롤백 상한과 WebGL 컨텍스트 대체 경로도 거기에 있다.
+**5단계: 오프라인 Windows 10 설치 검증.** 설치 파일은 이미 만들어진다. 깨끗한 Windows 10에서 설치, 실행, Hermes 연결을 확인한다. 설치 후에는 훅 경로가 달라지므로 앱에서 Connect를 다시 눌러야 한다.
 
-**3단계: Hermes 연결**
-- `perch-hook`(Rust)이 Hermes 셸 훅 이벤트를 받아 `~/.perch/sessions/<agent>-<sessionId>.json`을 쓴다. 형식은 설계 문서 5.1을 따른다. 로직은 `prototype/dash.py`의 `apply()`와 `hook()`을 옮긴다.
-- "Hermes 연결" 버튼은 HERMES_HOME의 `config.yaml`에 표시된 블록을 추가하고, `shell-hooks-allowlist.json`에 승인 항목을 넣는다 (`prototype/dash.py`의 `install` 로직).
-- 토큰과 세션 폴더는 HERMES_HOME `state.db`의 `sessions` 테이블에서 읽는다: `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens`, `reasoning_tokens`, `api_call_count`, `model`, `estimated_cost_usd`, `actual_cost_usd`, `started_at`, `cwd`, `git_repo_root`.
-- 실제 Hermes로 확인할 것:
-  - 세션 ID 출력 형식 (칸과 세션 연결용)
-  - `/approve <id> once` 문법과 ID 출처
-  - Stop이 보낼 키 (`/stop` 또는 Ctrl+C)
-  - Hermes가 그리는 그래프와 다이어그램의 정렬
-- Hermes 승인 선택지는 4단계다 (once / session / always / deny). 패널의 [Allow]는 once에 해당한다.
-
-**4단계: OpenCode 연결.** 플러그인(`~/.config/opencode/plugins/`) 또는 로컬 서버 API를 쓴다. 이벤트 이름, resume 플래그, 토큰 DB 컬럼은 실제 설치본으로 확인해야 한다. 부분 지원(작업중/대기, 도구, 권한 대기)으로 출시해도 된다.
-
-**5단계: 오프라인 Windows 10 설치 파일.** NSIS 사용자별 설치에 WebView2 오프라인 설치본을 포함한다. **이 단계는 Windows PC에서 빌드해야 한다.**
+**미뤄 둔 것**
+- 메모리 줄이기. 셸 8칸 유휴 400MB(작업 집합 합계), 공유분 제외 117MB. 기준은 500MB로 올려 두었다.
+- 출력이 계속 쏟아질 때의 흐름 제어. 지금은 읽기를 4ms 모아 보내고 한도(1024 조각)에서 읽기가 멈춘다. 8칸 동시 폭주에서 프레임 간격 최대 104ms.
+- 사용량 화면에서 기록 속 세션을 클릭하면 아무 일도 없다. resume으로 열게 하면 된다.
+- 대화 기록 검색은 하지 않기로 했다. 검색은 세션 제목·폴더·브랜치만 본다 (사용자 결정).
 
 ## 7. macOS에서 작업할 때 알아둘 점
 
@@ -135,13 +122,19 @@ npm run dev       # http://localhost:5173
 
 ## 8. 아직 확인하지 못한 것
 
-- 실제 Hermes 화면: 시제품의 Hermes 칸은 소스(v0.23.2)를 읽고 재현한 것이다. 실행해서 캡처한 것이 아니다.
-- 패널 세션 행의 hover Stop 버튼, 설정의 Default agent 변경, 접힌 묶음의 개수 요약, 차트 전환 선택이 다음 실행에 유지되는지: 코드만 확인했고 눌러 보지 않았다.
-- 터미널 스크롤바가 스크롤 중에만 보이는지: 가짜 출력이 짧아 스크롤할 내용이 없었다.
-- OpenCode의 화면, 훅 이벤트, 토큰 기록 위치: 문서와 codeburn 소스 기준이고, 실제 설치본으로는 확인하지 않았다.
-- 5단계 설치 검증을 어디서 할지(Windows 10 가상머신 또는 실제 오프라인 PC): 사용자가 아직 정하지 않았다.
+- **승인 버튼.** 패널의 Allow/Deny는 Hermes 승인 메뉴에 `1`/`4`를 보낸다. 이 PC의 Hermes가 승인 없이 실행하는 설정이라 승인 대기가 생기지 않아 확인하지 못했다. 승인 대기가 어떤 훅 이벤트로 오는지도 같은 이유로 미확인.
+- 서브에이전트와 todo 표시: 실제 Hermes에서 본 적이 없다. todo 도구의 인자 형태는 추정이다.
+- 실제 키보드로 누른 단축키, 터미널에 포커스가 있을 때 앱이 먼저 받는지.
+- Tabby와의 메모리 비교.
+- WebView2의 WebGL 컨텍스트 상한 (8칸까지는 문제없었다).
+- macOS에서는 2단계 이후 한 번도 빌드하지 않았다.
+- OpenCode 전부.
+- 5단계 설치 검증을 어디서 할지 (Windows 10 가상머신 또는 실제 오프라인 PC).
 
 ## 9. 사소하지만 알아둘 것
+
+- 훅 실행 파일이 없어도 Hermes는 정상 동작한다 (실제로 확인함: 로그에 `shell hook failed … command not found` 경고만 남고 요청은 처리됐다).
+- **설치 파일을 Claude 데스크톱 앱의 셸에서 실행하면 안 된다.** 그 셸은 `%LOCALAPPDATA%`에 새로 쓰는 파일을 앱 전용 가상 폴더(`Packages\Claude_…\LocalCache\Local`)로 돌린다. 설치는 된 것처럼 보이지만 Hermes 같은 바깥 프로세스는 훅 파일을 찾지 못한다. 설치 검증은 탐색기에서 설치 파일을 직접 실행해서 한다. 설치 파일 자체는 조용한 설치(`/S`), 실행, 제거(`uninstall.exe /S`)까지 동작했다.
 
 - 프로젝트 이름은 Perch다 (이전 이름은 `my-custom-agent`). 저장소 주소는 `Isaac-Lee/Perch`다. 앱 폴더는 `desk/`다.
 - `agent-dash-win64.zip`은 `dash.py` 프로토타입의 Windows 빌드다. `.gitignore`로 저장소에서 제외했다.
