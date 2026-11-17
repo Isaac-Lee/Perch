@@ -123,6 +123,8 @@ pub fn apply(state: Value, event: &Value, now: u64) -> Option<Value> {
                 c["tool"] = json!(ex["tool"].as_str().unwrap_or(""));
             }
         }
+        // A resumed session reopens: without this it stays "closed" until its first turn.
+        "on_session_open" | "on_session_start" if st["state"] == "closed" => set_state(&mut st, "idle", now),
         _ => {} // on_session_open/start and unknown events: file created above, seen updated
     }
     Some(st)

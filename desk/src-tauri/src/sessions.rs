@@ -192,6 +192,10 @@ fn enrich(db: &Path, info: &mut SessionInfo) {
         info.repo_root = d.repo_root;
         info.branch = d.branch;
         info.usage = Some(d.usage);
+        // Hermes often leaves git_repo_root/git_branch empty; without them a closed session falls into "Shared workspace".
+        if info.repo_root.is_none() && !info.cwd.is_empty() {
+            (info.repo_root, info.branch) = crate::desk::git_info(Path::new(&info.cwd));
+        }
     }
 }
 

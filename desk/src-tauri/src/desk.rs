@@ -172,6 +172,8 @@ pub async fn pane_create(
             return Err("resume은 hermes 세션 id에만 쓸 수 있습니다".into());
         }
     }
+    // One spelling per folder: the repo root is the sidebar group key.
+    let cwd = if cfg!(windows) { cwd.replace('/', "\\") } else { cwd };
     let (repo_root, branch) = git_info(Path::new(&cwd));
     let created_at = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
