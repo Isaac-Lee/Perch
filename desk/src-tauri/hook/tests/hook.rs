@@ -18,6 +18,10 @@ fn transitions() {
     // open on existing file only bumps seen
     let st = step(st, ev("on_session_start", json!({})), 11);
     assert_eq!((st["since"].as_u64(), st["seen"].as_u64()), (Some(10), Some(11)));
+    // resume reopens a closed session
+    let closed = step(st.clone(), ev("on_session_finalize", json!({})), 12);
+    let reopened = step(closed, ev("on_session_open", json!({"reason": "resume"})), 13);
+    assert_eq!((reopened["state"].as_str(), reopened["since"].as_u64()), (Some("idle"), Some(13)));
 
     let long = "가".repeat(100);
     let st = step(st, ev("pre_llm_call", json!({"user_message": long})), 20);
