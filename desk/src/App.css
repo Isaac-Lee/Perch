@@ -137,15 +137,17 @@ button:focus-visible, .row:focus-visible { outline: 1px solid var(--accent); out
 .stat-k { color: var(--text-3); font-size: 12px; line-height: 16px; }
 .stat-v { font-size: 20px; line-height: 24px; font-weight: 500; }
 .u-sec h3 { margin: 0 0 8px; font-size: 12px; line-height: 16px; font-weight: 500; color: var(--text-2); }
+.chart-head { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.chart-head h3 { margin: 0; }
 .chart { display: flex; gap: 8px; height: 160px; }
 .chart-y { flex: none; width: 48px; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end; color: var(--text-3); font-size: 12px; line-height: 16px; margin-top: -8px; padding-bottom: 4px; }
 .chart-plot { position: relative; flex: 1; min-width: 0; }
 .chart-line { position: absolute; left: 0; right: 0; height: 1px; background: var(--line); }
-.chart-bars { position: absolute; left: 0; right: 0; top: 0; bottom: 20px; display: flex; align-items: flex-end; gap: 8px; }
-.chart-col { flex: 1; height: 100%; display: flex; align-items: flex-end; min-width: 0; }
+.chart-bars { position: absolute; left: 0; right: 0; top: 0; bottom: 20px; display: flex; align-items: flex-end; }
+.chart-col { flex: 1 1 0; min-width: 1px; height: 100%; display: flex; align-items: flex-end; }
 .chart-bar { width: 100%; background: var(--accent); border-radius: 2px 2px 0 0; }
-.chart-x { position: absolute; left: 0; right: 0; bottom: 0; height: 16px; display: flex; gap: 8px; color: var(--text-3); font-size: 12px; line-height: 16px; }
-.chart-x span { flex: 1; text-align: center; min-width: 0; white-space: nowrap; }
+.chart-x { position: absolute; left: 0; right: 0; bottom: 0; height: 16px; color: var(--text-3); font-size: 12px; line-height: 16px; }
+.chart-x span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .u-table { width: 100%; border-collapse: collapse; font-size: 12px; line-height: 16px; }
 .u-table th { text-align: left; font-weight: 400; color: var(--text-3); padding: 4px 12px 4px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
 .u-table td { padding: 8px 12px 8px 0; border-bottom: 1px solid var(--line); white-space: nowrap; color: var(--text-2); }

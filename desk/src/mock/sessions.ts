@@ -51,7 +51,23 @@ const extras: Session[] = [
   { ...base, agent: "opencode", sessionId: "x6", cwd: "D:\\ysl\\todo-api", repoRoot: "D:\\ysl\\todo-api", branch: "main", state: "closed", since: T0 - 13 * DAY, seen: T0 - 13 * DAY, prompt: "초기 프로젝트 구조 점검", usage: use(GO, 33_000, 2_500, 60_000, 5_000, 5, 13) },
 ];
 
-export const mockSessions: Session[] = [...sessions0.map((s) => ({ ...s, usage: usages[s.sessionId] ?? null })), ...extras];
+// ~80 older closed sessions over the past year (deterministic LCG) so the 1y chart looks realistic; sidebar drops them (> 7 days).
+let seed = 20261117;
+const rnd = () => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296;
+const ROOTS = ["D:\\ysl\\todo-api", "D:\\ysl\\devops-lecture", "D:\\a\\app", "D:\\b\\app"];
+const MODELS = [Q8, QC, GO];
+const history: Session[] = Array.from({ length: 80 }, (_, i) => {
+  const daysAgo = 15 + rnd() * 350;
+  const model = MODELS[Math.floor(rnd() * 3)];
+  const scale = (model === QC ? 3 : model === GO ? 1.5 : 1) * (0.2 + rnd() * rnd() * 4);
+  const root = rnd() < 0.15 ? null : ROOTS[Math.floor(rnd() * ROOTS.length)];
+  const t = (n: number) => Math.round((n * scale) / 100) * 100;
+  return { ...base, agent: rnd() < 0.3 ? "opencode" : "hermes", sessionId: `h${i + 1}`, cwd: root ?? "C:\\Users\\user", repoRoot: root, branch: root ? "main" : null, state: "closed",
+    since: T0 - Math.round(daysAgo * DAY), seen: T0 - Math.round(daysAgo * DAY), prompt: `지난 작업 ${i + 1}`,
+    usage: use(model, t(120_000), t(8_000), t(300_000), t(25_000), 2 + Math.floor(rnd() * 30), daysAgo) };
+});
+
+export const mockSessions: Session[] = [...sessions0.map((s) => ({ ...s, usage: usages[s.sessionId] ?? null })), ...extras, ...history];
 
 export const folderName = (cwd: string) => cwd.split(/[\\/]+/).filter(Boolean).at(-1) ?? cwd;
 
