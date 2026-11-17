@@ -1,0 +1,27 @@
+:root {
+  --bg: #111214;
+  --surface-1: #17181b;
+  --surface-2: #1d1f23;
+  --text: #e6e6e6;
+  --text-2: #a1a1a6;
+  --text-3: #6e6e73;
+  --line: rgba(255, 255, 255, 0.08);
+  --accent: #6c9bf2;
+  --ok: #5fb87c;
+  --warn: #e0894a;
+  --warn-bg: rgba(224, 137, 74, 0.12);
+  --idle: #d1b350;
+  --muted: #6e6e73;
+  --font-ui: "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+  --font-term: "D2Coding", "Cascadia Mono", Consolas, Menlo, monospace;
+}
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 400 13px/20px var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
