@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { COMMON_LABEL, displayState, groupSessions } from "./groups";
+import { COMMON_LABEL, displayState, groupSessions, matchSession } from "./groups";
 import type { Session } from "./types";
 
 const NOW = 1_000_000;
@@ -67,4 +67,16 @@ test("branch does not affect grouping", () => {
   const g = groupSessions([mk({ repoRoot: "D:\\x\\solo", branch: "main" }), mk({ repoRoot: "D:\\x\\solo", branch: "feature/login" })], NOW);
   expect(g).toHaveLength(1);
   expect(g[0].sessions).toHaveLength(2);
+});
+
+test("matchSession searches title, folder and branch only", () => {
+  const s = mk({ title: "login fix", prompt: "unrelated words", cwd: "D:/Work/App", branch: "main", tool: "terminal" });
+  expect(matchSession(s, "login")).toBe(true);
+  expect(matchSession(s, "d:/work")).toBe(true);
+  expect(matchSession(s, "login main")).toBe(true);
+  expect(matchSession(s, "login zzz")).toBe(false);
+  expect(matchSession(s, "terminal")).toBe(false);
+  expect(matchSession(s, "unrelated")).toBe(false);
+  expect(matchSession(s, "")).toBe(true);
+  expect(matchSession(mk({ prompt: "fix login bug" }), "login")).toBe(true);
 });

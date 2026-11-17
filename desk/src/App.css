@@ -86,12 +86,21 @@ button:focus-visible, .row:focus-visible { outline: 1px solid var(--accent); out
 .row-branch { color: var(--text-3); font-size: 12px; flex: 0 1 auto; }
 
 /* settings popover */
-.settings { width: 240px; display: flex; flex-direction: column; gap: 8px; padding: 8px; }
-.settings .menu-label { padding: 0; }
+.settings { width: 280px; max-height: 70vh; padding: 0; }
+.set-group { display: grid; gap: 4px; padding: 12px; }
+.set-group + .set-group { border-top: 1px solid var(--line); }
+.set-title { color: var(--text-3); font-size: 12px; line-height: 16px; margin-bottom: 4px; }
+.set-row { display: grid; grid-template-columns: 1fr 160px; align-items: center; column-gap: 8px; min-height: 28px; color: var(--text-2); }
+.settings select.field { appearance: none; padding-right: 24px; text-overflow: ellipsis; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23a1a1a6' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 4px center; }
+.stepper { display: flex; height: 28px; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.stepper:focus-within { outline: 1px solid var(--accent); outline-offset: -1px; }
+.stepper button { flex: none; width: 28px; display: grid; place-items: center; color: var(--text-2); transition: background-color 0.12s; }
+.stepper button:hover { background: rgba(255, 255, 255, 0.06); color: var(--text); }
+.stepper input { flex: 1; min-width: 0; height: auto; border: 0; border-left: 1px solid var(--line); border-right: 1px solid var(--line); border-radius: 0; background: none; color: var(--text); font: inherit; text-align: center; outline: none; appearance: textfield; }
+.stepper input::-webkit-inner-spin-button, .stepper input::-webkit-outer-spin-button { appearance: none; margin: 0; }
+.settings .menu-help { margin-top: 4px; }
 .field { height: 28px; padding: 0 8px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 4px; font: inherit; width: 100%; min-width: 0; }
 .field:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
-.stepper { display: flex; align-items: center; gap: 8px; }
-.field.num { text-align: center; width: 64px; }
 .term .xterm { padding: 8px 12px 8px 12px; } /* padding lives on .xterm so FitAddon subtracts it */
 
 /* task 5 */
@@ -110,8 +119,26 @@ button:focus-visible, .row:focus-visible { outline: 1px solid var(--accent); out
 .resize-handle { position: absolute; top: 0; right: -2px; bottom: 0; width: 4px; cursor: col-resize; z-index: 5; touch-action: none; }
 .resize-handle::after { content: ""; position: absolute; top: 0; bottom: 0; left: 2px; width: 1px; background: transparent; transition: background-color 0.12s; }
 .resize-handle:hover::after, .resize-handle:active::after { background: var(--accent); }
-.split { display: inline-flex; align-items: center; }
-.settings { max-height: 70vh; }
+.ns { display: flex; align-items: center; }
+.ns-open, .ns-target { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--text-2); transition: background-color 0.12s, color 0.12s; }
+.ns-open svg, .ns-target svg { flex: none; }
+.ns-open:hover, .ns-target:hover, .ns-target[aria-expanded="true"] { background: var(--surface-2); color: var(--text); }
+.ns-bar { height: 24px; border: 1px solid var(--line); border-radius: 4px; font-size: 12px; }
+.ns-bar .ns-open { height: 100%; padding: 0 8px 0 6px; color: var(--text); border-radius: 3px 0 0 3px; }
+.ns-bar .ns-target { height: 100%; max-width: 200px; padding: 0 4px 0 8px; border-left: 1px solid var(--line); border-radius: 0 3px 3px 0; }
+.ns-side { height: 28px; gap: 2px; }
+.ns-side .ns-open { flex: none; height: 100%; padding: 0 8px; gap: 8px; border-radius: 4px; color: var(--text); }
+.ns-side .ns-target { flex: 1; justify-content: flex-end; height: 100%; padding: 0 4px 0 8px; border-radius: 4px; font-size: 12px; color: var(--text-3); }
+.env-menu { width: 260px; }
+.ns-side .menu { left: 0; right: 0; width: auto; }
+.menu-item .check { margin-left: auto; color: var(--text); }
+.menu-sep { height: 1px; margin: 4px 0; background: var(--line); }
+.env-menu .menu-help { padding: 4px 8px 4px; }
+.env-menu .field { margin: 0 4px; width: calc(100% - 8px); }
+.group-head { display: flex; align-items: center; padding-right: 12px; }
+.group-head .group-title { flex: 1; min-width: 0; padding-right: 8px; }
+.group-add { opacity: 0; }
+.group-head:hover .group-add, .group-add:focus-visible { opacity: 1; }
 /* xterm 6 overlay scrollbar slider: transparent unless xterm marks the bar .visible (while scrolling, then it fades); 12px gap comes from .xterm padding */
 .term .xterm .xterm-scrollable-element > .scrollbar { width: 6px !important; }
 .term .xterm .xterm-scrollable-element > .scrollbar > .slider { background: transparent !important; border-radius: 3px; transition: background-color 150ms; width: 6px !important; }
@@ -164,3 +191,18 @@ button:focus-visible, .row:focus-visible { outline: 1px solid var(--accent); out
 .grid-empty { flex-direction: column; gap: 4px; text-align: center; }
 .empty-title { color: var(--text-2); font-weight: 500; }
 .empty-body { color: var(--text-3); }
+
+.side-actions { flex: none; display: grid; gap: 2px; padding: 0 8px 8px; }
+.side-action { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px; border-radius: 4px; color: var(--text-2); text-align: left; transition: background-color 0.12s, color 0.12s; }
+.side-action:hover, .side-action:focus-within { background: var(--surface-2); color: var(--text); }
+.side-action > svg { flex: none; }
+.side-action > span { flex: 1; }
+.side-action input { flex: 1; min-width: 0; padding: 0; border: 0; outline: none; background: none; color: var(--text); font: inherit; }
+.side-action input::placeholder { color: inherit; }
+.side-action kbd { flex: none; font: inherit; font-size: 12px; color: var(--text-3); }
+.side-empty { padding: 8px 16px; color: var(--text-3); font-size: 12px; }
+
+.keys-menu { width: 280px; padding: 12px; }
+.key-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 28px; color: var(--text-2); }
+.key-row kbd { font: inherit; font-size: 12px; color: var(--text); padding: 0 6px; height: 20px; display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); }
+.keys-menu .menu-help { margin-top: 8px; }

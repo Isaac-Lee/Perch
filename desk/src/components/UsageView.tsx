@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { X } from "lucide-react";
 import type { Session } from "../lib/types";
 import { COMMON_LABEL, projectLabels } from "../lib/groups";
-import { chartSeries, fmtTokens, summarize, type ChartBucket, type ChartPoint, type ChartRange, type Period, type UsageRow } from "../lib/usage";
+import { chartSeries, fmtTok, fmtTokens, summarize, type ChartBucket, type ChartPoint, type ChartRange, type Period, type UsageRow } from "../lib/usage";
 import { agentName } from "./SessionRow";
 
 const PERIODS: [Period, string][] = [["today", "Today"], ["7d", "7d"], ["30d", "30d"], ["all", "All"]];
@@ -50,7 +50,7 @@ function Chart({ points, pref }: { points: ChartPoint[]; pref: ChartPref }) {
         <div className="chart-line" style={{ bottom: 20 }} />
         <div className="chart-bars" style={{ gap }}>
           {points.map((d) => (
-            <div key={d.key} className="chart-col" title={`${d.title} · ${fmtTokens(d.total)} tok`}>
+            <div key={d.key} className="chart-col" title={`${d.title} · ${fmtTok(d.total)}`}>
               <div className="chart-bar" style={{ height: `${(d.total / max) * 100}%` }} />
             </div>
           ))}

@@ -1,8 +1,8 @@
 import { Circle, CircleCheck, CircleDot, Square } from "lucide-react";
 import type { AgentKind, Session, Todo } from "../lib/types";
-import { displayState } from "../lib/groups";
+import { displayState, sessionTitle } from "../lib/groups";
 import { fmtElapsed, stateLabel } from "../lib/format";
-import { fmtTokens, totalTokens } from "../lib/usage";
+import { fmtTok, totalTokens } from "../lib/usage";
 
 export const agentName = (a: AgentKind) => (a === "hermes" ? "Hermes" : a === "opencode" ? "OpenCode" : "Shell");
 
@@ -25,7 +25,7 @@ export default function SessionRow({ s, now, focused, onClick, onApprove, onStop
         <span className="row-time">{fmtElapsed(now - s.since)}</span>
         {tone === "ok" && <button className="row-stop" aria-label="Stop" title="진행 중인 작업을 멈춥니다." onClick={(e) => { e.stopPropagation(); onStop(); }}><Square size={14} strokeWidth={1.5} /></button>}
       </div>
-      <div className="row-line"><span className="row-prompt ellipsis">{s.prompt}</span>{s.subagents.length > 0 && <span className="row-sub">{s.subagents.length === 1 ? "1 agent" : `${s.subagents.length} agents`}</span>}{s.usage && <span className="row-tok">{fmtTokens(totalTokens(s.usage))} tok</span>}</div>
+      <div className="row-line"><span className="row-prompt ellipsis" title={s.prompt}>{sessionTitle(s)}</span>{s.subagents.length > 0 && <span className="row-sub">{s.subagents.length === 1 ? "1 agent" : `${s.subagents.length} agents`}</span>}{s.usage && <span className="row-tok" title="Tokens">{fmtTok(totalTokens(s.usage))}</span>}</div>
       {s.pending && <div className="row-pending ellipsis">{s.pending.text}</div>}
       {s.state === "approval" && (
         <div className="row-actions">

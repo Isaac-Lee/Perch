@@ -7,7 +7,7 @@ export interface Usage { model: string; input: number; output: number; cacheRead
 export interface Session {
   agent: AgentKind; sessionId: string; cwd: string; repoRoot: string | null; branch: string | null;
   state: SessionStateName; since: number; turnStart: number | null; steps: number;
-  tool: string; toolDetail: string; prompt: string; pending: Pending | null;
+  tool: string; toolDetail: string; prompt: string; title?: string; pending: Pending | null;
   subagents: Subagent[]; todos: Todo[]; seen: number; paneId: string | null; usage: Usage | null;
 }
 export interface Pane { id: string; agent: AgentKind; cwd: string; sessionId: string | null; title: string; branch: string | null }

@@ -67,6 +67,14 @@ export function groupSessions(sessions: Session[], now: number): Group[] {
   return groups.sort((a, b) => Number(a.isCommon) - Number(b.isCommon) || Number(mine(b)) - Number(mine(a)));
 }
 
+/** q must already be trimmed and lowercased. */
+export const sessionTitle = (s: Session) => s.title || s.prompt;
+
+export function matchSession(s: Session, q: string): boolean {
+  const hay = [sessionTitle(s), s.cwd, s.branch].join(" ").toLowerCase();
+  return q.split(/\s+/).filter(Boolean).every((w) => hay.includes(w));
+}
+
 /** Counts shown on a collapsed group title so waiting/working sessions are not missed. */
 export function groupSummary(g: Group, now: number): { mine: number; working: number } {
   let mine = 0, working = 0;
