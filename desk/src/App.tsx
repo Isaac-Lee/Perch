@@ -3,7 +3,7 @@ import { flushSync } from "react-dom";
 import { ChartNoAxesColumn, PanelLeftOpen } from "lucide-react";
 import "./App.css";
 import { useDesk } from "./lib/useDesk";
-import { HOME, isTauri, usageHistory, windowNew } from "./lib/backend";
+import { HOME, isTauri, usageHistory, windowNew, paneCreate } from "./lib/backend";
 import { toSession } from "./lib/useTauriDesk";
 import type { Session } from "./lib/types";
 import Sidebar from "./components/Sidebar";
@@ -96,7 +96,7 @@ export default function App() {
         <PaneGrid panes={d.panes} sessions={d.sessions} now={d.now} focusedPaneId={d.focusedPaneId}
           onFocus={d.focusPane} onClose={d.closePane} stopped={d.stopped} onStop={d.stop} />
         </div>
-        {usage && <UsageView sessions={usageSessions} now={d.now} onPick={(id) => { d.focusSession(id); setUsage(false); }} onClose={() => setUsage(false)} />}
+        {usage && <UsageView sessions={usageSessions} now={d.now} onPick={(id) => { const h = d.sessions.some((x) => x.sessionId === id) ? null : history.find((x) => x.sessionId === id); if (h) paneCreate("hermes", h.cwd, id).then(d.focusPane, console.error); /* history-only session: resume it */ else d.focusSession(id); setUsage(false); }} onClose={() => setUsage(false)} />}
       </div>
     </div>
     </TermCtx.Provider>

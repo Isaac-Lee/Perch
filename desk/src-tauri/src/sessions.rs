@@ -62,6 +62,9 @@ pub struct SessionInfo {
     pub todos: Vec<Todo>,
     pub seen: u64,
     pub pane_id: Option<String>,
+    /// `pane` from the state file (the adapter saw PERCH_PANE); internal, not part of the contract
+    #[serde(skip)]
+    pub pane: Option<String>,
     pub title: Option<String>,
     pub cwd: String,
     pub repo_root: Option<String>,
@@ -131,6 +134,7 @@ pub(crate) fn parse_state(v: &Value) -> Option<SessionInfo> {
         todos,
         seen: n("seen"),
         pane_id: None,
+        pane: v["pane"].as_str().filter(|s| !s.is_empty()).map(String::from),
         title: None,
         cwd: String::new(),
         repo_root: None,
@@ -425,7 +429,7 @@ pub fn usage_history_from(db: &Path) -> Vec<SessionInfo> {
         out.push(SessionInfo {
             agent: "hermes".into(), session_id: id, state: "closed".into(), since: usage.started_at, turn_start: None, steps: 0,
             tool: String::new(), tool_detail: String::new(), prompt: String::new(), pending: None, subagents: vec![], todos: vec![],
-            seen: usage.started_at, pane_id: None, title, cwd, repo_root, branch, usage: Some(usage),
+            seen: usage.started_at, pane_id: None, pane: None, title, cwd, repo_root, branch, usage: Some(usage),
         });
     }
     out

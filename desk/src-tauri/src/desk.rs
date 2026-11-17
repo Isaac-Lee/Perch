@@ -50,6 +50,17 @@ fn now_ms() -> u64 {
 // ponytail: a session resumed from outside Perch already has a state file, so it is never guessed; only the banner links it.
 fn relink_entries(entries: &mut [Entry], sessions: &[SessionInfo], first_seen: &HashMap<String, u64>) -> bool {
     let mut changed = false;
+    // 0) direct: the state file names the pane (any agent); the pane's agent must match and it must still be free
+    for s in sessions {
+        let Some(p) = &s.pane else { continue };
+        if entries.iter().any(|e| e.info.session_id.as_deref() == Some(&s.session_id)) {
+            continue;
+        }
+        if let Some(e) = entries.iter_mut().find(|e| e.info.id == *p && e.info.agent == s.agent && e.info.session_id.is_none()) {
+            e.info.session_id = Some(s.session_id.clone());
+            changed = true;
+        }
+    }
     for e in entries.iter_mut().filter(|e| e.info.agent == "hermes") {
         let Some(p) = e.info.session_id.clone() else { continue };
         if sessions.iter().any(|s| s.session_id == p) {
@@ -420,6 +431,21 @@ mod tests {
         let mut es = vec![entry("p1", "hermes", 10, None), entry("p2", "hermes", 10, Some("local-aaaa"))];
         assert!(!relink_entries(&mut es, &ss, &fs));
         assert_eq!(es[1].info.session_id.as_deref(), Some("local-aaaa"));
+    }
+
+    #[test]
+    fn relink_by_pane_field() {
+        let mut s = sess("oc-1");
+        s.agent = "opencode".into();
+        s.pane = Some("p7".into());
+        let fs = HashMap::new();
+        let mut es = vec![entry("p7", "opencode", 1, None), entry("p8", "hermes", 1, None)];
+        assert!(relink_entries(&mut es, &[s.clone()], &fs));
+        assert_eq!(es[0].info.session_id.as_deref(), Some("oc-1"));
+        assert_eq!(es[1].info.session_id, None);
+        let mut es = vec![entry("p7", "hermes", 1, None)];
+        assert!(!relink_entries(&mut es, &[s], &fs), "agent mismatch");
+        assert_eq!(es[0].info.session_id, None);
     }
 
     const HASH: &str = "0123456789abcdef0123456789abcdef01234567";
