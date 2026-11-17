@@ -1,5 +1,5 @@
 export type AgentKind = "hermes" | "opencode" | "shell";
-export type SessionStateName = "running" | "thinking" | "tool" | "approval" | "question" | "idle" | "closed";
+export type SessionStateName = "running" | "thinking" | "tool" | "approval" | "question" | "idle" | "plain" | "closed";
 export interface Subagent { id: string; role: string; goal: string; start: number; tool?: string }
 export interface Todo { text: string; status: "pending" | "in_progress" | "done" }
 export interface Pending { kind: "approval" | "question"; id: string; text: string }

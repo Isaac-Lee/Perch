@@ -9,7 +9,7 @@ export function fmtElapsed(sec: number): string {
 
 const LABELS: Record<SessionStateName | "stale", string> = {
   running: "Working", thinking: "Thinking", tool: "Running", approval: "Needs approval",
-  question: "Question", idle: "Waiting", closed: "Closed", stale: "Not responding",
+  question: "Question", idle: "Waiting", plain: "", closed: "Closed", stale: "Not responding",
 };
 
 export function stateLabel(s: SessionStateName | "stale"): string {

@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { COMMON_LABEL, displayState, groupSessions, matchSession } from "./groups";
+import { COMMON_LABEL, displayState, groupSessions, groupSummary, matchSession } from "./groups";
 import type { Session } from "./types";
 
 const NOW = 1_000_000;
@@ -48,6 +48,11 @@ test("displayState: working state with no event for 10+ minutes is stale", () =>
   expect(displayState(mk({ state: "tool", seen: NOW - 601 }), NOW)).toBe("stale");
   expect(displayState(mk({ state: "tool", seen: NOW - 600 }), NOW)).toBe("tool");
   expect(displayState(mk({ state: "idle", seen: NOW - 5000 }), NOW)).toBe("idle");
+});
+
+test("plain sessions are neither mine nor working in groupSummary", () => {
+  const [g] = groupSessions([mk({ state: "plain" })], NOW);
+  expect(groupSummary(g, NOW)).toEqual({ mine: 0, working: 0 });
 });
 
 test("recent: closed or >24h goes to recent, >7d dropped, paneId always stays", () => {

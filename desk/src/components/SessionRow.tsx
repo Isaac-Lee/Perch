@@ -6,7 +6,7 @@ import { fmtTok, totalTokens } from "../lib/usage";
 
 export const agentName = (a: AgentKind) => (a === "hermes" ? "Hermes" : a === "opencode" ? "OpenCode" : "Shell");
 
-const TONE = { running: "ok", thinking: "ok", tool: "ok", approval: "warn", question: "warn", idle: "idle", closed: "muted", stale: "muted" } as const;
+const TONE = { running: "ok", thinking: "ok", tool: "ok", approval: "warn", question: "warn", idle: "idle", plain: "muted", closed: "muted", stale: "muted" } as const;
 const TODO_ICON: Record<Todo["status"], typeof Circle> = { done: CircleCheck, in_progress: CircleDot, pending: Circle };
 
 export default function SessionRow({ s, now, focused, onClick, onApprove, onStop }: {
@@ -21,7 +21,7 @@ export default function SessionRow({ s, now, focused, onClick, onApprove, onStop
         <span className={`dot ${tone}${tone === "ok" ? " blink" : ""}`} />
         <span className="row-agent">{agentName(s.agent)}</span>
         {s.branch && <span className="row-branch ellipsis">{s.branch}</span>}
-        <span className={`row-state ${tone}`}>{stateLabel(st)}</span>
+        {st !== "plain" && <span className={`row-state ${tone}`}>{stateLabel(st)}</span>}
         <span className="row-time">{fmtElapsed(now - s.since)}</span>
         {tone === "ok" && <button className="row-stop" aria-label="Stop" title="진행 중인 작업을 멈춥니다." onClick={(e) => { e.stopPropagation(); onStop(); }}><Square size={14} strokeWidth={1.5} /></button>}
       </div>

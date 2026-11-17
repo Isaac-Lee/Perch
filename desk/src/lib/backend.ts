@@ -32,4 +32,8 @@ export const paneWrite = (id: string, data: string) => invoke<void>("pane_write"
 export const paneResize = (id: string, cols: number, rows: number) => invoke<void>("pane_resize", { id, cols, rows });
 export const paneClose = (id: string) => invoke<void>("pane_close", { id });
 export const deskSnapshot = () => invoke<PaneInfo[]>("desk_snapshot");
+export const windowNew = () => invoke<void>("window_new");
+export const windowFocus = (label: string) => invoke<void>("window_focus", { label });
+export const paneFocus = (id: string) => invoke<void>("pane_focus", { id });
+export const onFocusPane = (cb: (id: string) => void): Promise<() => void> => listen<string>("desk://focus", (e) => cb(e.payload));
 export const onPanes = (cb: (p: PaneInfo[]) => void): Promise<() => void> => listen<PaneInfo[]>("desk://panes", (e) => cb(e.payload));
