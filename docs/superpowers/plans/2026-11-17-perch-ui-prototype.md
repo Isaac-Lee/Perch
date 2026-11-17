@@ -1,14 +1,14 @@
-# Agent Desk UI 시제품 (1단계) Implementation Plan
+# Perch UI 시제품 (1단계) Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 가짜 데이터로 Agent Desk 화면(세션 패널 + 자동 격자 분할 칸)을 브라우저에서 띄워 사용자가 확인할 수 있게 한다.
+**Goal:** 가짜 데이터로 Perch 화면(세션 패널 + 자동 격자 분할 칸)을 브라우저에서 띄워 사용자가 확인할 수 있게 한다.
 
 **Architecture:** `desk/`에 Vite + React + TypeScript 앱을 만든다. 이 단계에는 Tauri와 Rust를 넣지 않는다. Tauri 셸은 2단계에서 감싼다. 순수 로직(격자, 묶음, 정렬, 시간 표시)은 `src/lib/`에 두고 Vitest로 테스트한다. 화면은 `src/mock/`의 가짜 세션 데이터와 가짜 터미널 출력으로 그린다.
 
 **Tech Stack:** React 18, TypeScript, Vite, Vitest, `@xterm/xterm` + `@xterm/addon-fit`, `lucide-react`, `thinking-orbs` (libraries.dev)
 
-**Spec:** `docs/superpowers/specs/2026-11-17-agent-desk-design.md` (5.1 상태 형식, 5.5 격자, 6 화면, 9 결정 사항)
+**Spec:** `docs/superpowers/specs/2026-11-17-perch-design.md` (5.1 상태 형식, 5.5 격자, 6 화면, 9 결정 사항)
 
 ## Global Constraints
 
@@ -213,7 +213,7 @@ export function useMockDesk(): {
     - 답변대기에서는 "답변 대기 · 1분 2초"를 회색으로 보여준다
 - [ ] **Step 7: 새 칸 메뉴 (`NewPaneMenu.tsx`)**
   - 창 상단 오른쪽 [+]를 누르면 에이전트 3개(Hermes, OpenCode, 셸)와 최근 폴더 3개 목록이 나온다. 하나를 고르면 `addPane`을 호출한다.
-  - 상단 바에는 앱 이름 "Agent Desk", 칸 수, [+]만 둔다.
+  - 상단 바에는 앱 이름 "Perch", 칸 수, [+]만 둔다.
 - [ ] **Step 8: 실행 확인**
   - `npm run dev`로 띄운 뒤 아래 항목을 확인하고, 결과를 보고에 적는다.
     - 1600×1000에서 패널과 칸 6개(3×2)가 보인다
@@ -226,7 +226,7 @@ export function useMockDesk(): {
 ### Task 3: README 스크린샷 (감독자 수행)
 
 - [ ] 개발 서버를 1600×1000 크기로 띄운 상태에서 Edge headless로 스크린샷을 찍는다. 저장 위치는 `docs/images/desk-prototype.png`다.
-- [ ] README의 Agent Desk 요약 아래에 스크린샷과 실행 방법(`cd desk && npm install && npm run dev`)을 넣는다.
+- [ ] README의 Perch 요약 아래에 스크린샷과 실행 방법(`cd desk && npm install && npm run dev`)을 넣는다.
 - [ ] 커밋하고 push한다.
 
 ### Task 4: 사용자 검토 1차 반영
@@ -275,16 +275,16 @@ export function useMockDesk(): {
 3. **패널 폭 조절**
    - 패널 오른쪽 경계에 4px 드래그 핸들을 둔다. hover 시 강조색 1px 선, 커서는 col-resize.
    - 폭은 200~480px 범위다. 더블클릭하면 260으로 돌아간다.
-   - localStorage `agent-desk.sidebarWidth`에 저장한다 (try/catch). 드래그하는 동안 터미널 fit이 따라오게 한다.
+   - localStorage `perch.sidebarWidth`에 저장한다 (try/catch). 드래그하는 동안 터미널 fit이 따라오게 한다.
 4. **묶음 접기/펼치기**
    - 묶음 제목 왼쪽에 `ChevronRight`/`ChevronDown`(16px)을 둔다. 제목을 클릭하면 접히거나 펼쳐진다.
    - 접힌 묶음은 제목 줄 오른쪽에 상태 요약을 보여준다. 내 차례가 있으면 경고색 점과 숫자, 작업중이면 초록 점과 숫자를 표시하므로 접어도 놓치지 않는다.
-   - 접힘 상태는 localStorage `agent-desk.collapsedGroups`에 저장한다.
+   - 접힘 상태는 localStorage `perch.collapsedGroups`에 저장한다.
    - 기존 "최근" 하위 토글은 그대로 둔다.
 5. **새 칸 기본 실행 + 모델 표시**
    - 설정 패널에 "새 칸 기본 실행"(Hermes / OpenCode / 셸)과 "기본 폴더"(최근 폴더 목록 + 직접 입력)를 추가한다.
    - 상단 [+]를 누르면 기본값으로 바로 칸을 연다. [+] 옆의 작은 `ChevronDown` 버튼은 기존 메뉴(다른 에이전트나 폴더 선택)를 연다.
-   - 기본값은 Hermes와 최근 폴더 첫 번째다. 저장은 localStorage `agent-desk.newPane`.
+   - 기본값은 Hermes와 최근 폴더 첫 번째다. 저장은 localStorage `perch.newPane`.
    - 모델 표시: Hermes CLI는 자체 상태줄에 `☤ 모델명`·경과시간·컨텍스트를 이미 표시한다 (`hermes_cli/cli_status_bar_mixin.py`). 그래서 칸 안에는 추가하지 않는다 (사용자 지시: 이미 있으면 구현하지 않음).
    - 가짜 Hermes 터미널 출력 맨 위에 그 상태줄 모양(`☤ qwen3:8b · 4m · ctx 12%`)을 넣어 실제와 비슷하게 보이게 한다.
 6. **Hermes 기준 정보** (`D:\ysl\hermes-offline` 참고)

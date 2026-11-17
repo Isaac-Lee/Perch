@@ -3,7 +3,7 @@ import { createContext } from "react";
 export interface TermSettings { fontFamily: string; fontSize: number }
 export const DEFAULT_TERM: TermSettings = { fontFamily: "D2Coding", fontSize: 13 };
 export const FONT_CHOICES = ["D2Coding", "Cascadia Mono", "Consolas", "Menlo"];
-const KEY = "agent-desk.terminal";
+const KEY = "perch.terminal";
 export const clampSize = (n: number) => Math.min(24, Math.max(10, Math.round(n) || DEFAULT_TERM.fontSize));
 // ponytail: settings live in localStorage until stage 2 moves them to a Tauri config file
 export function loadTerm(): TermSettings {

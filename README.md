@@ -1,17 +1,23 @@
 # my-custom-agent
 
-여러 코딩 에이전트(Hermes, OpenCode)를 한 화면에서 띄워 쓰고 상태를 관리하는 개인 작업 환경을 만드는 프로젝트다.
+<img src="desk/public/icon.svg" alt="Perch 아이콘" width="72" align="left" />
+
+**Perch** — 여러 코딩 에이전트(Hermes, OpenCode)를 한 화면에서 띄워 쓰고 상태를 한눈에 지켜보는 데스크톱 앱이다. 이름은 높은 곳에서 전체를 내려다보는 자리인 횃대(perch)에서 따왔다.
+
+<br clear="left" />
+
+이 저장소는 Perch와 그 주변 도구를 포함해, 개인 에이전트 작업 환경을 만드는 프로젝트다.
 
 ## 현재 상태
 
 | 구성 | 상태 | 위치 |
 |---|---|---|
-| **Agent Desk** — 분할 터미널 + 세션 상태 패널 데스크톱 앱 (Tauri) | 1단계 UI 시제품 완료 (가짜 데이터, 브라우저에서 실행) | [설계 문서](docs/superpowers/specs/2026-11-17-agent-desk-design.md), [1단계 계획](docs/superpowers/plans/2026-11-17-agent-desk-ui-prototype.md), `desk/` |
-| **dash.py** — Hermes 세션 CLI 대시보드 (프로토타입) | 동작함. Agent Desk 3단계에서 대체 예정 | [dash.py](dash.py), 아래 설명 |
+| **Perch** — 분할 터미널 + 세션 상태 패널 데스크톱 앱 (Tauri) | 1단계 UI 시제품 완료 (가짜 데이터, 브라우저에서 실행) | [설계 문서](docs/superpowers/specs/2026-11-17-perch-design.md), [1단계 계획](docs/superpowers/plans/2026-11-17-perch-ui-prototype.md), `desk/` |
+| **dash.py** — Hermes 세션 CLI 대시보드 (프로토타입) | 동작함. Perch 3단계에서 대체 예정 | [dash.py](dash.py), 아래 설명 |
 
-### Agent Desk UI 시제품
+### Perch UI 시제품
 
-![Agent Desk UI 시제품](docs/images/desk-prototype.png)
+![Perch UI 시제품](docs/images/desk-prototype.png)
 
 토큰 사용량 화면 (상단 바의 사용량 버튼):
 
@@ -49,7 +55,7 @@ npm test           # 격자, 묶음, 시간 표시 로직 테스트
 - 사용 중인 모델은 Hermes CLI가 자체 상태줄에 표시하므로 앱에서 따로 표시하지 않는다.
 - 터미널 기본 글꼴은 [D2Coding](https://github.com/naver/d2-coding-font)(SIL OFL 1.1, NAVER)이다. 앱에 포함되어 있어 오프라인에서도 한글이 고르게 표시된다.
 
-### Agent Desk 요약
+### Perch 요약
 
 설계 문서가 기준이다. 아래는 요약이다.
 
