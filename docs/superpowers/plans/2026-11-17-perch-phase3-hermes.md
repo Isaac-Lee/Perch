@@ -39,11 +39,18 @@
 - 승인 화면은 선택 메뉴다: 1 once, 2 session, 3 always, 4 deny (명령이 길면 5 view). 숫자키 또는 화살표+Enter. `/approve` 명령은 CLI에 없다.
 - 중지: Ctrl+C.
 
-아직 확인 못 한 것 (실제 Hermes를 띄워 확인한다. 4절 V 작업):
-- `config.yaml`의 훅을 gateway가 언제 다시 읽는지 (재시작 필요 여부)
-- 숫자키 하나만 보내면 승인 메뉴가 바로 확정되는지, Enter가 더 필요한지
-- 도구 승인 대기가 `on_human_input_request`의 `kind`로 오는지, `pre_approval_request`로 오는지
-- 배너의 세션 ID가 전체로 찍히는지 접두로 찍히는지
+실제 Hermes로 확인한 것 (2026-11-18, 이 PC):
+- **훅은 gateway가 시작할 때 읽는다.** `config.yaml`에 훅을 추가한 뒤 `hermes gateway stop`으로 gateway를 내리면 다음 CLI 실행 때 새 설정으로 다시 뜬다. 재시작 전에는 CLI 프로세스가 내는 `on_session_open`만 온다.
+- 배너에는 `Session: 700823b0`처럼 `local-`을 뗀 8자 접두가 찍힌다. 칸과 세션은 정상 연결됐다.
+- 한 턴에서 상태가 idle → thinking → tool(read_file, 인자 표시) → thinking → idle로 바뀌었다. 제목(`sessions.title`), 토큰, 비용이 state.db에서 들어온다.
+- `state.db`의 `git_repo_root`, `git_branch`는 비어 있었다. 앱이 `cwd`에서 직접 계산한다.
+- Ctrl+C 두 번으로 Hermes가 종료되고 `on_session_finalize`가 와서 closed가 된다. `--resume <id>`로 다시 열면 이전 대화가 이어진다.
+- 훅 실행 시간: 작은 페이로드 9.5ms, 2MB 페이로드 15.6ms (릴리스 빌드, 50회 평균).
+
+아직 확인 못 한 것:
+- 승인 메뉴에 숫자키 하나(`1`, `4`)를 보내면 바로 확정되는지. 이 PC의 Hermes는 승인 없이 명령을 실행하도록 설정돼 있어 승인 대기가 생기지 않았다. 승인 대기가 `on_human_input_request`로 오는지도 같은 이유로 미확인.
+- 훅 exe를 지운 상태에서 도구가 정상 실행되는지 (소스상으로는 실행 실패 = 통과).
+- 앱을 설치 경로로 옮기면 훅 경로가 달라진다. 지금 `connected` 판정은 표시 블록 유무만 보므로, 경로가 다른 블록을 "연결됨"으로 본다. 설치본에서는 Disconnect 후 다시 Connect해야 한다.
 
 ## 2. 계약
 
