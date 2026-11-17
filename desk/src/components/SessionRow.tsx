@@ -19,11 +19,11 @@ export default function SessionRow({ s, now, focused, onClick, onApprove }: {
       <div className="row-top">
         <span className={`dot ${tone}${tone === "ok" ? " blink" : ""}`} />
         <span className="row-agent">{agentName(s.agent)}</span>
+        {s.branch && <span className="row-branch ellipsis">{s.branch}</span>}
         <span className={`row-state ${tone}`}>{stateLabel(st)}</span>
         <span className="row-time">{fmtElapsed(now - s.since)}</span>
-        {s.subagents.length > 0 && <span className="row-sub">에이전트 {s.subagents.length}</span>}
       </div>
-      <div className="row-prompt ellipsis">{s.prompt}</div>
+      <div className="row-line"><span className="row-prompt ellipsis">{s.prompt}</span>{s.subagents.length > 0 && <span className="row-sub">에이전트 {s.subagents.length}</span>}</div>
       {s.pending && <div className="row-pending ellipsis">{s.pending.text}</div>}
       {s.state === "approval" && (
         <div className="row-actions">

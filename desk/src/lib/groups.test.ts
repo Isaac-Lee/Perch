@@ -5,7 +5,7 @@ import type { Session } from "./types";
 const NOW = 1_000_000;
 let n = 0;
 const mk = (o: Partial<Session> = {}): Session => ({
-  agent: "hermes", sessionId: `s${n++}`, cwd: "", repoRoot: null,
+  agent: "hermes", sessionId: `s${n++}`, cwd: "", repoRoot: null, branch: null,
   state: "idle", since: NOW - 100, turnStart: null, steps: 0,
   tool: "", toolDetail: "", prompt: "", pending: null,
   subagents: [], todos: [], seen: NOW - 10, paneId: null, ...o,
@@ -61,4 +61,10 @@ test("recent: closed or >24h goes to recent, >7d dropped, paneId always stays", 
   expect(g.sessions).toEqual(expect.arrayContaining([pinned, fresh]));
   expect(g.recent).toHaveLength(2);
   expect(g.recent).toEqual(expect.arrayContaining([closed, old]));
+});
+
+test("branch does not affect grouping", () => {
+  const g = groupSessions([mk({ repoRoot: "D:\\x\\solo", branch: "main" }), mk({ repoRoot: "D:\\x\\solo", branch: "feature/login" })], NOW);
+  expect(g).toHaveLength(1);
+  expect(g[0].sessions).toHaveLength(2);
 });

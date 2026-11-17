@@ -21,13 +21,15 @@ button:focus-visible, .row:focus-visible { outline: 1px solid var(--accent); out
 .row { padding: 8px 16px 8px 14px; border-left: 2px solid transparent; border-top: 1px solid transparent; border-bottom: 1px solid transparent; cursor: pointer; display: flex; flex-direction: column; gap: 4px; transition: background-color 0.12s; }
 .row:hover { background: rgba(255, 255, 255, 0.03); }
 .row.focused { background: var(--surface-2); border-top-color: var(--line); border-bottom-color: var(--line); border-left-color: var(--accent); }
+.row-top > * { flex: none; }
+.row-top > .row-branch { flex: 0 1 auto; }
 .row-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .row-agent { font-weight: 500; }
-.row-state { font-size: 12px; }
+.row-state { font-size: 12px; white-space: nowrap; }
 .row-state.ok { color: var(--ok); } .row-state.warn { color: var(--warn); } .row-state.idle { color: var(--idle); } .row-state.muted { color: var(--muted); }
 .row-time { margin-left: auto; color: var(--text-3); font-size: 12px; white-space: nowrap; }
 .row-top .row-time { margin-left: auto; }
-.row-sub { color: var(--text-3); font-size: 12px; white-space: nowrap; }
+.row-sub { margin-left: auto; padding-left: 8px; flex: none; color: var(--text-3); font-size: 12px; white-space: nowrap; }
 .row-prompt { color: var(--text-2); font-size: 12px; line-height: 16px; }
 .row-pending { color: var(--text); font-size: 12px; line-height: 16px; }
 .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--muted); }
@@ -57,14 +59,42 @@ button:focus-visible, .row:focus-visible { outline: 1px solid var(--accent); out
 .pane-note { color: var(--warn); font-size: 12px; flex: 1; }
 .think { display: inline-flex; align-items: center; gap: 8px; color: var(--text-2); font-size: 12px; white-space: nowrap; flex: none; }
 .think canvas, .pane-foot canvas { flex: none; }
-.term { flex: 1; min-height: 0; min-width: 0; padding: 8px 0 0 12px; background: var(--surface-1); overflow: hidden; }
+.term { flex: 1; min-height: 0; min-width: 0; background: var(--surface-1); overflow: hidden; }
 .pane-foot { flex: none; height: 28px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-top: 1px solid var(--line); color: var(--text-2); font-size: 12px; min-width: 0; }
 .pane-foot.muted { color: var(--text-3); }
 
 /* new pane menu */
 .menu-wrap { position: relative; }
-.menu { position: absolute; right: 0; top: 32px; width: 220px; padding: 4px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; z-index: 10; }
+.menu { max-height: 60vh; overflow-y: auto; position: absolute; right: 0; top: 32px; width: 220px; padding: 4px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; z-index: 10; }
 .menu-label { padding: 8px 8px 4px; color: var(--text-3); font-size: 12px; }
 .menu-item { width: 100%; display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px; border-radius: 4px; text-align: left; color: var(--text); transition: background-color 0.12s; }
 .menu-item:hover { background: rgba(255, 255, 255, 0.06); }
 .menu-item svg { color: var(--text-2); flex: none; }
+
+/* overlay scrollbars: hidden until the container scrolls (is-scrolling), gone 800ms after it stops */
+.side-body, .menu, .xterm .xterm-viewport { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+.side-body.is-scrolling, .menu.is-scrolling, .xterm .xterm-viewport.is-scrolling { scrollbar-color: rgba(255, 255, 255, 0.18) transparent; }
+.side-body::-webkit-scrollbar, .menu::-webkit-scrollbar, .xterm .xterm-viewport::-webkit-scrollbar { width: 6px; height: 6px; }
+.side-body::-webkit-scrollbar-track, .menu::-webkit-scrollbar-track, .xterm .xterm-viewport::-webkit-scrollbar-track { background: transparent; }
+.side-body::-webkit-scrollbar-thumb, .menu::-webkit-scrollbar-thumb, .xterm .xterm-viewport::-webkit-scrollbar-thumb { background-color: transparent; border-radius: 3px; transition: background-color 150ms; }
+.side-body.is-scrolling::-webkit-scrollbar-thumb, .menu.is-scrolling::-webkit-scrollbar-thumb, .xterm .xterm-viewport.is-scrolling::-webkit-scrollbar-thumb { background-color: rgba(255, 255, 255, 0.18); }
+.term .xterm, .term .xterm .xterm-viewport { background-color: var(--surface-1); }
+.side-more { flex: none; display: flex; align-items: center; justify-content: center; gap: 4px; height: 28px; border-top: 1px solid var(--line); color: var(--text-3); font-size: 12px; }
+
+/* focused input pane */
+.pane-head.focused { background: var(--surface-2); }
+.pane-head.focused.warn { background: var(--warn-bg); }
+.typing { color: var(--text-2); font-size: 12px; white-space: nowrap; flex: none; }
+.pane.focused .typing { color: var(--accent); }
+.branch { display: inline-flex; align-items: center; gap: 4px; color: var(--text-3); font-size: 12px; min-width: 0; flex: 0 1 auto; }
+.branch svg { flex: none; }
+.row-branch { color: var(--text-3); font-size: 12px; flex: 0 1 auto; }
+
+/* settings popover */
+.settings { width: 240px; display: flex; flex-direction: column; gap: 8px; padding: 8px; }
+.settings .menu-label { padding: 0; }
+.field { height: 28px; padding: 0 8px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 4px; font: inherit; width: 100%; min-width: 0; }
+.field:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.stepper { display: flex; align-items: center; gap: 8px; }
+.field.num { text-align: center; width: 64px; }
+.term .xterm { padding: 8px 0 8px 12px; } /* padding lives on .xterm so FitAddon subtracts it */

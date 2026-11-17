@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, PanelLeftClose } from "lucide-react";
 import type { Pane, Session } from "../lib/types";
 import { MY_TURN, displayState, groupSessions } from "../lib/groups";
 import SessionRow from "./SessionRow";
+import { useScrollReveal } from "../lib/useScrollReveal";
 
 export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, onApprove, onCollapse }: {
   sessions: Session[]; panes: Pane[]; now: number; focusedPaneId: string | null;
@@ -10,6 +11,19 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
 }) {
   const groups = useMemo(() => groupSessions(sessions, now), [sessions, now]);
   const [open, setOpen] = useState<Set<string>>(new Set());
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useScrollReveal(bodyRef);
+  const [more, setMore] = useState(false);
+  useEffect(() => {
+    const el = bodyRef.current!;
+    const calc = () => setMore(el.scrollHeight - el.scrollTop - el.clientHeight > 4);
+    calc();
+    el.addEventListener("scroll", calc, { passive: true });
+    const ro = new ResizeObserver(calc);
+    ro.observe(el);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
+    return () => { el.removeEventListener("scroll", calc); ro.disconnect(); };
+  }, []);
   const focusedSession = panes.find((p) => p.id === focusedPaneId)?.sessionId;
   const live = groups.flatMap((g) => g.sessions);
   const working = live.filter((s) => ["running", "thinking", "tool"].includes(displayState(s, now))).length;
@@ -24,7 +38,8 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
         </div>
         <button className="icon-btn" aria-label="패널 접기" onClick={onCollapse}><PanelLeftClose size={16} strokeWidth={1.5} /></button>
       </div>
-      <div className="side-body">
+      <div className="side-body" ref={bodyRef}>
+        <div>
         {groups.map((g) => (
           <div key={g.key} className="group">
             <div className="group-title"><span className="ellipsis">{g.label}</span><span className="count">{g.sessions.length}</span></div>
@@ -46,7 +61,9 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
             )}
           </div>
         ))}
+        </div>
       </div>
+      {more && <div className="side-more"><ChevronDown size={16} strokeWidth={1.5} />아래에 더 있음</div>}
     </aside>
   );
 }
