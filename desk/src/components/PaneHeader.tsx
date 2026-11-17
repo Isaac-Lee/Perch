@@ -23,7 +23,7 @@ export default function PaneHeader({ pane, session, now, focused, onClose, onSto
       {(st === "running" || st === "thinking" || st === "tool") && (
         <button className="stop-btn" aria-label="Stop" title="진행 중인 작업을 멈춥니다." onClick={(e) => { e.stopPropagation(); onStop(); }}><Square size={14} strokeWidth={1.5} />Stop</button>
       )}
-      <button className="icon-btn" aria-label="Close pane" onClick={onClose}><X size={16} strokeWidth={1.5} /></button>
+      <button className="icon-btn" aria-label="Close" onClick={onClose}><X size={16} strokeWidth={1.5} /></button>
     </div>
   );
 }

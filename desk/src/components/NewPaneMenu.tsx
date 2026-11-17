@@ -19,8 +19,8 @@ export default function NewPaneMenu({ onAdd, defaults }: { onAdd: (agent: AgentK
   return (
     <div className="menu-wrap" ref={ref}>
       <div className="split">
-        <button className="icon-btn" aria-label="New pane" title={`${defaults.agent} · ${folderName(defaults.cwd)}`} onClick={() => onAdd(defaults.agent, defaults.cwd)}><Plus size={16} strokeWidth={1.5} /></button>
-        <button className="icon-btn" aria-label="New pane options" aria-expanded={open} onClick={() => setOpen(!open)}><ChevronDown size={16} strokeWidth={1.5} /></button>
+        <button className="icon-btn" aria-label="New session" title={`${defaults.agent} · ${folderName(defaults.cwd)}`} onClick={() => onAdd(defaults.agent, defaults.cwd)}><Plus size={16} strokeWidth={1.5} /></button>
+        <button className="icon-btn" aria-label="New session options" aria-expanded={open} onClick={() => setOpen(!open)}><ChevronDown size={16} strokeWidth={1.5} /></button>
       </div>
       {open && (
         <div className="menu" ref={(el) => { if (el) attachScrollReveal(el); }}>
