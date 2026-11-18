@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { ChartNoAxesColumn, PanelLeftOpen } from "lucide-react";
 import "./App.css";
@@ -17,6 +17,7 @@ import { loadNewPane, loadRecentFolders, loadSidebarWidth, pushRecent, saveNewPa
 import type { AgentKind, PaneView } from "./lib/types";
 import { recentFolders } from "./mock/sessions";
 import { TermCtx, loadTerm, saveTerm } from "./lib/termSettings";
+import { usePaneLayout } from "./lib/usePaneLayout";
 
 const seedFolders = isTauri ? [HOME] : recentFolders;
 
@@ -44,12 +45,26 @@ export default function App() {
   useEffect(() => saveRecentFolders(folders), [folders]);
   const open = (agent: AgentKind, cwd: string, view: PaneView) => { d.addPane(agent, cwd, view); setFolders((l) => pushRecent(l, cwd)); };
   const chooseFolder = (cwd: string) => { setNewPane((p) => ({ ...p, cwd })); setFolders((l) => pushRecent(l, cwd)); };
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [stageW, setStageW] = useState(0); // 0 = not measured yet; the layout waits for a real width
+  useLayoutEffect(() => {
+    const el = stageRef.current!;
+    const measure = () => { if (el.clientWidth > 0) setStageW(el.clientWidth); };
+    measure(); // before first paint
+    const ro = new ResizeObserver(measure); // hidden (usage view) reports 0: keep the last width
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const paneIds = d.panes.map((p) => p.id);
+  const { layout, move: movePaneTo, order: visualOrder } = usePaneLayout(paneIds, stageW);
+  // keyboard pane navigation follows what is on screen: column by column, top to bottom
+  const visual = d.panes.length ? visualOrder.filter((id) => paneIds.includes(id)) : [];
   const hotkey = useRef<(e: KeyboardEvent) => void>(() => {});
   hotkey.current = (e) => {
     const id = matchShortcut(e);
     if (!id) {
       const n = matchDigit(e);
-      if (n !== null && d.panes[n]) { e.preventDefault(); e.stopPropagation(); d.focusPane(d.panes[n].id); }
+      if (n !== null && visual[n]) { e.preventDefault(); e.stopPropagation(); d.focusPane(visual[n]); }
       return;
     }
     e.preventDefault(); e.stopPropagation();
@@ -58,11 +73,11 @@ export default function App() {
     else if (id === "close") { if (d.focusedPaneId) d.closePane(d.focusedPaneId); }
     else if (id === "window") { if (isTauri) windowNew().catch(console.error); }
     else if (id === "next" || id === "prev") {
-      const n = d.panes.length;
+      const n = visual.length;
       if (!n) return;
-      const i = d.panes.findIndex((p) => p.id === d.focusedPaneId);
+      const i = visual.indexOf(d.focusedPaneId ?? "");
       const j = i < 0 ? (id === "next" ? 0 : n - 1) : (i + (id === "next" ? 1 : -1) + n) % n;
-      d.focusPane(d.panes[j].id);
+      d.focusPane(visual[j]);
     }
     else if (id === "sidebar") setCollapsed((c) => !c);
     else if (id === "usage") setUsage((u) => !u);
@@ -92,8 +107,8 @@ export default function App() {
             onFocus={d.focusSession} onApprove={d.approve} onStop={d.stop} onClosePane={d.closePane} width={width} onResize={setWidth} onCollapse={() => setCollapsed(true)} onUsage={() => setUsage(true)} onNew={(cwd) => open(newPane.agent, cwd, newPane.view)}
             newSession={<NewPaneMenu variant="side" defaults={newPane} folders={folders} onAdd={open} onDefaults={setNewPane} onChooseFolder={chooseFolder} />} />
         )}
-        <div className="stage" style={{ display: usage ? "none" : "flex" }}>
-        <PaneGrid panes={d.panes} sessions={d.sessions} now={d.now} focusedPaneId={d.focusedPaneId}
+        <div className="stage" ref={stageRef} style={{ display: usage ? "none" : "flex" }}>
+        <PaneGrid panes={d.panes} layout={layout} onMove={movePaneTo} sessions={d.sessions} now={d.now} focusedPaneId={d.focusedPaneId}
           onFocus={d.focusPane} onClose={d.closePane} stopped={d.stopped} onStop={d.stop} />
         </div>
         {usage && <UsageView sessions={usageSessions} now={d.now} onPick={(id) => { const h = d.sessions.some((x) => x.sessionId === id) ? null : history.find((x) => x.sessionId === id); if (h) paneCreate("hermes", h.cwd, id, newPane.view).then(d.focusPane, console.error); /* history-only session: resume it */ else d.focusSession(id); setUsage(false); }} onClose={() => setUsage(false)} />}

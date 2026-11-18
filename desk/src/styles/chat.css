@@ -11,6 +11,13 @@
 .chat-chev { display: inline-block; vertical-align: -2px; margin-right: 4px; transition: transform 0.12s; }
 .chat-chev.open { transform: rotate(90deg); }
 .chat-tool-failed { color: var(--warn); }
+.chat-tool-body { padding: 2px 0 4px 20px; display: flex; flex-direction: column; gap: 4px; }
+.chat-tool-summary { color: var(--text-3); font-size: 12px; }
+.chat-kv { margin: 0; display: grid; gap: 2px; font-size: 12px; }
+.chat-kv > div { display: grid; grid-template-columns: minmax(64px, 110px) 1fr; gap: 10px; }
+.chat-kv dt { color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-kv dd { margin: 0; color: var(--text-2); overflow-wrap: anywhere; white-space: pre-wrap; }
+.chat-thought-body { margin: 2px 0 4px 20px; padding-left: 10px; border-left: 2px solid var(--line); color: var(--text-3); font-size: 12.5px; }
 .chat-tools-body { padding-left: 14px; }
 .chat-tool-row { display: block; width: 100%; text-align: left; padding: 2px 8px; border-radius: 4px; color: var(--text-3); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chat-tool-row:hover { background: var(--surface-2); color: var(--text-2); }

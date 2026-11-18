@@ -1,10 +1,28 @@
 import { useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { openUrl } from "../lib/backend";
-import type { ChatItem, ToolGroup } from "../lib/chatSession";
+import { fmtSec, type ChatItem, type ToolGroup, type ToolItem } from "../lib/chatSession";
+import { highlight } from "../lib/highlight";
 import { Markdown } from "../lib/markdown";
+import { kvRows, resultCount, resultView, thoughtTitle, toolTitle } from "../lib/toolView";
 
 const STATUS = { running: "실행 중", done: "", error: "✕ 오류" } as const;
+
+const Rows = ({ rows }: { rows: [string, string][] }) => rows.length ? <dl className="chat-kv">{rows.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}</dl> : null;
+
+/** Expanded view of one tool call: summary, arguments, inline diff, result. */
+function ToolDetails({ t }: { t: ToolItem }) {
+  const res = resultView(t.result, t.resultText);
+  return (
+    <div className="chat-tool-body">
+      {t.summary && <div className="chat-tool-summary">{t.summary}</div>}
+      <Rows rows={kvRows(t.args)} />
+      {t.diff && <pre className="chat-tool-result"><code>{highlight("diff", t.diff.slice(0, 20000)).map((k, i) => (k.t ? <span key={i} className={"hl-" + k.t}>{k.s}</span> : k.s))}</code></pre>}
+      <Rows rows={res.rows} />
+      {res.text && <pre className="chat-tool-result">{res.text.slice(0, 2000)}</pre>}
+    </div>
+  );
+}
 
 export default function ChatMessage({ item }: { item: ChatItem | ToolGroup }) {
   const [open, setOpen] = useState(false);
@@ -17,12 +35,27 @@ export default function ChatMessage({ item }: { item: ChatItem | ToolGroup }) {
           <Markdown text={item.text} onLink={(u) => { openUrl(u).catch(console.error); }} />
         </div>
       );
+    case "thought": {
+      const title = thoughtTitle(item.text);
+      const parts = ["생각", title, item.durationS ? fmtSec(item.durationS) : ""].filter(Boolean);
+      return (
+        <div className="chat-tool chat-thought">
+          <button className="chat-tool-row" onClick={() => setOpen(!open)} aria-expanded={open}>
+            <ChevronRight className={"chat-chev" + (open ? " open" : "")} size={12} strokeWidth={1.75} />{parts.join(" · ")}
+          </button>
+          {open && <div className="chat-thought-body"><Markdown text={item.text} onLink={(u) => { openUrl(u).catch(console.error); }} /></div>}
+        </div>
+      );
+    }
     case "tool": {
-      const parts = [item.name, item.context, STATUS[item.status], item.durationS != null ? `${item.durationS.toFixed(1)}s` : ""].filter(Boolean);
+      const count = item.status === "done" ? resultCount(item.result) : null;
+      const parts = [toolTitle(item), count ? `${count}개` : "", STATUS[item.status], item.durationS != null ? `${item.durationS.toFixed(1)}s` : ""].filter(Boolean);
       return (
         <div className={`chat-tool ${item.status}`}>
-          <button className="chat-tool-row" onClick={() => setOpen(!open)} aria-expanded={open}>{parts.join(" · ")}</button>
-          {open && item.result && <pre className="chat-tool-result">{item.result.slice(0, 2000)}</pre>}
+          <button className="chat-tool-row" onClick={() => setOpen(!open)} aria-expanded={open}>
+            <ChevronRight className={"chat-chev" + (open ? " open" : "")} size={12} strokeWidth={1.75} />{parts.join(" · ")}
+          </button>
+          {open && <ToolDetails t={item} />}
         </div>
       );
     }
@@ -33,7 +66,7 @@ export default function ChatMessage({ item }: { item: ChatItem | ToolGroup }) {
         <div className="chat-tool chat-tools">
           <button className="chat-tool-row" onClick={() => setOpen(!open)} aria-expanded={open}>
             <ChevronRight className={"chat-chev" + (open ? " open" : "")} size={12} strokeWidth={1.75} />
-            {[`도구 ${item.items.length}개`, [last.name, last.context].filter(Boolean).join(" ")].join(" · ")}
+            {`도구 ${item.items.length}개 · ${toolTitle(last)}`}
             {failed > 0 && <span className="chat-tool-failed"> · 오류 {failed}</span>}
             {secs != null && ` · ${secs.toFixed(1)}s`}
           </button>

@@ -7,7 +7,11 @@ import type { GatewayEvent, SessionSnapshot } from "./gatewayTypes";
 export type ChatItem =
   | { kind: "user"; id: string; text: string; images?: string[] }
   | { kind: "assistant"; id: string; text: string; streaming: boolean }
-  | { kind: "tool"; id: string; name: string; context: string; status: "running" | "done" | "error"; durationS?: number; result?: string }
+  | { kind: "thought"; id: string; text: string; streaming: boolean; startedAt?: number; durationS?: number }
+  | {
+    kind: "tool"; id: string; name: string; context: string; status: "running" | "done" | "error"; durationS?: number; result?: string;
+    summary?: string; preview?: string; args?: Record<string, unknown>; resultText?: string; diff?: string; labels?: string[]; progress?: string;
+  }
   | { kind: "error"; id: string; text: string }
   | { kind: "system"; id: string; text: string };
 export interface ChatPrompt {
@@ -16,8 +20,8 @@ export interface ChatPrompt {
   /** clarify batch with several questions: shown as text, answered with one free-text reply */
   questions?: string[];
 }
-export interface ChatState { conn: "connecting" | "ready" | "closed" | "error"; error?: string; sessionId: string | null; executionGeneration: number; revision: number; running: boolean; items: ChatItem[]; prompts: ChatPrompt[]; model: string | null; effort: string | null; /** ms epoch the current turn began; set from timestamps the dispatcher passes in (the reducer stays pure) */ turnStart: number | null }
-export const initialChat: ChatState = { conn: "connecting", sessionId: null, executionGeneration: 0, revision: 0, running: false, items: [], prompts: [], model: null, effort: null, turnStart: null };
+export interface ChatState { conn: "connecting" | "ready" | "closed" | "error"; error?: string; sessionId: string | null; executionGeneration: number; revision: number; running: boolean; items: ChatItem[]; prompts: ChatPrompt[]; model: string | null; effort: string | null; /** ms epoch the current turn began; set from timestamps the dispatcher passes in (the reducer stays pure) */ turnStart: number | null; /** Hermes status line (thinking.delta) */ status: string; /** tool named by tool.generating, before its tool.start */ generating: string }
+export const initialChat: ChatState = { conn: "connecting", sessionId: null, executionGeneration: 0, revision: 0, running: false, items: [], prompts: [], model: null, effort: null, turnStart: null, status: "", generating: "" };
 export type ChatAction =
   | { t: "conn"; conn: ChatState["conn"]; error?: string }
   | { t: "snapshot"; snap: any; at?: number }
@@ -39,6 +43,14 @@ function callContext(args: unknown): string {
   } catch { return ""; }
 }
 
+const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+const labelsOf = (v: unknown) => { const l = (Array.isArray(v) ? v : []).map((x) => str((x as any)?.text)).filter(Boolean); return l.length ? { labels: l } : {}; };
+/** Optional tool fields shared by tool.start / tool.complete payloads; absent ones stay absent so a patch never erases earlier data. */
+const toolExtra = (p: any) => ({
+  ...(isObj(p.args) ? { args: p.args } : {}), ...(str(p.preview) ? { preview: p.preview } : {}), ...(str(p.summary) ? { summary: p.summary } : {}),
+  ...(str(p.result_text) ? { resultText: p.result_text } : {}), ...(str(p.inline_diff) ? { diff: p.inline_diff } : {}), ...labelsOf(p.labels),
+});
+
 // session.resume rows are raw model-API messages (user / assistant+tool_calls / tool).
 export function transcriptToItems(messages: any[]): ChatItem[] {
   const out: ChatItem[] = [];
@@ -50,12 +62,15 @@ export function transcriptToItems(messages: any[]): ChatItem[] {
     if (m.role === "user") out.push({ kind: "user", id, text });
     else if (m.role === "assistant") {
       calls = Array.isArray(m.tool_calls) ? m.tool_calls : [];
-      if (text.trim()) out.push({ kind: "assistant", id, text, streaming: false });
+      const reasoning = str(m.reasoning) || str(m.reasoning_content);
+      if (reasoning.trim()) out.push({ kind: "thought", id: `r${out.length}`, text: reasoning, streaming: false });
+      if (text.trim()) out.push({ kind: "assistant", id: `h${out.length}`, text, streaming: false });
     } else if (m.role === "tool") {
       const call = calls.find((c) => c && (c.id === m.tool_call_id || c.call_id === m.tool_call_id));
       out.push({
         kind: "tool", id, name: str(m.tool_name) || str(m.name), context: str(m.context) || callContext(call?.function?.arguments),
         status: "done", ...(typeof m.content === "string" ? { result: m.content } : {}),
+        ...(isObj(m.args) ? { args: m.args } : {}), ...labelsOf(m.labels),
       });
     }
   }
@@ -100,18 +115,28 @@ export function chatReducer(s: ChatState, a: ChatAction): ChatState {
       ...(a.at != null && !s.running ? { running: true, turnStart: a.at } : {}),
     };
     case "event": {
-      const n = onEvent(typeof a.ev.execution_generation === "number" ? { ...s, executionGeneration: a.ev.execution_generation } : s, a.ev);
+      const n = onEvent(typeof a.ev.execution_generation === "number" ? { ...s, executionGeneration: a.ev.execution_generation } : s, a.ev, a.at);
       if (a.ev.type === "message.start") return { ...n, turnStart: s.turnStart ?? a.at ?? null };
       return a.ev.type === "message.complete" || a.ev.type === "error" ? { ...n, turnStart: null } : n;
     }
   }
 }
 
-/** At most one streaming item, and only the last: any item appended after a streaming text settles it. Same array when nothing streams. */
+/** At most one streaming item, and only the last: any item appended after a streaming text or thought settles it. Same array when nothing streams. */
+const streams = (i: ChatItem) => (i.kind === "assistant" || i.kind === "thought") && i.streaming;
 const settle = (items: ChatItem[]): ChatItem[] =>
-  items.some((i) => i.kind === "assistant" && i.streaming) ? items.map((i) => (i.kind === "assistant" && i.streaming ? { ...i, streaming: false } : i)) : items;
+  items.some(streams) ? items.map((i) => (streams(i) ? { ...i, streaming: false } : i)) : items;
+/** Does the current turn (items after the last user message) already have a thought? */
+function turnHasThought(items: ChatItem[]): boolean {
+  for (let i = items.length - 1; i >= 0 && items[i].kind !== "user"; i--) if (items[i].kind === "thought") return true;
+  return false;
+}
+const turnHasThoughtText = (items: ChatItem[], t: string) => {
+  for (let i = items.length - 1; i >= 0 && items[i].kind !== "user"; i--) { const x = items[i]; if (x.kind === "thought" && x.text.trim() === t.trim()) return true; }
+  return false;
+};
 
-function onEvent(s: ChatState, ev: GatewayEvent): ChatState {
+function onEvent(s: ChatState, ev: GatewayEvent, at?: number): ChatState {
   const p = ev.payload ?? {};
   const last = s.items[s.items.length - 1];
   const live = last?.kind === "assistant" && last.streaming ? last : null;
@@ -124,14 +149,36 @@ function onEvent(s: ChatState, ev: GatewayEvent): ChatState {
     }
     case "message.complete": {
       const text = typeof p.text === "string" ? p.text : null;
-      if (live) return { ...s, running: false, items: [...s.items.slice(0, -1), { ...live, text: text ?? live.text, streaming: false }] };
-      if (!text) return { ...s, running: false, items: settle(s.items) };
-      return { ...s, running: false, items: [...settle(s.items), { kind: "assistant", id: `m${s.items.length}`, text, streaming: false }] };
+      const reasoning = str(p.reasoning);
+      let items = live ? [...s.items.slice(0, -1), { ...live, text: text ?? live.text, streaming: false }] : settle(s.items);
+      if (!live && text) items = [...items, { kind: "assistant", id: `m${s.items.length}`, text, streaming: false }];
+      // reasoning that was never streamed goes in front of the final answer
+      if (reasoning.trim() && !turnHasThought(s.items)) {
+        const at = live || text ? items.length - 1 : items.length;
+        items = [...items.slice(0, at), { kind: "thought", id: `r${s.items.length}`, text: reasoning, streaming: false }, ...items.slice(at)];
+      }
+      return { ...s, running: false, status: "", generating: "", items };
     }
-    case "tool.start": return { ...s, items: [...settle(s.items), { kind: "tool", id: str(p.tool_id) || `t${s.items.length}`, name: str(p.name), context: str(p.context), status: "running" }] };
+    case "reasoning.delta": {
+      if (typeof p.text !== "string" || p.text === "") return s;
+      if (last?.kind === "thought" && last.streaming)
+        return { ...s, items: [...s.items.slice(0, -1), { ...last, text: last.text + p.text, ...(last.startedAt != null && at != null ? { durationS: Math.round((at - last.startedAt) / 1000) } : {}) }] };
+      return { ...s, items: [...settle(s.items), { kind: "thought", id: `r${s.items.length}`, text: p.text, streaming: true, ...(at != null ? { startedAt: at, durationS: 0 } : {}) }] };
+    }
+    case "reasoning.available": {
+      if (typeof p.text !== "string" || !p.text.trim() || turnHasThoughtText(s.items, p.text)) return s;
+      return { ...s, items: [...settle(s.items), { kind: "thought", id: `r${s.items.length}`, text: p.text, streaming: false }] };
+    }
+    case "thinking.delta": return { ...s, status: str(p.text) };
+    case "tool.generating": return { ...s, generating: str(p.name) };
+    case "tool.progress": {
+      const progress = typeof p.percent === "number" ? `${Math.round(p.percent)}%` : str(p.message);
+      return s.items.some((i) => i.kind === "tool" && i.id === str(p.tool_id)) ? { ...s, items: s.items.map((i) => (i.kind === "tool" && i.id === str(p.tool_id) ? { ...i, progress } : i)) } : s;
+    }
+    case "tool.start": return { ...s, generating: "", items: [...settle(s.items), { kind: "tool", id: str(p.tool_id) || `t${s.items.length}`, name: str(p.name), context: str(p.context), status: "running", ...toolExtra(p) }] };
     case "tool.complete": {
       const id = str(p.tool_id);
-      const patch = { status: (p.is_error ? "error" : "done") as "error" | "done", durationS: typeof p.duration_s === "number" ? p.duration_s : undefined, result: typeof p.result === "string" ? p.result : undefined };
+      const patch = { status: (p.is_error ? "error" : "done") as "error" | "done", durationS: typeof p.duration_s === "number" ? p.duration_s : undefined, result: typeof p.result === "string" ? p.result : isObj(p.result) ? JSON.stringify(p.result) : undefined, progress: undefined, ...toolExtra(p) };
       if (s.items.some((i) => i.kind === "tool" && i.id === id)) return { ...s, items: s.items.map((i) => (i.kind === "tool" && i.id === id ? { ...i, ...patch } : i)) };
       return { ...s, items: [...settle(s.items), { kind: "tool", id: id || `t${s.items.length}`, name: str(p.name), context: str(p.context), ...patch }] };
     }
@@ -146,7 +193,7 @@ function onEvent(s: ChatState, ev: GatewayEvent): ChatState {
     case "clarify.request": return addPrompt(s, toPrompt(p, "clarify"));
     case "approval.settled":
     case "clarify.settled": return dropPrompt(s, str(p.prompt_id));
-    case "error": return { ...s, running: false, items: [...settle(s.items), { kind: "error", id: `e${s.items.length}`, text: str(p.message) || str(p.text) || "오류가 발생했습니다" }] };
+    case "error": return { ...s, running: false, status: "", generating: "", items: [...settle(s.items), { kind: "error", id: `e${s.items.length}`, text: str(p.message) || str(p.text) || "오류가 발생했습니다" }] };
     default: return s;
   }
 }
@@ -163,12 +210,15 @@ export function groupItems(items: ChatItem[]): (ChatItem | ToolGroup)[] {
   return out;
 }
 
-/** Text of the live status row. */
-export function activityLabel(s: Pick<ChatState, "items" | "prompts">): string {
+/** Text of the live status row: prompt, running tool (+ progress), tool being drafted, Hermes status text, thought, answer. */
+export function activityLabel(s: Pick<ChatState, "items" | "prompts" | "status" | "generating">): string {
   if (s.prompts.length) return "응답 대기 중";
   const tool = [...s.items].reverse().find((i): i is ToolItem => i.kind === "tool" && i.status === "running");
-  if (tool) return [tool.name, tool.context].filter(Boolean).join(" · ");
+  if (tool) return [tool.name, tool.context, tool.progress].filter(Boolean).join(" · ");
+  if (s.generating) return `${s.generating} 준비 중`;
+  if (s.status) return s.status;
   const last = s.items[s.items.length - 1];
+  if (last?.kind === "thought" && last.streaming) return "생각 중";
   return last?.kind === "assistant" && last.streaming ? "답변 작성 중" : "생각 중";
 }
 

@@ -282,13 +282,18 @@ describe("turn clock", () => {
 });
 
 describe("activityLabel / fmtSec", () => {
-  const tool = (status: "running" | "done", name = "terminal", context = "npm test") => ({ kind: "tool" as const, id: name + status, name, context, status });
-  it("prompt, running tool, streaming text, thinking", () => {
+  const tool = (status: "running" | "done", name = "terminal", context = "npm test", progress?: string) => ({ kind: "tool" as const, id: name + status, name, context, status, progress });
+  const base = { prompts: [], status: "", generating: "" };
+  it("prompt, running tool, generating, status, thought, answer, thinking", () => {
     const prompt = [{ kind: "approval" as const, promptId: "p", executionGeneration: 1, choices: [] }];
-    expect(activityLabel({ items: [tool("running")], prompts: prompt })).toBe("응답 대기 중");
-    expect(activityLabel({ items: [tool("running", "a", ""), tool("running")], prompts: [] })).toBe("terminal · npm test");
-    expect(activityLabel({ items: [tool("done"), { kind: "assistant", id: "m", text: "x", streaming: true }], prompts: [] })).toBe("답변 작성 중");
-    expect(activityLabel({ items: [tool("done")], prompts: [] })).toBe("생각 중");
+    expect(activityLabel({ ...base, items: [tool("running")], prompts: prompt })).toBe("응답 대기 중");
+    expect(activityLabel({ ...base, items: [tool("running", "a", ""), tool("running")] })).toBe("terminal · npm test");
+    expect(activityLabel({ ...base, items: [tool("running", "mcp", "x", "42%")] })).toBe("mcp · x · 42%");
+    expect(activityLabel({ ...base, items: [tool("done")], generating: "terminal", status: "pondering..." })).toBe("terminal 준비 중");
+    expect(activityLabel({ ...base, items: [tool("done")], status: "pondering..." })).toBe("pondering...");
+    expect(activityLabel({ ...base, items: [{ kind: "thought", id: "r", text: "x", streaming: true }] })).toBe("생각 중");
+    expect(activityLabel({ ...base, items: [tool("done"), { kind: "assistant", id: "m", text: "x", streaming: true }] })).toBe("답변 작성 중");
+    expect(activityLabel({ ...base, items: [tool("done")] })).toBe("생각 중");
   });
   it("fmtSec", () => { expect(fmtSec(7)).toBe("7초"); expect(fmtSec(72)).toBe("1분 12초"); expect(fmtSec(60)).toBe("1분 0초"); });
 });
@@ -306,3 +311,74 @@ describe("groupItems", () => {
     expect(g[4]).toMatchObject({ id: "4" });
   });
 });
+
+describe("thoughts, status and tool details", () => {
+  const evAt = (type: string, payload: object, at?: number): ChatAction => ({ t: "event", ev: { type, payload }, at });
+  const kinds = (s: typeof initialChat) => s.items.map((i) => i.kind);
+  it("reasoning.delta streams one thought with a duration and settles on the next item", () => {
+    let s = chatReducer(initialChat, evAt("reasoning.delta", { text: "**Plan**\n" }, 1000));
+    s = chatReducer(s, evAt("reasoning.delta", { text: "go" }, 4000));
+    expect(s.items).toEqual([expect.objectContaining({ kind: "thought", text: "**Plan**\ngo", streaming: true, startedAt: 1000, durationS: 3 })]);
+    s = chatReducer(s, ev("message.delta", { text: "hi" }));
+    expect(s.items.map((i) => (i.kind === "thought" || i.kind === "assistant") && i.streaming)).toEqual([false, true]);
+  });
+  it("a thought after streaming text settles the text", () => {
+    let s = chatReducer(initialChat, ev("message.delta", { text: "a" }));
+    s = chatReducer(s, ev("reasoning.delta", { text: "t" }));
+    expect(s.items.map((i) => (i.kind === "thought" || i.kind === "assistant") && i.streaming)).toEqual([false, true]);
+    s = chatReducer(s, ev("tool.start", { tool_id: "1", name: "x" }));
+    expect(s.items.some((i) => i.kind === "thought" && i.streaming)).toBe(false);
+  });
+  it("reasoning.available adds a settled thought once, not when already streamed", () => {
+    let s = chatReducer(initialChat, ev("reasoning.available", { text: "why" }));
+    expect(s.items).toEqual([expect.objectContaining({ kind: "thought", text: "why", streaming: false })]);
+    s = chatReducer(s, ev("reasoning.available", { text: "why" }));
+    expect(s.items).toHaveLength(1);
+    let t = chatReducer(initialChat, ev("reasoning.delta", { text: "abc" }));
+    t = chatReducer(t, ev("reasoning.available", { text: "abc" }));
+    expect(t.items).toHaveLength(1);
+  });
+  it("message.complete.reasoning fills in only when the turn had no thought, before the answer", () => {
+    let s = chatReducer(initialChat, { t: "userSent", id: "u0", text: "q" });
+    s = chatReducer(s, ev("message.delta", { text: "ans" }));
+    s = chatReducer(s, ev("message.complete", { text: "ans", reasoning: "r1" }));
+    expect(kinds(s)).toEqual(["user", "thought", "assistant"]);
+    let t = chatReducer(initialChat, { t: "userSent", id: "u0", text: "q" });
+    t = chatReducer(t, ev("reasoning.delta", { text: "r1" }));
+    t = chatReducer(t, ev("message.complete", { text: "ans", reasoning: "r1" }));
+    expect(kinds(t)).toEqual(["user", "thought", "assistant"]);
+    expect(kinds(chatReducer(initialChat, ev("message.complete", { reasoning: "only" })))).toEqual(["thought"]);
+  });
+  it("thinking.delta sets and clears the Hermes status; tool.generating is cleared by tool.start; turn end clears both", () => {
+    let s = chatReducer(initialChat, ev("thinking.delta", { text: "pondering..." }));
+    expect(s.status).toBe("pondering...");
+    s = chatReducer(s, ev("thinking.delta", { text: "" }));
+    expect(s.status).toBe("");
+    s = chatReducer(s, ev("tool.generating", { name: "terminal" }));
+    expect(s.generating).toBe("terminal");
+    s = chatReducer(s, ev("tool.start", { tool_id: "1", name: "terminal" }));
+    expect(s.generating).toBe("");
+    s = chatReducer(chatReducer(s, ev("thinking.delta", { text: "x" })), ev("message.complete", {}));
+    expect(s.status).toBe("");
+  });
+  it("tool.progress labels the running tool; tool.complete maps the optional fields and clears progress", () => {
+    let s = chatReducer(initialChat, ev("tool.start", { tool_id: "1", name: "mcp", context: "c", args: { q: "x" }, labels: [{ text: "Gmail · search" }] }));
+    expect(s.items[0]).toMatchObject({ args: { q: "x" }, labels: ["Gmail · search"] });
+    s = chatReducer(s, ev("tool.progress", { tool_id: "1", name: "mcp", progress: 1, percent: 42.4 }));
+    expect(s.items[0]).toMatchObject({ progress: "42%" });
+    s = chatReducer(s, ev("tool.complete", { tool_id: "1", name: "mcp", summary: "s", result_text: "rt", inline_diff: "+a", result: "{}", is_error: false }));
+    expect(s.items[0]).toMatchObject({ status: "done", summary: "s", resultText: "rt", diff: "+a", result: "{}", args: { q: "x" }, progress: undefined });
+  });
+  it("resumed history: reasoning rows become thoughts; tool rows keep args and labels", () => {
+    const items = transcriptToItems([
+      { role: "user", text: "q" },
+      { role: "assistant", text: "a", reasoning: "why" },
+      { role: "assistant", text: "", reasoning_content: "more" },
+      { role: "tool", name: "terminal", context: "ls", args: { command: "ls" }, labels: [{ text: "L" }] },
+    ]);
+    expect(items.map((i) => i.kind)).toEqual(["user", "thought", "assistant", "thought", "tool"]);
+    expect(items[4]).toMatchObject({ args: { command: "ls" }, labels: ["L"] });
+    expect(new Set(items.map((i) => i.id)).size).toBe(items.length);
+  });
+});
+

@@ -5,11 +5,11 @@ import { displayState } from "../lib/groups";
 import { fmtElapsed } from "../lib/format";
 import { agentName } from "./SessionRow";
 
-export default function PaneHeader({ pane, session, now, focused, onClose, onStop }: { pane: Pane; session?: Session; now: number; focused: boolean; onClose: () => void; onStop: () => void }) {
+export default function PaneHeader({ pane, session, now, focused, onClose, onStop, dragging, onDragStart }: { pane: Pane; session?: Session; now: number; focused: boolean; onClose: () => void; onStop: () => void; dragging?: boolean; onDragStart?: (e: React.PointerEvent<HTMLElement>) => void }) {
   const st = session ? displayState(session, now) : null;
   const waiting = st === "approval" || st === "question";
   return (
-    <div className={`pane-head${focused ? " focused" : ""}`}>
+    <div className={`pane-head${focused ? " focused" : ""}${dragging ? " dragging" : ""}`} onPointerDown={onDragStart}>
       {(st === "plain" || st === "ready") && <span className="dot" />}
       {st === "done" && <span className="dot ok" />}
       {waiting && <span className="dot warn" title={st === "approval" ? "Needs approval" : "Question"} />}

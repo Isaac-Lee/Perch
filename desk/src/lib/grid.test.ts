@@ -1,32 +1,64 @@
 import { expect, test } from "vitest";
-import { gridLayout } from "./grid";
+import { maxColsFor, movePane, placements, reconcile, type Layout } from "./grid";
 
-test("gridLayout dimensions", () => {
-  expect(gridLayout(0)).toEqual({ cols: 0, rows: 0, cells: [] });
-  expect(gridLayout(1)).toMatchObject({ cols: 1, rows: 1 });
-  expect(gridLayout(2)).toMatchObject({ cols: 2, rows: 1 });
-  expect(gridLayout(3)).toMatchObject({ cols: 2, rows: 2 });
-  expect(gridLayout(3).cells[2]).toEqual({ col: 0, row: 1, colSpan: 2 });
-  expect(gridLayout(4)).toMatchObject({ cols: 2, rows: 2 });
-  expect(gridLayout(5)).toMatchObject({ cols: 3, rows: 2 });
-  expect(gridLayout(6)).toMatchObject({ cols: 3, rows: 2 });
-  expect(gridLayout(8)).toMatchObject({ cols: 3, rows: 3 });
-  expect(gridLayout(9)).toMatchObject({ cols: 3, rows: 3 });
-  expect(gridLayout(10)).toMatchObject({ cols: 4, rows: 3 });
+const ids = (n: number) => Array.from({ length: n }, (_, i) => `p${i + 1}`);
+
+test("maxColsFor", () => {
+  expect(maxColsFor(0)).toBe(1);
+  expect(maxColsFor(379)).toBe(1);
+  expect(maxColsFor(1580)).toBe(4);
+  expect(maxColsFor(1139)).toBe(2);
+  expect(maxColsFor(1140)).toBe(3);
+  expect(maxColsFor(900, 300)).toBe(3);
 });
 
-test("gridLayout fills every row and never overlaps", () => {
-  for (let n = 1; n <= 16; n++) {
-    const { cols, cells } = gridLayout(n);
-    expect(cells).toHaveLength(n);
-    const rows = new Map<number, { sum: number; end: number }>();
-    for (const c of cells) {
-      const r = rows.get(c.row) ?? { sum: 0, end: 0 };
-      expect(c.col).toBe(r.end);
-      r.sum += c.colSpan;
-      r.end = c.col + c.colSpan;
-      rows.set(c.row, r);
-    }
-    for (const r of rows.values()) expect(r.sum).toBe(cols);
-  }
+test("reconcile: fresh panes go columns first, then stack on the shortest column", () => {
+  expect(reconcile([], ids(1), 3)).toEqual([["p1"]]);
+  expect(reconcile([], ids(3), 3)).toEqual([["p1"], ["p2"], ["p3"]]);
+  expect(reconcile([], ids(4), 3)).toEqual([["p1"], ["p2"], ["p3", "p4"]]);
+  expect(reconcile([], ids(5), 3)).toEqual([["p1"], ["p2", "p5"], ["p3", "p4"]]);
+  expect(reconcile([], ids(4), 4)).toEqual([["p1"], ["p2"], ["p3"], ["p4"]]);
+  expect(reconcile([], ids(5), 4)).toEqual([["p1"], ["p2"], ["p3"], ["p4", "p5"]]);
+});
+
+test("reconcile: close drops ids and empty columns, add appends, unchanged is stable", () => {
+  const l: Layout = [["p1"], ["p2", "p4"], ["p3"]];
+  expect(reconcile(l, ["p1", "p2", "p4"], 3)).toEqual([["p1"], ["p2", "p4"]]);
+  expect(reconcile(l, ids(5), 3)).toEqual([["p1"], ["p2", "p4"], ["p3", "p5"]]);
+  expect(reconcile([["p1"], ["p2"]], ids(3), 3)).toEqual([["p1"], ["p2"], ["p3"]]);
+  expect(reconcile(l, ids(4), 3)).toBe(l);
+  expect(reconcile(l, ["p4", "p3", "p2", "p1"], 1)).toBe(l); // never merges existing columns
+});
+
+test("movePane: four sides", () => {
+  const l: Layout = [["a"], ["b", "c"], ["d"]];
+  expect(movePane(l, "d", { id: "a", side: "left" })).toEqual([["d"], ["a"], ["b", "c"]]);
+  expect(movePane(l, "a", { id: "d", side: "right" })).toEqual([["b", "c"], ["d"], ["a"]]);
+  expect(movePane(l, "d", { id: "b", side: "top" })).toEqual([["a"], ["d", "b", "c"]]);
+  expect(movePane(l, "a", { id: "c", side: "bottom" })).toEqual([["b", "c", "a"], ["d"]]);
+});
+
+test("movePane: self drop, no-op positions, same column, emptying a column", () => {
+  const l: Layout = [["a"], ["b", "c"], ["d"]];
+  expect(movePane(l, "b", { id: "b", side: "left" })).toBe(l);
+  expect(movePane(l, "a", { id: "b", side: "left" })).toBe(l);
+  expect(movePane(l, "d", { id: "b", side: "right" })).toBe(l);
+  expect(movePane(l, "b", { id: "c", side: "top" })).toBe(l);
+  expect(movePane(l, "c", { id: "b", side: "bottom" })).toBe(l);
+  expect(movePane(l, "b", { id: "c", side: "bottom" })).toEqual([["a"], ["c", "b"], ["d"]]);
+  expect(movePane(l, "zz", { id: "a", side: "left" })).toBe(l);
+  expect(movePane(l, "a", { id: "zz", side: "left" })).toBe(l);
+  expect(movePane([["a"], ["b"]], "a", { id: "b", side: "bottom" })).toEqual([["b", "a"]]);
+});
+
+test("placements", () => {
+  expect(placements([])).toEqual({ cols: 0, rows: 0, cells: {} });
+  expect(placements([["a"]])).toEqual({ cols: 1, rows: 1, cells: { a: { col: 0, row: 0, rowSpan: 1 } } });
+  expect(placements([["a", "b"], ["c"]])).toEqual({ cols: 2, rows: 2, cells: { a: { col: 0, row: 0, rowSpan: 1 }, b: { col: 0, row: 1, rowSpan: 1 }, c: { col: 1, row: 0, rowSpan: 2 } } });
+  const p = placements([["a", "b"], ["c", "d", "e"]]);
+  expect(p.rows).toBe(6);
+  expect(p.cells).toEqual({
+    a: { col: 0, row: 0, rowSpan: 3 }, b: { col: 0, row: 3, rowSpan: 3 },
+    c: { col: 1, row: 0, rowSpan: 2 }, d: { col: 1, row: 2, rowSpan: 2 }, e: { col: 1, row: 4, rowSpan: 2 },
+  });
 });

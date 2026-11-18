@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { clampSidebarWidth, loadNewPane, loadSessionOrder, loadSessionSort, pushRecent, saveSessionOrder, saveSessionSort } from "./uiSettings";
+import { clampSidebarWidth, loadNewPane, loadPaneLayout, savePaneLayout, loadSessionOrder, loadSessionSort, pushRecent, saveSessionOrder, saveSessionSort } from "./uiSettings";
 
 test("pushRecent moves to front, dedupes, caps at 8", () => {
   expect(pushRecent(["a", "b", "c"], "c")).toEqual(["c", "a", "b"]);
@@ -42,6 +42,16 @@ test("session sort/order load validates stored values", () => {
   expect(loadSessionOrder()).toEqual(["a", "b"]);
   saveSessionOrder(Array.from({ length: 500 }, (_, i) => `s${i}`));
   expect(loadSessionOrder()).toHaveLength(300);
+  vi.unstubAllGlobals();
+});
+
+test("loadPaneLayout validates stored layout", () => {
+  const store: Record<string, string> = {};
+  vi.stubGlobal("localStorage", { getItem: (k: string) => store[k] ?? null, setItem: (k: string, v: string) => { store[k] = v; } });
+  expect(loadPaneLayout()).toEqual([]);
+  savePaneLayout([["a"], ["b", "c"]]);
+  expect(loadPaneLayout()).toEqual([["a"], ["b", "c"]]);
+  for (const bad of ['"x"', "[1]", '[["a"],[]]', '[["a",2]]', "{}"]) { store["perch.paneLayout"] = bad; expect(loadPaneLayout()).toEqual([]); }
   vi.unstubAllGlobals();
 });
 
