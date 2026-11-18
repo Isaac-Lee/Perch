@@ -147,6 +147,8 @@ npm run tauri build   # 릴리스 exe와 설치 파일
 - `/new`, `/clear`, `/resume`, `/branch`, `/compress`, `/undo`, `/retry`, `/quit`는 채팅 보기에서 쓸 수 없다. 게이트웨이가 받지 않는다. 필요하면 TUI 칸을 쓴다.
 - 모델 목록에 없는 모델(사내 모델 등)은 `/model <이름> [--provider <slug>]`로 지정한다. 사내 모델 환경에서는 아직 확인하지 못했다.
 - 한 줄 상태 표시, 생각 줄, 도구 상세, 슬래시 팝업은 실제 앱에서 충분히 확인하지 못했다.
+- Hermes가 턴을 끝내지 않고 멈춘 경우: 사용자 PC에서 "Thinking"이 계속 남는 보고가 있었으나 재현하지 못했다. Perch는 게이트웨이의 `session.info.running`을 따르고, 45초 동안 프레임이 없으면 `session.resume`으로 확인한다. Stop 뒤 3초 안에 끝나지 않으면 "Hermes가 이 턴을 아직 끝내지 않았습니다"라고 알리고, Stop을 한 번 더 누르면 Perch의 표시만 정리한다(Hermes 쪽 턴은 계속될 수 있고, 다음 프레임이 오면 표시가 다시 켜진다). 원인 확인용 증거: Hermes `agent.log`의 "tui prompt accepted" 줄과 짝이 되는 "tui turn finished" 줄이 있는지 본다. 짝이 없으면 Hermes 쪽에서 멈춘 것이다.
+- 훅 목록은 앱 시작 때 오래된 것이 있으면 자동으로 갱신한다(다른 hooks가 config.yaml에 있으면 실패하고, 설정 창에 Update 버튼이 나온다). 실행 중인 gateway는 새 세션을 만들거나 resume할 때 config.yaml을 다시 읽는다.
 
 **4단계: OpenCode 연결 — 하지 않기로 했다 (사용자 결정, 2026-11-18).** OpenCode는 칸에서 실행만 되고 상태 표시는 없다. 나중에 다시 하게 되면 `docs/ADAPTERS.md`를 따른다.
 

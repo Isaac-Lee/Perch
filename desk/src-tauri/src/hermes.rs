@@ -17,7 +17,13 @@ pub struct Status {
     pub exe: Option<String>,
     pub connected: bool,
     pub hook_path: String,
+    /// a Perch block is there but not current: events missing/extra, or a command that is not this app's hook
+    pub outdated: bool,
+    /// this app run rewrote the block on its own (Hermes reads hooks at start, so it needs a restart); reported once
+    pub auto_updated: bool,
 }
+
+static AUTO_UPDATED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 pub fn home_from(env_home: Option<String>, windows: bool, local_app: Option<String>, user_home: Option<String>) -> PathBuf {
     if let Some(h) = env_home.filter(|h| !h.is_empty()) {
@@ -58,11 +64,23 @@ pub fn status() -> Status {
 
 pub fn status_of(home: &Path, hook: &Path, exe: Option<&Path>) -> Status {
     let text = std::fs::read_to_string(home.join("config.yaml")).unwrap_or_default();
+    let blk = block_text(&text);
+    let connected = hook.is_file() && blk.is_some_and(|b| b.contains(&quoted(hook)));
+    // a block exists (the user pressed Connect once) but registers other events or another executable
+    let outdated = hook.is_file() && blk.is_some_and(|b| {
+        let mut ev = block_events(b);
+        ev.sort();
+        let mut want = EVENTS.to_vec();
+        want.sort();
+        !connected || ev != want || block_commands(b).iter().any(|c| *c != command(hook))
+    });
     Status {
         home: home.to_string_lossy().into_owned(),
         exe: exe.map(|e| e.to_string_lossy().into_owned()),
-        connected: hook.is_file() && block_text(&text).is_some_and(|b| b.contains(&quoted(hook))),
+        connected,
         hook_path: hook.to_string_lossy().into_owned(),
+        outdated,
+        auto_updated: false,
     }
 }
 
@@ -87,6 +105,20 @@ fn block_text(text: &str) -> Option<&str> {
 fn block_commands(blk: &str) -> Vec<String> {
     blk.lines().filter_map(|l| l.trim().strip_prefix("- command: '")).filter_map(|r| r.trim_end().strip_suffix('\''))
         .map(|c| c.replace("''", "'")).collect()
+}
+
+/// Event names registered in a marked block (`  <event>:` lines under `hooks:`).
+fn block_events(blk: &str) -> Vec<&str> {
+    blk.lines().filter(|l| l.starts_with("  ") && !l.starts_with("   "))
+        .filter_map(|l| l.trim().strip_suffix(':')).filter(|e| !e.is_empty() && !e.contains(' ')).collect()
+}
+
+/// App start: a block left by an older Perch is brought up to date on its own. Fails quietly (e.g. the user has
+/// other hooks outside the block); the settings panel then offers the Update button.
+pub fn auto_update() {
+    if status().outdated && connect(&home(), &hook_path()).is_ok() {
+        AUTO_UPDATED.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 
 fn block(hook: &Path, nl: &str) -> String {
@@ -249,7 +281,9 @@ pub async fn hermes_gateway_stop() -> Result<(), String> {
 
 #[tauri::command]
 pub async fn hermes_status() -> Result<Status, String> {
-    Ok(status())
+    let mut s = status();
+    s.auto_updated = AUTO_UPDATED.swap(false, std::sync::atomic::Ordering::Relaxed);
+    Ok(s)
 }
 
 #[tauri::command]
@@ -357,6 +391,41 @@ mod tests {
         // hook file missing -> not connected
         fs::remove_file(&hook2).unwrap();
         assert!(!status_of(&home, &hook2, None).connected);
+    }
+
+    #[test]
+    fn outdated_detection() {
+        let (t, home, hook) = setup();
+        connect(&home, &hook).unwrap();
+        let cfg = home.join("config.yaml");
+        let full = fs::read_to_string(&cfg).unwrap();
+        let s = status_of(&home, &hook, None);
+        assert!(s.connected && !s.outdated, "up to date");
+        assert_eq!(block_events(block_text(&full).unwrap()).len(), EVENTS.len());
+        // an older Perch: post_llm_call missing
+        let missing: String = full.lines().filter(|l| !l.contains("post_llm_call")).collect::<Vec<_>>().join("
+");
+        let old = missing.replace("
+    - command", "
+    - command"); // keep shape
+        fs::write(&cfg, &old).unwrap();
+        assert!(status_of(&home, &hook, None).outdated);
+        // another executable path in the block
+        let hook2 = t.path().join("other").join("perch-hook.exe");
+        fs::create_dir_all(hook2.parent().unwrap()).unwrap();
+        fs::write(&hook2, "x").unwrap();
+        fs::write(&cfg, &full).unwrap();
+        let s = status_of(&home, &hook2, None);
+        assert!(!s.connected && s.outdated);
+        // no block at all: never connected, not outdated
+        fs::write(&cfg, "a: 1
+").unwrap();
+        let s = status_of(&home, &hook, None);
+        assert!(!s.connected && !s.outdated);
+        // reconnecting fixes it
+        fs::write(&cfg, &old).unwrap();
+        connect(&home, &hook).unwrap();
+        assert!(!status_of(&home, &hook, None).outdated);
     }
 
     #[test]

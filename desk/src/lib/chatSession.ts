@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
-import { chatClose, chatConnect, chatSend, paneSetSession } from "./backend";
+import { chatClose, chatConnect, chatSend, paneSetSession, sessionForceIdle } from "./backend";
 import { BLOCKED_SLASH, imageExt, isSlashCommand, parseModelArg, parseSlash, toBase64 } from "./composer";
 import { createRpc, type Rpc } from "./gateway";
 import type { GatewayEvent, SessionSnapshot } from "./gatewayTypes";
@@ -20,8 +20,10 @@ export interface ChatPrompt {
   /** clarify batch with several questions: shown as text, answered with one free-text reply */
   questions?: string[];
 }
-export interface ChatState { conn: "connecting" | "ready" | "closed" | "error"; error?: string; sessionId: string | null; executionGeneration: number; revision: number; running: boolean; items: ChatItem[]; prompts: ChatPrompt[]; model: string | null; effort: string | null; /** ms epoch the current turn began; set from timestamps the dispatcher passes in (the reducer stays pure) */ turnStart: number | null; /** Hermes status line (thinking.delta) */ status: string; /** tool named by tool.generating, before its tool.start */ generating: string }
-export const initialChat: ChatState = { conn: "connecting", sessionId: null, executionGeneration: 0, revision: 0, running: false, items: [], prompts: [], model: null, effort: null, turnStart: null, status: "", generating: "" };
+export interface ChatState { conn: "connecting" | "ready" | "closed" | "error"; error?: string; sessionId: string | null; executionGeneration: number; revision: number; running: boolean; items: ChatItem[]; prompts: ChatPrompt[]; model: string | null; effort: string | null; /** ms epoch the current turn began; set from timestamps the dispatcher passes in (the reducer stays pure) */ turnStart: number | null; /** Hermes status line (thinking.delta) */ status: string; /** tool named by tool.generating, before its tool.start */ generating: string;
+  /** `at` of a local prompt that has not seen message.start yet (the optimistic window); null otherwise */ sentAt: number | null;
+  /** the user cleared a stuck indicator by hand: the next real frame turns it back on */ cleared: boolean }
+export const initialChat: ChatState = { conn: "connecting", sessionId: null, executionGeneration: 0, revision: 0, running: false, items: [], prompts: [], model: null, effort: null, turnStart: null, status: "", generating: "", sentAt: null, cleared: false };
 export type ChatAction =
   | { t: "conn"; conn: ChatState["conn"]; error?: string }
   | { t: "snapshot"; snap: any; at?: number }
@@ -29,6 +31,8 @@ export type ChatAction =
   | { t: "effortChanged"; revision: number; executionGeneration: number; effort: string }
   | { t: "effort"; effort: string }
   | { t: "system"; text: string }
+  /** Stop pressed twice on a turn Hermes will not end: drop Perch's indicators only */
+  | { t: "clear" }
   | { t: "promptDone"; promptId: string }
   | { t: "userSent"; id: string; text: string; images?: string[]; /** set for a real prompt (not a slash command): starts the turn clock at once */ at?: number }
   | { t: "event"; ev: GatewayEvent; at?: number };
@@ -103,23 +107,40 @@ export function chatReducer(s: ChatState, a: ChatAction): ChatState {
       ...s, conn: "ready", error: undefined, sessionId: a.snap.session_id ?? null,
       executionGeneration: typeof a.snap.execution_generation === "number" ? a.snap.execution_generation : s.executionGeneration,
       revision: typeof a.snap.revision === "number" ? a.snap.revision : 0,
-      running: !!a.snap.running, turnStart: a.snap.running ? s.turnStart ?? a.at ?? null : null, model: a.snap.info?.model || s.model, effort: str(a.snap.info?.reasoning_effort) || s.effort, items: transcriptToItems(a.snap.messages ?? []), prompts: (Array.isArray(a.snap.prompts) ? a.snap.prompts : []).map((p: any) => toPrompt(p, p?.kind)).filter((p: ChatPrompt | null): p is ChatPrompt => !!p),
+      sentAt: null, cleared: false, running: !!a.snap.running, turnStart: a.snap.running ? s.turnStart ?? a.at ?? null : null, model: a.snap.info?.model || s.model, effort: str(a.snap.info?.reasoning_effort) || s.effort, items: transcriptToItems(a.snap.messages ?? []), prompts: (Array.isArray(a.snap.prompts) ? a.snap.prompts : []).map((p: any) => toPrompt(p, p?.kind)).filter((p: ChatPrompt | null): p is ChatPrompt => !!p),
     };
     case "modelChanged": return { ...s, revision: a.revision, executionGeneration: a.executionGeneration, model: a.model };
     case "effortChanged": return { ...s, revision: a.revision, executionGeneration: a.executionGeneration, effort: a.effort };
     case "effort": return s.effort ? s : { ...s, effort: a.effort };
     case "system": return { ...s, items: [...settle(s.items), { kind: "system", id: `s${s.items.length}`, text: a.text }] };
+    case "clear": return { ...endTurn(s), cleared: true };
     case "promptDone": return dropPrompt(s, a.promptId);
     case "userSent": return {
       ...s, items: [...settle(s.items), { kind: "user", id: a.id, text: a.text, images: a.images }],
-      ...(a.at != null && !s.running ? { running: true, turnStart: a.at } : {}),
+      ...(a.at != null && !s.running ? { running: true, turnStart: a.at, sentAt: a.at, cleared: false } : {}),
     };
     case "event": {
       const n = onEvent(typeof a.ev.execution_generation === "number" ? { ...s, executionGeneration: a.ev.execution_generation } : s, a.ev, a.at);
-      if (a.ev.type === "message.start") return { ...n, turnStart: s.turnStart ?? a.at ?? null };
-      return a.ev.type === "message.complete" || a.ev.type === "error" ? { ...n, turnStart: null } : n;
+      if (a.ev.type === "message.start") return { ...n, turnStart: s.turnStart ?? a.at ?? null, sentAt: null, cleared: false };
+      if (a.ev.type === "message.complete" || a.ev.type === "error") return { ...n, turnStart: null, sentAt: null, cleared: false };
+      // after a manual clear, the next sign of life from Hermes turns the indicator back on
+      if (n.running && !s.running && n.turnStart == null) return { ...n, turnStart: a.at ?? null, cleared: false };
+      return n;
     }
   }
+}
+
+/** Local end of a turn: indicators off, streaming items settled. */
+const endTurn = (s: ChatState): ChatState => ({ ...s, running: false, turnStart: null, sentAt: null, status: "", generating: "", items: settle(s.items) });
+
+/** `session.info.running` is the gateway's own word on whether a turn runs. `running:false` right after a local send
+ *  (before message.start) is the gateway not having started it yet, so it is ignored for 3 s. */
+export const OPTIMISTIC_MS = 3000;
+function applyRunning(s: ChatState, running: boolean, at?: number): ChatState {
+  if (running) return s.running ? s : { ...s, running: true, turnStart: s.turnStart ?? at ?? null, cleared: false };
+  if (!s.running) return s;
+  if (s.sentAt != null && at != null && at - s.sentAt < OPTIMISTIC_MS) return s;
+  return endTurn(s);
 }
 
 /** At most one streaming item, and only the last: any item appended after a streaming text or thought settles it. Same array when nothing streams. */
@@ -144,6 +165,7 @@ function onEvent(s: ChatState, ev: GatewayEvent, at?: number): ChatState {
     case "message.start": return { ...s, running: true };
     case "message.delta": {
       if (typeof p.text !== "string" || p.text === "") return s;
+      if (s.cleared) s = { ...s, running: true, cleared: false };
       if (live) return { ...s, items: [...s.items.slice(0, -1), { ...live, text: live.text + p.text }] };
       return { ...s, items: [...settle(s.items), { kind: "assistant", id: `m${s.items.length}`, text: p.text, streaming: true }] };
     }
@@ -175,7 +197,7 @@ function onEvent(s: ChatState, ev: GatewayEvent, at?: number): ChatState {
       const progress = typeof p.percent === "number" ? `${Math.round(p.percent)}%` : str(p.message);
       return s.items.some((i) => i.kind === "tool" && i.id === str(p.tool_id)) ? { ...s, items: s.items.map((i) => (i.kind === "tool" && i.id === str(p.tool_id) ? { ...i, progress } : i)) } : s;
     }
-    case "tool.start": return { ...s, generating: "", items: [...settle(s.items), { kind: "tool", id: str(p.tool_id) || `t${s.items.length}`, name: str(p.name), context: str(p.context), status: "running", ...toolExtra(p) }] };
+    case "tool.start": return { ...s, running: s.cleared ? true : s.running, cleared: false, generating: "", items: [...settle(s.items), { kind: "tool", id: str(p.tool_id) || `t${s.items.length}`, name: str(p.name), context: str(p.context), status: "running", ...toolExtra(p) }] };
     case "tool.complete": {
       const id = str(p.tool_id);
       const patch = { status: (p.is_error ? "error" : "done") as "error" | "done", durationS: typeof p.duration_s === "number" ? p.duration_s : undefined, result: typeof p.result === "string" ? p.result : isObj(p.result) ? JSON.stringify(p.result) : undefined, progress: undefined, ...toolExtra(p) };
@@ -184,7 +206,8 @@ function onEvent(s: ChatState, ev: GatewayEvent, at?: number): ChatState {
     }
     case "session.info": {
       const model = str(p.model), effort = str(p.reasoning_effort);
-      return model || effort ? { ...s, model: model || s.model, effort: effort || s.effort } : s;
+      const n = model || effort ? { ...s, model: model || s.model, effort: effort || s.effort } : s;
+      return typeof p.running === "boolean" ? applyRunning(n, p.running, at) : n;
     }
     // keeps later session.mutate calls from going stale
     case "session.updated": return { ...s, revision: typeof p.revision === "number" ? p.revision : s.revision, executionGeneration: typeof p.execution_generation === "number" ? p.execution_generation : s.executionGeneration };
@@ -268,6 +291,18 @@ export function toDirective(raw: any): SlashDirective | null {
     default: return null;
   }
 }
+/** prompt.submit answers with a receipt {admission_id, ref, sequence, status: "queued" | "started" | ..., outcome}; anything else means the prompt was not taken. */
+export function submitFailure(receipt: unknown): string | null {
+  const r = receipt as { status?: unknown; outcome?: unknown } | null;
+  if (!r || typeof r !== "object" || typeof r.status !== "string" || ["accepted", "queued", "started"].includes(r.status)) return null;
+  return `메시지가 접수되지 않았습니다 (${r.status}${typeof r.outcome === "string" ? `: ${r.outcome}` : ""})`;
+}
+export const WATCHDOG_MS = 45_000;
+/** Running, connected, and neither a gateway frame nor a resync for 45 s. */
+export const watchdogDue = (now: number, lastFrame: number, lastResync: number, running: boolean, conn: ChatState["conn"]) =>
+  running && conn === "ready" && now - lastFrame >= WATCHDOG_MS && now - lastResync >= WATCHDOG_MS;
+export const STUCK_MSG = "Hermes가 이 턴을 아직 끝내지 않았습니다. 다시 Stop을 누르면 Perch의 표시만 정리합니다.";
+
 /** Nothing is delivered while the socket is down, so no user bubble either. */
 export const canSend = (s: ChatState) => s.conn === "ready" && !!s.sessionId;
 
@@ -282,6 +317,9 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
   const autoUsed = useRef(0); // automatic reconnects since the last successful connection (max 1)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [retrying, setRetrying] = useState(false);
+  const lastFrame = useRef(Date.now()); // time of the last gateway frame (a ref: no render per frame)
+  const lastResync = useRef(0);
+  const stuck = useRef(false); // Stop did not end the turn and Hermes still says it runs
   const [draft, setDraft] = useState({ text: "", n: 0 }); // /undo-style prefill; the composer applies it when n changes
 
   useEffect(() => {
@@ -299,7 +337,8 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
       try {
         offs.push(rpc.onEvent((ev) => {
           if (dead) return;
-          dispatch({ t: "event", ev, at: Date.now() });
+          lastFrame.current = Date.now();
+          dispatch({ t: "event", ev, at: lastFrame.current });
           if (ev.type === "session.replay_gap" && stateRef.current.sessionId) // events were lost: re-read the whole session
             rpc.request<SessionSnapshot>("session.resume", { session_id: stateRef.current.sessionId }).then((snap) => { if (!dead) dispatch({ t: "snapshot", snap, at: Date.now() }); }, console.error);
         }));
@@ -338,6 +377,27 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
     return () => { dead = true; clearTimeout(timer.current); abort(); offs.forEach((o) => o()); chatClose(paneId).catch(() => {}); };
   }, [paneId, cwd, nonce]);
 
+  /** Asks the gateway whether the turn still runs. Only a finished turn is adopted (history is authoritative then, which
+   *  also drops local system lines); a running turn keeps its live rows. Returns the gateway's `running`, null if unknown. */
+  const resync = useCallback(async (): Promise<boolean | null> => {
+    const rpc = rpcRef.current, rid = stateRef.current.sessionId ?? resumeRef.current;
+    if (!rpc || !rid) return null;
+    lastResync.current = Date.now();
+    try {
+      const snap = await rpc.request<SessionSnapshot>("session.resume", { session_id: rid });
+      if (snap.running) return true;
+      dispatch({ t: "snapshot", snap, at: Date.now() });
+      sessionForceIdle(resumeRef.current ?? rid, 0).catch(console.error); // sidebar and pane header follow the chat row
+      return false;
+    } catch (e) { console.error(e); return null; }
+  }, []);
+
+  useEffect(() => {
+    if (!state.running) { stuck.current = false; return; }
+    const t = setInterval(() => { if (watchdogDue(Date.now(), lastFrame.current, lastResync.current, stateRef.current.running, stateRef.current.conn)) void resync(); }, 5000);
+    return () => clearInterval(t);
+  }, [state.running, resync]);
+
   const call = useCallback((method: string, params: object) => {
     rpcRef.current?.request(method, params).catch((e) => dispatch({ t: "event", ev: { type: "error", payload: { message: e instanceof Error ? e.message : String(e) } } }));
   }, []);
@@ -351,7 +411,9 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
   };
 
   const submit = (sid: string, text: string, attachments?: { path: string; mime: string }[]) =>
-    call("prompt.submit", { session_id: sid, text, submission_id: crypto.randomUUID(), ...(attachments?.length ? { attachments } : {}) });
+    rpcRef.current?.request("prompt.submit", { session_id: sid, text, submission_id: crypto.randomUUID(), ...(attachments?.length ? { attachments } : {}) }).then(
+      (r) => { const f = submitFailure(r); if (f) dispatch({ t: "event", ev: { type: "error", payload: { message: f } } }); },
+      (e) => dispatch({ t: "event", ev: { type: "error", payload: { message: e instanceof Error ? e.message : String(e) } } }));
   const say = (text: string) => dispatch({ t: "system", text });
   // slash.exec first; command.dispatch handles skill/send/alias names it does not know. An alias is followed once.
   async function runSlash(sid: string, text: string, aliased = false): Promise<void> {
@@ -426,7 +488,22 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
         return { items: (r.items ?? []).filter((i) => i && typeof i.text === "string"), replaceFrom: typeof r.replace_from === "number" ? r.replace_from : 1 };
       } catch { return { items: [], replaceFrom: 1 }; }
     },
-    stop() { call("session.interrupt", base()); },
+    stop() {
+      if (stuck.current) { // second press: Hermes would not end the turn, clear Perch's own indicators
+        stuck.current = false;
+        dispatch({ t: "clear" });
+        sessionForceIdle(resumeRef.current ?? stateRef.current.sessionId ?? "", 0).catch(console.error);
+        return;
+      }
+      call("session.interrupt", base());
+      setTimeout(async () => { // a terminal frame (message.complete / session.info running:false) clears `running` by itself
+        if (!stateRef.current.running) return;
+        if ((await resync()) === true && stateRef.current.running && !stuck.current) {
+          stuck.current = true;
+          say(STUCK_MSG);
+        }
+      }, 3000);
+    },
     answerApproval(promptId: string, choice: string) { respond("approval.respond", promptId, { choice }); },
     answerClarify(promptId: string, answer: string) { respond("clarify.respond", promptId, { answer }); },
     async attachImage(bytes: Uint8Array, mime: string): Promise<{ path: string; mime: string }> {

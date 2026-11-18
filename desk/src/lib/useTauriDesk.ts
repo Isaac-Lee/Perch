@@ -76,9 +76,11 @@ export function useTauriDesk(hermesView: PaneView = "chat") {
   }, [focusPaneInfo]);
   const stop = useCallback((sessionId: string) => {
     const paneId = sInfosRef.current.find((x) => x.sessionId === sessionId)?.paneId ?? sessionId;
-    if (infosRef.current.find((i) => i.id === paneId)?.view === "chat") emitChatStop(paneId).catch(console.error);
-    else paneWrite(paneId, "\x03").catch(console.error);
-    sessionForceIdle(sessionId).catch(console.error); // clears a "working" row the interrupt left stuck
+    if (infosRef.current.find((i) => i.id === paneId)?.view === "chat") emitChatStop(paneId).catch(console.error); // the chat pane resyncs with the gateway and clears the hook file itself
+    else {
+      paneWrite(paneId, "\x03").catch(console.error);
+      sessionForceIdle(sessionId).catch(console.error); // TUI: no gateway socket here; clears a "working" row the interrupt left stuck
+    }
   }, []);
   const approve = useCallback((sessionId: string, allow: boolean) => {
     sessionApprove(sessionId, allow).catch(() => focusSession(sessionId));

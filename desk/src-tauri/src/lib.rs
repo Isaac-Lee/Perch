@@ -15,6 +15,7 @@ pub fn run() {
     .manage(gateway::Chats::default())
     .manage(sessions::Sessions::default())
     .setup(|app| {
+      hermes::auto_update();
       sessions::start(app.handle().clone());
       Ok(())
     })
