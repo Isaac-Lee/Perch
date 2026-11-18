@@ -1,0 +1,270 @@
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { chatClose, chatConnect, chatSend, paneSetSession } from "./backend";
+import { imageExt, toBase64 } from "./composer";
+import { createRpc, type Rpc } from "./gateway";
+import type { GatewayEvent, SessionSnapshot } from "./gatewayTypes";
+
+export type ChatItem =
+  | { kind: "user"; id: string; text: string; images?: string[] }
+  | { kind: "assistant"; id: string; text: string; streaming: boolean }
+  | { kind: "tool"; id: string; name: string; context: string; status: "running" | "done" | "error"; durationS?: number; result?: string }
+  | { kind: "error"; id: string; text: string };
+export interface ChatPrompt {
+  kind: "approval" | "clarify"; promptId: string; executionGeneration: number; choices: string[];
+  command?: string; description?: string; question?: string; multiSelect?: boolean;
+  /** clarify batch with several questions: shown as text, answered with one free-text reply */
+  questions?: string[];
+}
+export interface ChatState { conn: "connecting" | "ready" | "closed" | "error"; error?: string; sessionId: string | null; executionGeneration: number; revision: number; running: boolean; items: ChatItem[]; prompts: ChatPrompt[]; model: string | null }
+export const initialChat: ChatState = { conn: "connecting", sessionId: null, executionGeneration: 0, revision: 0, running: false, items: [], prompts: [], model: null };
+export type ChatAction =
+  | { t: "conn"; conn: ChatState["conn"]; error?: string }
+  | { t: "snapshot"; snap: any }
+  | { t: "modelChanged"; revision: number; executionGeneration: number; model: string }
+  | { t: "promptDone"; promptId: string }
+  | { t: "userSent"; id: string; text: string; images?: string[] }
+  | { t: "event"; ev: GatewayEvent };
+
+const str = (v: unknown) => (typeof v === "string" ? v : "");
+
+function callContext(args: unknown): string {
+  try {
+    const o = JSON.parse(str(args));
+    const v = typeof o?.command === "string" ? o.command : Object.values(o ?? {}).find((x) => typeof x === "string");
+    return typeof v === "string" ? v.slice(0, 120) : "";
+  } catch { return ""; }
+}
+
+// session.resume rows are raw model-API messages (user / assistant+tool_calls / tool).
+export function transcriptToItems(messages: any[]): ChatItem[] {
+  const out: ChatItem[] = [];
+  let calls: any[] = [];
+  for (const m of messages) {
+    if (!m || typeof m !== "object") continue;
+    const id = `h${out.length}`;
+    const text = typeof m.text === "string" ? m.text : typeof m.content === "string" ? m.content : "";
+    if (m.role === "user") out.push({ kind: "user", id, text });
+    else if (m.role === "assistant") {
+      calls = Array.isArray(m.tool_calls) ? m.tool_calls : [];
+      if (text.trim()) out.push({ kind: "assistant", id, text, streaming: false });
+    } else if (m.role === "tool") {
+      const call = calls.find((c) => c && (c.id === m.tool_call_id || c.call_id === m.tool_call_id));
+      out.push({
+        kind: "tool", id, name: str(m.tool_name) || str(m.name), context: str(m.context) || callContext(call?.function?.arguments),
+        status: "done", ...(typeof m.content === "string" ? { result: m.content } : {}),
+      });
+    }
+  }
+  return out;
+}
+
+// Event payloads and session.resume snapshot rows share one shape (CanonicalPendingPrompt).
+export function toPrompt(p: any, kind: string): ChatPrompt | null {
+  if (!p || typeof p !== "object" || !str(p.prompt_id) || typeof p.execution_generation !== "number") return null;
+  if (kind !== "approval" && kind !== "clarify") return null;
+  const choices: string[] = Array.isArray(p.choices) ? p.choices.filter((c: unknown) => typeof c === "string") : [];
+  const out: ChatPrompt = { kind, promptId: p.prompt_id, executionGeneration: p.execution_generation, choices };
+  if (kind === "approval") return { ...out, command: str(p.command), description: str(p.description) };
+  const qs: any[] = (Array.isArray(p.questions) ? p.questions : []).filter((q: any) => str(q?.question).trim());
+  if (qs.length === 1) return { ...out, question: qs[0].question.trim(), choices: Array.isArray(qs[0].choices) ? qs[0].choices.filter((c: unknown) => typeof c === "string") : [], multiSelect: qs[0].multi_select === true };
+  if (qs.length > 1) return { ...out, questions: qs.map((q) => q.question.trim()) };
+  const question = str(p.question).trim();
+  return question ? { ...out, question, multiSelect: p.multi_select === true } : null;
+}
+
+const addPrompt = (s: ChatState, pr: ChatPrompt | null): ChatState =>
+  !pr || s.prompts.some((x) => x.promptId === pr.promptId) ? s : { ...s, prompts: [...s.prompts, pr] };
+const dropPrompt = (s: ChatState, id: string): ChatState =>
+  s.prompts.some((x) => x.promptId === id) ? { ...s, prompts: s.prompts.filter((x) => x.promptId !== id) } : s;
+
+export function chatReducer(s: ChatState, a: ChatAction): ChatState {
+  switch (a.t) {
+    case "conn": return { ...s, conn: a.conn, error: a.error };
+    case "snapshot": return {
+      ...s, conn: "ready", error: undefined, sessionId: a.snap.session_id ?? null,
+      executionGeneration: typeof a.snap.execution_generation === "number" ? a.snap.execution_generation : s.executionGeneration,
+      revision: typeof a.snap.revision === "number" ? a.snap.revision : 0,
+      running: !!a.snap.running, model: a.snap.info?.model || s.model, items: transcriptToItems(a.snap.messages ?? []), prompts: (Array.isArray(a.snap.prompts) ? a.snap.prompts : []).map((p: any) => toPrompt(p, p?.kind)).filter((p: ChatPrompt | null): p is ChatPrompt => !!p),
+    };
+    case "modelChanged": return { ...s, revision: a.revision, executionGeneration: a.executionGeneration, model: a.model };
+    case "promptDone": return dropPrompt(s, a.promptId);
+    case "userSent": return { ...s, items: [...s.items, { kind: "user", id: a.id, text: a.text, images: a.images }] };
+    case "event": return onEvent(typeof a.ev.execution_generation === "number" ? { ...s, executionGeneration: a.ev.execution_generation } : s, a.ev);
+  }
+}
+
+function onEvent(s: ChatState, ev: GatewayEvent): ChatState {
+  const p = ev.payload ?? {};
+  const last = s.items[s.items.length - 1];
+  const live = last?.kind === "assistant" && last.streaming ? last : null;
+  switch (ev.type) {
+    case "message.start": return { ...s, running: true };
+    case "message.delta": {
+      if (typeof p.text !== "string" || p.text === "") return s;
+      if (live) return { ...s, items: [...s.items.slice(0, -1), { ...live, text: live.text + p.text }] };
+      return { ...s, items: [...s.items, { kind: "assistant", id: `m${s.items.length}`, text: p.text, streaming: true }] };
+    }
+    case "message.complete": {
+      const text = typeof p.text === "string" ? p.text : null;
+      if (live) return { ...s, running: false, items: [...s.items.slice(0, -1), { ...live, text: text ?? live.text, streaming: false }] };
+      if (!text) return { ...s, running: false };
+      return { ...s, running: false, items: [...s.items, { kind: "assistant", id: `m${s.items.length}`, text, streaming: false }] };
+    }
+    case "tool.start": return { ...s, items: [...s.items, { kind: "tool", id: str(p.tool_id) || `t${s.items.length}`, name: str(p.name), context: str(p.context), status: "running" }] };
+    case "tool.complete": {
+      const id = str(p.tool_id);
+      const patch = { status: (p.is_error ? "error" : "done") as "error" | "done", durationS: typeof p.duration_s === "number" ? p.duration_s : undefined, result: typeof p.result === "string" ? p.result : undefined };
+      if (s.items.some((i) => i.kind === "tool" && i.id === id)) return { ...s, items: s.items.map((i) => (i.kind === "tool" && i.id === id ? { ...i, ...patch } : i)) };
+      return { ...s, items: [...s.items, { kind: "tool", id: id || `t${s.items.length}`, name: str(p.name), context: str(p.context), ...patch }] };
+    }
+    case "session.info": return typeof p.model === "string" && p.model ? { ...s, model: p.model } : s;
+    case "session.usage": return typeof p.usage?.model === "string" && p.usage.model ? { ...s, model: p.usage.model } : s;
+    case "approval.request": return addPrompt(s, toPrompt(p, "approval"));
+    case "clarify.request": return addPrompt(s, toPrompt(p, "clarify"));
+    case "approval.settled":
+    case "clarify.settled": return dropPrompt(s, str(p.prompt_id));
+    case "error": return { ...s, running: false, items: [...s.items, { kind: "error", id: `e${s.items.length}`, text: str(p.message) || str(p.text) || "오류가 발생했습니다" }] };
+    default: return s;
+  }
+}
+
+const closedMsg = "연결이 끊어졌습니다";
+
+/** One automatic reconnect per successful connection, and only once a session exists to resume. */
+export const shouldAutoReconnect = (sessionId: string | null, attemptsUsed: number) => !!sessionId && attemptsUsed < 1;
+/** Current counters from a stale_revision / stale_generation RPC error, or null when a retry makes no sense. */
+export function staleRetry(err: unknown): { revision: number; executionGeneration: number } | null {
+  const e = err as { message?: string; data?: { revision?: unknown; execution_generation?: unknown } } | null;
+  if (!e || !/^stale_(revision|generation)$/.test(String(e.message))) return null;
+  const { revision, execution_generation: gen } = e.data ?? {};
+  return typeof revision === "number" && typeof gen === "number" ? { revision, executionGeneration: gen } : null;
+}
+export interface ModelProvider { provider: string; providerName: string; models: string[] }
+/** Nothing is delivered while the socket is down, so no user bubble either. */
+export const canSend = (s: ChatState) => s.conn === "ready" && !!s.sessionId;
+
+export function useChatSession(paneId: string, cwd: string, resumeId: string | null) {
+  const [state, dispatch] = useReducer(chatReducer, initialChat);
+  const [nonce, setNonce] = useState(0);
+  const rpcRef = useRef<Rpc | null>(null);
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const resumeRef = useRef(resumeId); // first value only; the pane gaining a session id later must not reconnect
+  const chain = useRef<Promise<unknown>>(Promise.resolve()); // serializes runs so StrictMode's double effect leaves one connection
+  const autoUsed = useRef(0); // automatic reconnects since the last successful connection (max 1)
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [retrying, setRetrying] = useState(false);
+
+  useEffect(() => {
+    let dead = false;
+    let abort = () => {};
+    const rpc = createRpc((line) => chatSend(paneId, line));
+    const offs: (() => void)[] = [];
+    const prev = chain.current;
+    chain.current = (async () => {
+      await prev.catch(() => {});
+      if (dead) return;
+      rpcRef.current = rpc;
+      setRetrying(false);
+      dispatch({ t: "conn", conn: "connecting" });
+      try {
+        offs.push(rpc.onEvent((ev) => {
+          if (dead) return;
+          dispatch({ t: "event", ev });
+          if (ev.type === "session.replay_gap" && stateRef.current.sessionId) // events were lost: re-read the whole session
+            rpc.request<SessionSnapshot>("session.resume", { session_id: stateRef.current.sessionId }).then((snap) => { if (!dead) dispatch({ t: "snapshot", snap }); }, console.error);
+        }));
+        offs.push(rpc.onClosed((reason) => {
+          if (dead) return;
+          dispatch({ t: "conn", conn: "closed", error: reason || closedMsg });
+          if (!shouldAutoReconnect(stateRef.current.sessionId, autoUsed.current)) return;
+          autoUsed.current++;
+          setRetrying(true);
+          timer.current = setTimeout(() => setNonce((n) => n + 1), 1000);
+        }));
+        const ready = new Promise<void>((res, rej) => {
+          abort = () => rej(new Error("aborted"));
+          offs.push(rpc.onClosed((r) => rej(new Error(r || closedMsg))));
+          offs.push(rpc.onEvent((ev) => { if (ev.type === "gateway.ready") res(); }));
+        });
+        ready.catch(() => {});
+        await chatConnect(paneId, (line) => rpc.handleLine(line));
+        await ready;
+        const rid = stateRef.current.sessionId ?? resumeRef.current;
+        const snap = await (rid
+          ? rpc.request<SessionSnapshot>("session.resume", { session_id: rid })
+          : rpc.request<SessionSnapshot>("session.create", { request_id: crypto.randomUUID(), source: "tui", cwd }));
+        if (dead) return;
+        dispatch({ t: "snapshot", snap });
+        autoUsed.current = 0; // connected: re-arm
+        const stored = snap.stored_session_id ?? snap.session_id;
+        resumeRef.current = stored;
+        paneSetSession(paneId, stored).catch(console.error);
+      } catch (e) {
+        if (!dead) dispatch({ t: "conn", conn: "error", error: e instanceof Error ? e.message : String(e) });
+      }
+    })();
+    return () => { dead = true; clearTimeout(timer.current); abort(); offs.forEach((o) => o()); chatClose(paneId).catch(() => {}); };
+  }, [paneId, cwd, nonce]);
+
+  const call = useCallback((method: string, params: object) => {
+    rpcRef.current?.request(method, params).catch((e) => dispatch({ t: "event", ev: { type: "error", payload: { message: e instanceof Error ? e.message : String(e) } } }));
+  }, []);
+  const base = () => ({ session_id: stateRef.current.sessionId, execution_generation: stateRef.current.executionGeneration });
+  // The prompt carries its own generation. Success or any error (already_resolved) means it is gone either way.
+  const respond = (method: string, promptId: string, field: object) => {
+    const pr = stateRef.current.prompts.find((x) => x.promptId === promptId);
+    if (!pr || !rpcRef.current) return;
+    const done = () => dispatch({ t: "promptDone", promptId });
+    rpcRef.current.request(method, { session_id: stateRef.current.sessionId, execution_generation: pr.executionGeneration, prompt_id: promptId, ...field }).then(done, done);
+  };
+
+  return {
+    state,
+    retrying,
+    send(text: string, attachments?: { path: string; mime: string }[]) {
+      const sid = stateRef.current.sessionId;
+      if (!sid || !canSend(stateRef.current)) return;
+      dispatch({ t: "userSent", id: `u${stateRef.current.items.length}`, text, images: attachments?.map((a) => a.path) });
+      call("prompt.submit", { session_id: sid, text, submission_id: crypto.randomUUID(), ...(attachments?.length ? { attachments } : {}) });
+    },
+    stop() { call("session.interrupt", base()); },
+    answerApproval(promptId: string, choice: string) { respond("approval.respond", promptId, { choice }); },
+    answerClarify(promptId: string, answer: string) { respond("clarify.respond", promptId, { answer }); },
+    async attachImage(bytes: Uint8Array, mime: string): Promise<{ path: string; mime: string }> {
+      const rpc = rpcRef.current, sid = stateRef.current.sessionId;
+      if (!rpc || !sid) throw new Error("연결되지 않았습니다");
+      const ext = imageExt(mime);
+      if (!ext) throw new Error("지원하지 않는 이미지 형식입니다");
+      if (bytes.length > 20 * 1024 * 1024) throw new Error("이미지가 너무 큽니다 (20MB 제한)");
+      const r = await rpc.request<{ path: string; mime: string }>("image.attach_bytes", { session_id: sid, filename: `${crypto.randomUUID()}.${ext}`, content_base64: toBase64(bytes) });
+      return { path: r.path, mime: r.mime };
+    },
+    async listModels(): Promise<ModelProvider[]> {
+      const rpc = rpcRef.current, sid = stateRef.current.sessionId;
+      if (!rpc || !sid) throw new Error("연결되지 않았습니다");
+      const r = await rpc.request<{ providers?: { slug: string; name?: string; models?: string[]; authenticated?: boolean }[] }>("model.options", { session_id: sid });
+      return (r.providers ?? [])
+        .filter((p) => p.authenticated !== false && Array.isArray(p.models) && p.models.length > 0)
+        .map((p) => ({ provider: p.slug, providerName: p.name || p.slug, models: p.models! }));
+    },
+    async setModel(provider: string, model: string): Promise<void> {
+      const rpc = rpcRef.current, sid = stateRef.current.sessionId;
+      if (!rpc || !sid) throw new Error("연결되지 않았습니다");
+      type Res = { revision: number; execution_generation: number; model?: string };
+      const run = (revision: number, gen: number) => rpc.request<Res>("session.mutate", {
+        session_id: sid, request_id: crypto.randomUUID(), expected_revision: revision, expected_generation: gen,
+        operation: "model", payload: { model, provider },
+      });
+      let r: Res;
+      try { r = await run(stateRef.current.revision, stateRef.current.executionGeneration); }
+      catch (e) {
+        const retry = staleRetry(e);
+        if (!retry) throw e;
+        r = await run(retry.revision, retry.executionGeneration);
+      }
+      dispatch({ t: "modelChanged", revision: r.revision, executionGeneration: r.execution_generation, model: r.model || model });
+    },
+    reconnect() { setNonce((n) => n + 1); },
+  };
+}

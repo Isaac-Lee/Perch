@@ -577,7 +577,7 @@ mod tests {
         assert!(approve_key(&[s.clone()], "local-1", true).is_err());
         let pane = PaneInfo {
             id: "p1".into(), agent: "hermes".into(), cwd: "/c".into(), repo_root: Some("/rr".into()), branch: Some("b".into()),
-            window: "main".into(), created_at: 0, session_id: Some("local-1".into()),
+            window: "main".into(), created_at: 0, session_id: Some("local-1".into()), view: "tui".into(),
         };
         let d = decorate(vec![s], &[pane]);
         assert_eq!((d[0].pane_id.as_deref(), d[0].cwd.as_str(), d[0].branch.as_deref()), (Some("p1"), "/c", Some("b")));

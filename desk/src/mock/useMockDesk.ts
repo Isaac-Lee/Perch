@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import type { AgentKind, Pane, Session } from "../lib/types";
+import type { AgentKind, Pane, PaneView, Session } from "../lib/types";
 import { folderName, mockPanes, mockSessions } from "./sessions";
 
 const TOOLS: [string, string][] = [["read_file", "src/app.ts"], ["terminal", "npm test"], ["patch", "src/app.ts"]];
 const sec = () => Math.floor(Date.now() / 1000);
 let seq = 100;
 
-export function useMockDesk() {
+export function useMockDesk(_hermesView?: PaneView) {
   const [now, setNow] = useState(sec);
   const [sessions, setSessions] = useState<Session[]>(mockSessions);
   const [panes, setPanes] = useState<Pane[]>(mockPanes);
@@ -56,7 +56,7 @@ export function useMockDesk() {
     setFocused(id);
   }, [sessions, addPaneFor]);
 
-  const addPane = useCallback((agent: AgentKind, cwd: string) => setFocused(addPaneFor(agent, cwd, null)), [addPaneFor]);
+  const addPane = useCallback((agent: AgentKind, cwd: string, _view?: PaneView) => setFocused(addPaneFor(agent, cwd, null)), [addPaneFor]);
 
   const closePane = useCallback((paneId: string) => {
     setPanes((p) => p.filter((x) => x.id !== paneId));

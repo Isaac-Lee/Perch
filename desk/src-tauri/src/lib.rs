@@ -1,4 +1,5 @@
 mod desk;
+mod gateway;
 mod hermes;
 mod pty;
 mod sessions;
@@ -11,6 +12,7 @@ pub fn run() {
     .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| desk::open_window(app)))
     .plugin(tauri_plugin_dialog::init())
     .manage(desk::Desk::default())
+    .manage(gateway::Chats::default())
     .manage(sessions::Sessions::default())
     .setup(|app| {
       sessions::start(app.handle().clone());
@@ -29,6 +31,10 @@ pub fn run() {
       desk::window_focus,
       desk::pane_focus,
       desk::session_approve,
+      desk::pane_set_session,
+      gateway::chat_connect,
+      gateway::chat_send,
+      gateway::chat_close,
       sessions::sessions_snapshot,
       sessions::usage_history,
       hermes::hermes_status,

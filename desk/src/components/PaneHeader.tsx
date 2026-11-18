@@ -1,4 +1,4 @@
-import { GitBranch, Square, X } from "lucide-react";
+import { GitBranch, MessageSquare, Square, SquareTerminal, X } from "lucide-react";
 import { ThinkingOrb } from "thinking-orbs";
 import type { Pane, Session } from "../lib/types";
 import { displayState } from "../lib/groups";
@@ -13,6 +13,9 @@ export default function PaneHeader({ pane, session, now, focused, onClose, onSto
       {(st === "plain" || st === "ready") && <span className="dot" />}
       {st === "done" && <span className="dot ok" />}
       {waiting && <span className="dot warn" title={st === "approval" ? "Needs approval" : "Question"} />}
+      {pane.agent === "hermes" && pane.view && (pane.view === "chat"
+        ? <span className="pane-view" title="채팅 보기"><MessageSquare size={14} strokeWidth={1.5} /></span>
+        : <span className="pane-view" title="터미널(TUI) 보기"><SquareTerminal size={14} strokeWidth={1.5} /></span>)}
       <span className="pane-title">{agentName(pane.agent)} · {pane.title}</span>
       {pane.branch && <span className="branch"><GitBranch size={13} strokeWidth={1.5} /><span className="ellipsis">{pane.branch}</span></span>}
       <span className="grow" />

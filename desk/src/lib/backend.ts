@@ -1,8 +1,9 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import type { AgentKind } from "./types";
-export const isTauri = "__TAURI_INTERNALS__" in window;
+import type { AgentKind, PaneView } from "./types";
+export type { PaneView } from "./types";
+export const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 /** Tauri: 네이티브 폴더 선택창. 브라우저: null (호출 측이 입력칸을 보여준다). */
 export async function pickFolder(): Promise<string | null> {
@@ -12,7 +13,7 @@ export async function pickFolder(): Promise<string | null> {
   return typeof p === "string" ? p : null;
 }
 
-export type PaneInfo = { id: string; agent: AgentKind; cwd: string; repoRoot: string | null; branch: string | null; window: string; createdAt: number; sessionId: string | null };
+export type PaneInfo = { id: string; agent: AgentKind; cwd: string; repoRoot: string | null; branch: string | null; window: string; createdAt: number; sessionId: string | null; view: PaneView };
 
 export type SessionInfo = {
   agent: AgentKind; sessionId: string; state: string; since: number; turnStart: number | null; lastTurn: number | null; steps: number;
@@ -32,7 +33,15 @@ export async function initBackend(): Promise<void> {
   WINDOW = getCurrentWindow().label;
 }
 
-export const paneCreate = (agent: AgentKind, cwd: string, resume?: string) => invoke<string>("pane_create", { agent, cwd, resume });
+export const paneCreate = (agent: AgentKind, cwd: string, resume?: string, view?: PaneView) => invoke<string>("pane_create", { agent, cwd, resume, view });
+export function chatConnect(id: string, onLine: (line: string) => void): Promise<void> {
+  const channel = new Channel<string>();
+  channel.onmessage = onLine;
+  return invoke("chat_connect", { id, onLine: channel });
+}
+export const chatSend = (id: string, line: string) => invoke<void>("chat_send", { id, line });
+export const chatClose = (id: string) => invoke<void>("chat_close", { id });
+export const paneSetSession = (id: string, sessionId: string) => invoke<void>("pane_set_session", { id, sessionId });
 export const sessionsSnapshot = () => invoke<SessionInfo[]>("sessions_snapshot");
 export const onSessions = (cb: (s: SessionInfo[]) => void): Promise<() => void> => listen<SessionInfo[]>("desk://sessions", (e) => cb(e.payload));
 export const sessionApprove = (sessionId: string, allow: boolean) => invoke<void>("session_approve", { sessionId, allow });
@@ -55,4 +64,7 @@ export const windowNew = () => invoke<void>("window_new");
 export const windowFocus = (label: string) => invoke<void>("window_focus", { label });
 export const paneFocus = (id: string) => invoke<void>("pane_focus", { id });
 export const onFocusPane = (cb: (id: string) => void): Promise<() => void> => listen<string>("desk://focus", (e) => cb(e.payload));
-export const onPanes = (cb: (p: PaneInfo[]) => void): Promise<() => void> => listen<PaneInfo[]>("desk://panes", (e) => cb(e.payload));
+export const onChatApprove = (cb: (p: { paneId: string; allow: boolean }) => void): Promise<() => void> => listen<{ paneId: string; allow: boolean }>("desk://chat-approve", (e) => cb(e.payload));
+export const onChatStop = (cb: (p: { paneId: string }) => void): Promise<() => void> => listen<{ paneId: string }>("desk://chat-stop", (e) => cb(e.payload));
+export const emitChatStop = (paneId: string): Promise<void> => emit("desk://chat-stop", { paneId });
+export const onPanes =(cb: (p: PaneInfo[]) => void): Promise<() => void> => listen<PaneInfo[]>("desk://panes", (e) => cb(e.payload));

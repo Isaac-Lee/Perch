@@ -1,5 +1,5 @@
-import { expect, test } from "vitest";
-import { clampSidebarWidth, pushRecent } from "./uiSettings";
+import { expect, test, vi } from "vitest";
+import { clampSidebarWidth, loadNewPane, pushRecent } from "./uiSettings";
 
 test("pushRecent moves to front, dedupes, caps at 8", () => {
   expect(pushRecent(["a", "b", "c"], "c")).toEqual(["c", "a", "b"]);
@@ -23,4 +23,17 @@ test("groupSummary counts my-turn and working sessions", () => {
   const mk = (state: Session["state"], seen = 1000) => ({ state, seen } as Session);
   const g = { sessions: [mk("approval"), mk("idle"), mk("tool"), mk("thinking"), mk("tool", 0), mk("closed")] } as Group;
   expect(groupSummary(g, 1000)).toEqual({ mine: 1, working: 2 });
+});
+
+test("loadNewPane view: tui only when saved exactly as tui", () => {
+  const store: Record<string, string> = {};
+  vi.stubGlobal("localStorage", { getItem: (k: string) => store[k] ?? null, setItem: (k: string, v: string) => { store[k] = v; } });
+  expect(loadNewPane("/f").view).toBe("chat");
+  store["perch.newPane"] = JSON.stringify({ agent: "hermes" });
+  expect(loadNewPane("/f").view).toBe("chat");
+  store["perch.newPane"] = JSON.stringify({ agent: "hermes", view: "tui" });
+  expect(loadNewPane("/f").view).toBe("tui");
+  store["perch.newPane"] = JSON.stringify({ agent: "hermes", view: "x" });
+  expect(loadNewPane("/f").view).toBe("chat");
+  vi.unstubAllGlobals();
 });
