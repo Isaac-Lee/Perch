@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUpDown, Check, ChevronDown, ChevronRight, PanelLeftClose, Plus, Search, X } from "lucide-react";
 import type { Group, Pane, Session } from "../lib/types";
-import { MY_TURN, SESSION_SORTS, displayState, groupSessions, groupSummary, matchSession, moveInOrder, type SessionSort } from "../lib/groups";
+import { SESSION_SORTS, displayState, groupSessions, groupSummary, matchSession, moveInOrder, waitingOnYou, type SessionSort } from "../lib/groups";
 import SessionRow from "./SessionRow";
 import { clampSidebarWidth, SIDEBAR_DEFAULT, MAX_ORDER, loadArchived, loadCollapsed, loadDismissed, saveDismissed, loadSessionOrder, loadSessionSort, saveArchived, saveCollapsed, saveSessionOrder, saveSessionSort } from "../lib/uiSettings";
 import { useScrollReveal } from "../lib/useScrollReveal";
@@ -93,7 +93,7 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
   const focusedSession = panes.find((p) => p.id === focusedPaneId)?.sessionId;
   const live = allGroups.flatMap((g) => g.sessions);
   const working = live.filter((s) => ["running", "thinking", "tool"].includes(displayState(s, now))).length;
-  const mine = live.filter((s) => MY_TURN.includes(s.state)).length;
+  const mine = live.filter((s) => waitingOnYou(s, now)).length;
   const todayTok = useMemo(() => summarize(sessions, "today", now).total.total, [sessions, now]);
   const isFolded = (k: string) => !q && folded.has(k);
   const isOpen = (k: string) => !!q || open.has(k);

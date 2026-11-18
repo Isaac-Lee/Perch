@@ -80,17 +80,19 @@
 | 이벤트 | 변경 |
 |---|---|
 | `on_session_open`, `on_session_start` | 파일이 없으면 만든다 (`state: idle`). 있으면 `seen`만 갱신 |
-| `pre_llm_call` | `turnStart = now`, `steps = 0`, `prompt`, `state = thinking`, `pending = null` |
-| `pre_tool_call` | `state = tool`, `tool`, `toolDetail`, `steps += 1` |
-| `post_tool_call` | `state = thinking`. 도구 이름이 `todo`면 `todos` 갱신 (인자 형태를 모르면 건드리지 않는다) |
+| `pre_llm_call` | `turnStart = now`, `steps = 0`, `prompt`, `state = thinking`, `pending = null`, `asks = false`, `ask = ""` |
+| `pre_tool_call` | 턴이 열려 있을 때만(`turnStart != null`): `state = tool`, `tool`, `toolDetail`, `steps += 1`. 턴 밖에서는 `seen`만 |
+| `post_llm_call` | `asks`/`ask` = 응답(`extra.assistant_response`)이 질문으로 끝나는지와 그 질문 한 줄 (`ends_with_question`, 휴리스틱) |
+| `post_tool_call` | 턴이 열려 있을 때만 `state = thinking`. 도구 이름이 `todo`면 `todos` 갱신 (인자 형태를 모르면 건드리지 않는다) |
 | `on_human_input_request` | `state = approval`(kind가 approval 계열) 또는 `question`, `pending` 설정 |
-| `on_human_input_resolved` | `pending = null`, `state = thinking` |
-| `on_session_end` | `state = idle`, `lastTurn = now - turnStart`, `turnStart = null`, `tool = ""`, `toolDetail = ""` |
+| `on_human_input_resolved` | `pending = null`. 턴이 열려 있으면 `state = thinking`, 아니면 approval/question이었던 상태만 `idle`로 |
+| `on_session_end` | `pending = null`, `state = idle`, `lastTurn = now - turnStart`, `turnStart = null`, `tool = ""`, `toolDetail = ""` |
 | `on_session_finalize` | `state = closed` |
 | `on_session_delete` | 파일 삭제 (`deleted_ids`가 있으면 그 파일들도) |
 | `subagent_start` | **부모** 파일의 `subagents[childId]` 추가 |
 | `subagent_stop` | **부모** 파일의 `subagents[childId]` 제거 |
 
+- `subagent_start/stop`의 부모 id는 Hermes가 최상위 `session_id`로 올리고 `extra`에서 뺀다 (`agent/shell_hooks.py` `_payload_fields`). `extra.parent_session_id`는 없다.
 - 상태가 바뀔 때만 `since`를 갱신한다. 모든 이벤트에서 `seen = now`.
 - 자식(서브에이전트) 세션 자신의 이벤트: `subagent_start`로 알려진 `childId`의 이벤트는 자식 파일을 만들지 않고, 부모 파일의 `subagents[childId].tool`만 갱신한다. 자식→부모 대응은 `<PERCH_HOME>/sessions/.children/<childId>` 파일(내용: 부모 id)로 기록한다.
 - 쓰기는 원자적으로 한다: 같은 폴더의 임시 파일에 쓰고 rename. 동시 갱신은 `<파일>.lock`을 `create_new`로 잡아 직렬화한다 (최대 200ms 재시도 후에는 잠금 없이 진행, 2초 넘은 잠금 파일은 버려진 것으로 보고 지운다).

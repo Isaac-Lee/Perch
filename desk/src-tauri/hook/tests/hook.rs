@@ -115,3 +115,108 @@ fn binary_never_fails() {
     let o = bin(&["hermes"], &file.join("sub"), &good);
     assert!(o.status.success() && o.stdout.is_empty());
 }
+
+fn tool_ev(name: &str) -> Value {
+    let mut e = ev(name, json!({}));
+    e["tool_name"] = json!("terminal");
+    e["tool_input"] = json!({"command": "ls"});
+    e
+}
+
+#[test]
+fn late_events_after_turn_end_stay_idle() {
+    let st = step(Value::Null, ev("pre_llm_call", json!({"user_message": "hi"})), 10);
+    let st = step(st, tool_ev("pre_tool_call"), 11);
+    let st = step(st, tool_ev("post_tool_call"), 12);
+    assert_eq!(st["state"], "thinking");
+    let st = step(st, ev("on_session_end", json!({})), 13);
+    assert_eq!((st["state"].as_str(), st["since"].as_u64()), (Some("idle"), Some(13)));
+    // post-turn review fork / late delegated tool: bookkeeping only
+    let late = step(st.clone(), tool_ev("post_tool_call"), 20);
+    assert_eq!((late["state"].as_str(), late["since"].as_u64(), late["seen"].as_u64()), (Some("idle"), Some(13), Some(20)));
+    let late = step(st.clone(), tool_ev("pre_tool_call"), 21);
+    assert_eq!((late["state"].as_str(), late["tool"].as_str(), late["steps"].as_u64()), (Some("idle"), Some(""), Some(1)));
+    // a new turn works as before
+    let st = step(late, ev("pre_llm_call", json!({"user_message": "again"})), 30);
+    let st = step(st, tool_ev("pre_tool_call"), 31);
+    assert_eq!(st["state"], "tool");
+}
+
+#[test]
+fn human_input_outside_a_turn() {
+    let st = step(Value::Null, ev("on_session_open", json!({})), 1);
+    let st = step(st, ev("on_human_input_request", json!({"kind":"clarify","request_id":"r","prompt":"q"})), 2);
+    assert_eq!(st["state"], "question");
+    let st = step(st, ev("on_human_input_resolved", json!({})), 3);
+    assert_eq!((st["state"].as_str(), st["pending"].is_null()), (Some("idle"), true));
+    // resolved after the turn ended: stays idle
+    let st = step(Value::Null, ev("pre_llm_call", json!({"user_message": "x"})), 10);
+    let st = step(st, ev("on_session_end", json!({})), 11);
+    let st = step(st, ev("on_human_input_resolved", json!({})), 12);
+    assert_eq!(st["state"], "idle");
+}
+
+#[test]
+fn force_idle_only_clears_working_files() {
+    let d = tempfile::tempdir().unwrap();
+    let h = d.path();
+    let f = h.join("sessions/hermes-local-a.json");
+    let read = || -> Value { serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap() };
+    let go = |e: Value, t: u64| run(&e.to_string(), h, t).unwrap();
+    let dir = h.join("sessions");
+    assert!(!perch_hook::force_idle(&dir, "local-a", 5), "no file");
+    go(ev("pre_llm_call", json!({"user_message": "x"})), 10);
+    go(tool_ev("pre_tool_call"), 11);
+    assert!(perch_hook::force_idle(&dir, "local-a", 20));
+    let st = read();
+    assert_eq!((st["state"].as_str(), st["turnStart"].is_null(), st["tool"].as_str(), st["since"].as_u64()), (Some("idle"), true, Some(""), Some(20)));
+    assert!(!perch_hook::force_idle(&dir, "local-a", 30), "idle is a no-op");
+    assert_eq!(read()["since"], 20);
+    go(ev("on_session_finalize", json!({})), 31);
+    assert!(!perch_hook::force_idle(&dir, "local-a", 32), "closed is a no-op");
+    assert_eq!(read()["state"], "closed");
+    assert!(!perch_hook::force_idle(&dir, "../x", 33));
+}
+
+#[test]
+fn subagent_hooks_use_top_level_session_id() {
+    // Hermes puts parent_session_id at the top level (as session_id) and drops it from `extra`
+    let d = tempfile::tempdir().unwrap();
+    let h = d.path();
+    run(&ev("on_session_open", json!({})).to_string(), h, 1).unwrap();
+    let start = json!({"hook_event_name":"subagent_start","session_id":"local-a","extra":{"child_session_id":"local-c","child_role":"leaf","child_goal":"g"}});
+    run(&start.to_string(), h, 2).unwrap();
+    let st: Value = serde_json::from_str(&std::fs::read_to_string(h.join("sessions/hermes-local-a.json")).unwrap()).unwrap();
+    assert_eq!(st["subagents"]["local-c"]["role"], "leaf");
+}
+
+#[test]
+fn ends_with_question_table() {
+    use perch_hook::ends_with_question as q;
+    for yes in [
+        "정리했어요. 이대로 진행해볼까요?", "Shall I go ahead?", "진행할까요？", "**A로 할까요?**", "어느 쪽이 좋을까요? 🙂", "(괜찮을까요?)", "\"Which one?\"",
+        "다음 중 어느 쪽으로 할까요?\n\n- A: 빠름\n- B: 안전", "Which do you prefer?\n1. fast\n2. safe", "끝났어요.\n\n뭘 할까요?\n\n```\ncode?\n```",
+    ] {
+        assert!(q(yes), "{yes}");
+    }
+    for no in ["", "   \n\n", "다 끝났습니다.", "Done. Let me know if...", "왜 그런지 궁금하죠? 아래에 정리했습니다.", "should I? no, done",
+        "```\nwhat?\n```", "목록:\n- a\n- b", "a?\n1. a\n2. b\n3. c\n4. d\n5. e\n6. f\n7. g\n8. h"] {
+        assert!(!q(no), "{no}");
+    }
+    assert_eq!(perch_hook::last_question("끝. 다음 단계로 갈까요?").as_deref(), Some("다음 단계로 갈까요?"));
+    assert_eq!(perch_hook::last_question("Which?\n- a\n- b").as_deref(), Some("Which?"));
+}
+
+#[test]
+fn post_llm_call_sets_and_pre_llm_call_clears_asks() {
+    let st = step(Value::Null, ev("pre_llm_call", json!({"user_message": "x"})), 10);
+    let st = step(st, ev("post_llm_call", json!({"assistant_response": "이걸로 할까요?"})), 11);
+    assert_eq!((st["asks"].as_bool(), st["ask"].as_str(), st["state"].as_str()), (Some(true), Some("이걸로 할까요?"), Some("thinking")));
+    let st = step(st, ev("on_session_end", json!({})), 12);
+    assert_eq!(st["asks"], true);
+    let st = step(st, ev("post_llm_call", json!({"assistant_response": "끝났습니다."})), 13);
+    assert_eq!((st["asks"].as_bool(), st["ask"].as_str()), (Some(false), Some("")));
+    let st = step(st, ev("post_llm_call", json!({"assistant_response": "뭘까요?"})), 14);
+    let st = step(st, ev("pre_llm_call", json!({"user_message": "y"})), 15);
+    assert_eq!((st["asks"].as_bool(), st["ask"].as_str()), (Some(false), Some("")));
+}

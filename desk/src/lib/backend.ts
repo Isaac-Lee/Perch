@@ -18,6 +18,7 @@ export type PaneInfo = { id: string; agent: AgentKind; cwd: string; repoRoot: st
 export type SessionInfo = {
   agent: AgentKind; sessionId: string; state: string; since: number; turnStart: number | null; lastTurn: number | null; steps: number;
   tool: string; toolDetail: string; prompt: string; pending: { kind: string; id: string; text: string } | null;
+  asks?: boolean; ask?: string;
   subagents: { id: string; role: string; goal: string; start: number; tool?: string }[];
   todos: { text: string; status: string }[]; seen: number;
   paneId: string | null; title: string | null; cwd: string; repoRoot: string | null; branch: string | null;
@@ -45,6 +46,7 @@ export const paneSetSession = (id: string, sessionId: string) => invoke<void>("p
 export const sessionsSnapshot = () => invoke<SessionInfo[]>("sessions_snapshot");
 export const onSessions = (cb: (s: SessionInfo[]) => void): Promise<() => void> => listen<SessionInfo[]>("desk://sessions", (e) => cb(e.payload));
 export const sessionApprove = (sessionId: string, allow: boolean) => invoke<void>("session_approve", { sessionId, allow });
+export const sessionForceIdle = (sessionId: string) => invoke<boolean>("session_force_idle", { sessionId });
 export const hermesStatus = () => invoke<HermesStatus>("hermes_status");
 export const hermesConnect = () => invoke<HermesStatus>("hermes_connect");
 export const hermesDisconnect = () => invoke<HermesStatus>("hermes_disconnect");

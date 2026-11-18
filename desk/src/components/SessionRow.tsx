@@ -6,7 +6,7 @@ import { fmtTok, totalTokens } from "../lib/usage";
 
 export const agentName = (a: AgentKind) => (a === "hermes" ? "Hermes" : a === "opencode" ? "OpenCode" : "Shell");
 
-const TONE = { running: "ok", thinking: "ok", tool: "ok", approval: "warn", question: "warn", done: "ok", ready: "muted", plain: "muted", closed: "muted", stale: "muted" } as const;
+const TONE = { running: "ok", thinking: "ok", tool: "ok", approval: "warn", question: "warn", reply: "warn", done: "ok", ready: "muted", plain: "muted", closed: "muted", stale: "muted" } as const;
 const TODO_ICON: Record<Todo["status"], typeof Circle> = { done: CircleCheck, in_progress: CircleDot, pending: Circle };
 
 export interface RowDrag { dragging: boolean; onPointerDown: (e: React.PointerEvent<HTMLElement>) => void; onMove: (dir: -1 | 1) => void }
@@ -44,6 +44,7 @@ export default function SessionRow({ s, now, focused, onClick, onApprove, onStop
       </div>
       <div className="row-line"><span className="row-prompt ellipsis" title={s.prompt}>{sessionTitle(s)}</span>{s.subagents.length > 0 && <span className="row-sub">{s.subagents.length === 1 ? "1 agent" : `${s.subagents.length} agents`}</span>}{s.usage && <span className="row-tok" title="Tokens">{fmtTok(totalTokens(s.usage))}</span>}</div>
       {s.pending && <div className="row-pending ellipsis">{s.pending.text}</div>}
+      {!s.pending && st === "reply" && s.ask && <div className="row-pending ellipsis" title={s.ask}>{s.ask}</div>}
       {s.state === "approval" && (
         <div className="row-actions">
           <button className="btn primary" onClick={(e) => { e.stopPropagation(); onApprove(true); }}>Allow</button>

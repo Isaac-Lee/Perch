@@ -114,12 +114,12 @@ npm run tauri build   # 릴리스 exe와 설치 파일
 
 ## 6. 다음에 할 일
 
-**릴리스.** 최신은 `v0.3.0`(Hermes 채팅 보기)이고 릴리스 노트는 `docs/releases/v0.3.0.md`다. 이전 `v0.1.0`은 2026-11-18에 [Releases](https://github.com/Isaac-Lee/Perch/releases)에 게시됐다 (`Perch_0.1.0_x64-setup.exe`, `Perch_0.1.0_aarch64.dmg`). 태그 빌드는 초안 릴리스에 설치 파일을 붙이고, 확인 뒤 `gh release edit v<버전> --draft=false --latest`로 게시한다. 다음 버전은 `tauri.conf.json`, `Cargo.toml`(앱과 `hook/`), `package.json`과 두 lock 파일의 버전을 올리고 `v<버전>` 태그를 push하면 같은 과정이 돈다. v0.3.0 준비 커밋도 이 파일들만 고쳤다.
+**릴리스.** 최신은 `v0.4.0`(채팅 보기 개선과 칸·세션 배치)이고 릴리스 노트는 `docs/releases/v0.4.0.md`다. 직전 `v0.3.0`(Hermes 채팅 보기)의 노트는 `docs/releases/v0.3.0.md`다. 이전 `v0.1.0`은 2026-11-18에 [Releases](https://github.com/Isaac-Lee/Perch/releases)에 게시됐다 (`Perch_0.1.0_x64-setup.exe`, `Perch_0.1.0_aarch64.dmg`). 태그 빌드는 초안 릴리스에 설치 파일을 붙이고, 확인 뒤 `gh release edit v<버전> --draft=false --latest`로 게시한다. 다음 버전은 `tauri.conf.json`, `Cargo.toml`(앱과 `hook/`), `package.json`과 두 lock 파일의 버전을 올리고 `v<버전>` 태그를 push하면 같은 과정이 돈다. v0.3.0 준비 커밋도 이 파일들만 고쳤다.
 
 - 라이선스는 MIT + Commons Clause다 (`LICENSE`). 회사 내부 사용은 허용, 판매는 금지 (사용자 결정, 2026-11-18).
 - Intel 맥용 빌드는 없다. 필요하면 워크플로 matrix에 줄을 추가한다.
 
-**채팅 보기에 더한 것 (v0.3.0 이후)**
+**채팅 보기에 더한 것 (v0.4.0)**
 - 코드 블록 구문 강조 (diff 포함)
 - 슬래시 명령 자동완성과 실행
 - 추론 강도 선택
@@ -130,7 +130,12 @@ npm run tauri build   # 릴리스 exe와 설치 파일
 - 도구 줄을 펼치면 인자, diff, 결과가 보인다.
 - 입력창의 빛나는 테두리 효과(border-beam)는 없앴다.
 
-**그 밖에 더한 것 (v0.3.0 이후)**
+**그 밖에 더한 것 (v0.4.0)**
+- 설정에서 테마를 고른다: Dark, Midnight, Black, Light. Light에서도 터미널 칸은 어두운 색을 유지한다.
+- 세션 행의 X는 목록에서 내리기(Recent로)만 한다. 보관은 별도 버튼이다.
+- 모든 칸 머리줄에 종류 아이콘이 나오고, New session 메뉴와 같은 아이콘을 쓴다.
+- 답변이 질문으로 끝나면 Done 대신 Reply needed로 나온다. 답변 끝의 물음표를 보는 추정이다.
+- 답변이 끝난 뒤 늦게 온 이벤트로 Thinking에 고착되던 문제를 고쳤다. Stop을 누르면 멈춘 표시가 풀린다.
 - 칸은 가로로 나란히 놓인다 (열 최소 폭 380px). 자리가 없으면 열 안에서 위아래로 쌓인다. 칸 머리줄을 끌어 다른 칸의 가장자리에 놓으면 배치가 바뀐다. 배치는 저장된다.
 - 사이드바 세션은 끌어서 순서를 바꿀 수 있다 (같은 폴더 안에서). 정렬 기준은 Status, Recent activity, Name, Manual order.
 - 사용량 그래프 막대에 마우스를 올리면 정확한 토큰 수가 나온다. 큰 수는 B 단위로 줄여 쓴다.

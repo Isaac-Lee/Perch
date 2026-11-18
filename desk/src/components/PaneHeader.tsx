@@ -10,12 +10,12 @@ import { agentName } from "./SessionRow";
 export default function PaneHeader({ pane, session, now, focused, onClose, onStop, dragging, onDragStart }: { pane: Pane; session?: Session; now: number; focused: boolean; onClose: () => void; onStop: () => void; dragging?: boolean; onDragStart?: (e: React.PointerEvent<HTMLElement>) => void }) {
   const light = useIsLight();
   const st = session ? displayState(session, now) : null;
-  const waiting = st === "approval" || st === "question";
+  const waiting = st === "approval" || st === "question" || st === "reply";
   return (
     <div className={`pane-head${focused ? " focused" : ""}${dragging ? " dragging" : ""}`} onPointerDown={onDragStart}>
       {(st === "plain" || st === "ready") && <span className="dot" />}
       {st === "done" && <span className="dot ok" />}
-      {waiting && <span className="dot warn" title={st === "approval" ? "Needs approval" : "Question"} />}
+      {waiting && <span className="dot warn" title={st === "approval" ? "Needs approval" : st === "reply" ? "Reply needed" : "Question"} />}
       {(() => { const { Icon, title } = paneIcon(pane.agent, pane.view); return <span className="pane-view" title={title}><Icon size={14} strokeWidth={1.5} /></span>; })()}
       <span className="pane-title">{agentName(pane.agent)} · {pane.title}</span>
       {pane.branch && <span className="branch"><GitBranch size={13} strokeWidth={1.5} /><span className="ellipsis">{pane.branch}</span></span>}

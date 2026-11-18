@@ -1,26 +1,30 @@
 import type { Group, Session, SessionStateName } from "./types";
 
 export const COMMON_LABEL = "Shared workspace";
+/** States that are a real prompt (approve buttons, approval keys). "reply" (see displayState) is not one of them. */
 export const MY_TURN: SessionStateName[] = ["approval", "question"];
 
 const STALE_SEC = 600;
 const RECENT_SEC = 86400;
 const DROP_SEC = 604800;
 
-export type DisplayState = Exclude<SessionStateName, "idle"> | "stale" | "done" | "ready";
+export type DisplayState = Exclude<SessionStateName, "idle"> | "stale" | "done" | "ready" | "reply";
 
 export function displayState(s: Session, now: number): DisplayState {
-  if (s.state === "idle") return s.prompt ? "done" : "ready";
+  if (s.state === "idle") return s.prompt ? (s.asks ? "reply" : "done") : "ready";
   const working = s.state === "running" || s.state === "thinking" || s.state === "tool";
   return working && now - s.seen > STALE_SEC ? "stale" : s.state;
 }
 
 /** 화면에 보여줄 경과 초. null이면 시간을 표시하지 않는다. */
+/** Waiting on the user: a real prompt, or a finished reply that ends with a question. */
+export const waitingOnYou = (s: Session, now: number): boolean => MY_TURN.includes(s.state) || displayState(s, now) === "reply";
+
 export function shownSeconds(s: Session, now: number): number | null {
   switch (displayState(s, now)) {
     case "running": case "thinking": case "tool": return now - (s.turnStart ?? s.since);
     case "approval": case "question": case "stale": return now - s.since;
-    case "done": return s.lastTurn ?? null;
+    case "done": case "reply": return s.lastTurn ?? null;
     default: return null;
   }
 }
@@ -29,6 +33,7 @@ function rank(s: Session, now: number): number {
   switch (displayState(s, now)) {
     case "approval": return 0;
     case "question": return 1;
+    case "reply": return 1.5;
     case "done": return 2;
     case "plain":
     case "ready": return 3.5;
@@ -111,7 +116,7 @@ export function groupSessions(sessions: Session[], now: number, sort: SessionSor
     g.sessions.sort(cmp[sort]);
     g.recent.sort((a, b) => b.seen - a.seen);
   }
-  const mine = (g: Group) => g.sessions.some((s) => MY_TURN.includes(s.state));
+  const mine = (g: Group) => g.sessions.some((s) => waitingOnYou(s, now));
   // common group last; groups with a my-turn session first
   return groups.sort((a, b) => Number(a.isCommon) - Number(b.isCommon) || Number(mine(b)) - Number(mine(a)));
 }
@@ -128,7 +133,7 @@ export function matchSession(s: Session, q: string): boolean {
 export function groupSummary(g: Group, now: number): { mine: number; working: number } {
   let mine = 0, working = 0;
   for (const s of g.sessions) {
-    if (MY_TURN.includes(s.state)) mine++;
+    if (waitingOnYou(s, now)) mine++;
     else if (["running", "thinking", "tool"].includes(displayState(s, now))) working++;
   }
   return { mine, working };

@@ -10,6 +10,9 @@
 | 쓰기 | 임시 파일에 쓰고 rename (원자적) |
 | 오류 | 어떤 오류도 에이전트로 던지지 않는다 |
 
+## 등록하는 Hermes hook
+`hermes.rs` `EVENTS`: on_session_open, on_session_start, pre_llm_call, post_llm_call, pre_tool_call, post_tool_call, on_human_input_request, on_human_input_resolved, on_session_end, on_session_finalize, on_session_delete, subagent_start, subagent_stop. 목록이 바뀌면 사용자가 Connect를 다시 눌러야 새 hook이 등록된다. `post_llm_call`은 응답 끝이 질문인지(`asks`, `ask`) 알려 주는 데 쓴다.
+
 ## 선택 필드 `pane`
 - 어댑터가 칸의 환경변수 `PERCH_PANE`을 볼 수 있으면 그 값을 `"pane": "<paneId>"`로 쓴다.
 - 앱은 칸 id가 같고 칸의 `agent`가 세션의 `agent`와 같고 칸이 비어 있으면 그 칸에 정확히 연결한다 (`desk.rs` `relink_entries`).

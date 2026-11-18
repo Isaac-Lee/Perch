@@ -2,10 +2,10 @@ use serde::Serialize;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
-const EVENTS: [&str; 12] = [
+const EVENTS: [&str; 13] = [
     "on_session_open", "on_session_start", "pre_llm_call", "pre_tool_call", "post_tool_call",
     "on_human_input_request", "on_human_input_resolved", "on_session_end", "on_session_finalize",
-    "on_session_delete", "subagent_start", "subagent_stop",
+    "on_session_delete", "subagent_start", "subagent_stop", "post_llm_call",
 ];
 const BEGIN: &str = "# >>> perch";
 const END: &str = "# <<< perch";

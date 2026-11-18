@@ -167,3 +167,23 @@ test("shownSeconds: done is frozen at lastTurn, working counts from turnStart, r
   expect(shownSeconds(mk(), NOW)).toBeNull();
   expect(shownSeconds(mk({ state: "closed" }), NOW)).toBeNull();
 });
+
+test("reply: idle session whose last reply asks a question", () => {
+  const r = mk({ repoRoot: "D:/r/rp", state: "idle", prompt: "x", asks: true, ask: "A로 할까요?", lastTurn: 7 });
+  expect(displayState(r, NOW)).toBe("reply");
+  expect(displayState(mk({ state: "idle", prompt: "x", asks: false }), NOW)).toBe("done");
+  expect(displayState(mk({ state: "idle", asks: true }), NOW)).toBe("ready"); // no prompt: nothing was asked yet
+  expect(displayState(mk({ state: "thinking", prompt: "x", asks: true }), NOW)).toBe("thinking");
+  expect(shownSeconds(r, NOW)).toBe(7);
+  // rank: question < reply < done
+  const q = mk({ repoRoot: "D:/r/rp", state: "question" });
+  const d = mk({ repoRoot: "D:/r/rp", state: "idle", prompt: "x" });
+  const t = mk({ repoRoot: "D:/r/rp", state: "tool" });
+  const g = groupSessions([d, t, r, q], NOW);
+  expect(g[0].sessions).toEqual([q, r, d, t]);
+  // counts as waiting on the user
+  expect(groupSummary(g[0], NOW)).toEqual({ mine: 2, working: 1 });
+  // and pulls its group to the top
+  const other = groupSessions([mk({ repoRoot: "D:/r/z", state: "running" }), mk({ repoRoot: "D:/r/a", state: "idle", prompt: "x", asks: true })], NOW);
+  expect(other[0].label).toBe("a");
+});
