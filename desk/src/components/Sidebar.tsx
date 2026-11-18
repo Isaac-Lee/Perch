@@ -3,21 +3,29 @@ import { ChevronDown, ChevronRight, PanelLeftClose, Plus, Search, X } from "luci
 import type { Pane, Session } from "../lib/types";
 import { MY_TURN, displayState, groupSessions, groupSummary, matchSession } from "../lib/groups";
 import SessionRow from "./SessionRow";
-import { clampSidebarWidth, SIDEBAR_DEFAULT, loadCollapsed, saveCollapsed } from "../lib/uiSettings";
+import { clampSidebarWidth, SIDEBAR_DEFAULT, loadArchived, loadCollapsed, saveArchived, saveCollapsed } from "../lib/uiSettings";
 import { useScrollReveal } from "../lib/useScrollReveal";
 import { fmtTok, summarize } from "../lib/usage";
 
 import { formatShortcut } from "../lib/shortcuts";
+
+const hiddenIn = (archived: Set<string>, s: Session) => !s.paneId && archived.has(s.sessionId);
 
 export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, onApprove, onStop, onCollapse, onUsage, onNew, newSession, width, onResize }: {
   sessions: Session[]; panes: Pane[]; now: number; focusedPaneId: string | null;
   onFocus: (id: string) => void; onApprove: (id: string, allow: boolean) => void; onStop: (id: string) => void; onCollapse: () => void; onUsage: () => void; onNew: (cwd: string) => void; newSession: React.ReactNode;
   width: number; onResize: (w: number) => void;
 }) {
-  const allGroups = useMemo(() => groupSessions(sessions, now), [sessions, now]);
+  // An archived session stays hidden until it gets an open pane again (resumed).
+  const [archived, setArchived] = useState<Set<string>>(() => new Set(loadArchived()));
+  const toggleArchive = (id: string) => setArchived((o) => { const n = new Set(o); if (!n.delete(id)) n.add(id); saveArchived([...n]); return n; });
+  const shown = useMemo(() => sessions.filter((s) => !hiddenIn(archived, s)), [sessions, archived]);
+  const allGroups = useMemo(() => groupSessions(shown, now), [shown, now]);
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
-  const groups = useMemo(() => (q ? groupSessions(sessions.filter((s) => matchSession(s, q)), now) : allGroups), [q, sessions, now, allGroups]);
+  const groups = useMemo(() => (q ? groupSessions(shown.filter((s) => matchSession(s, q)), now) : allGroups), [q, shown, now, allGroups]);
+  const archivedList = useMemo(() => sessions.filter((s) => hiddenIn(archived, s) && (!q || matchSession(s, q))).sort((a, b) => b.seen - a.seen), [sessions, archived, q]);
+  const [showArchived, setShowArchived] = useState(false);
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [folded, setFolded] = useState<Set<string>>(() => new Set(loadCollapsed()));
   const fold = (k: string) => setFolded((o) => { const n = new Set(o); if (!n.delete(k)) n.add(k); saveCollapsed([...n]); return n; });
@@ -49,6 +57,11 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
   const todayTok = useMemo(() => summarize(sessions, "today", now).total.total, [sessions, now]);
   const isFolded = (k: string) => !q && folded.has(k);
   const isOpen = (k: string) => !!q || open.has(k);
+  const row = (s: Session) => (
+    <SessionRow key={s.sessionId} s={s} now={now} focused={s.sessionId === focusedSession}
+      onClick={() => onFocus(s.sessionId)} onApprove={(a) => onApprove(s.sessionId, a)} onStop={() => onStop(s.sessionId)}
+      onArchive={s.paneId ? undefined : () => toggleArchive(s.sessionId)} archived={hiddenIn(archived, s)} />
+  );
   const toggle = (k: string) => setOpen((o) => { const n = new Set(o); if (!n.delete(k)) n.add(k); return n; });
   return (
     <aside className="sidebar" style={{ width }}>
@@ -72,7 +85,7 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
       </div>
       <div className="side-body" ref={bodyRef}>
         <div>
-        {q && groups.length === 0 && <div className="side-empty">일치하는 세션이 없습니다.</div>}
+        {q && groups.length === 0 && archivedList.length === 0 && <div className="side-empty">일치하는 세션이 없습니다.</div>}
         {groups.map((g) => (
           <div key={g.key} className="group">
             <div className="group-head">
@@ -89,11 +102,10 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
                 );
               })()}
             </button>
-            {!g.isCommon && <button className="icon-btn group-add" aria-label={`New session in ${g.label}`} title={`New session · ${g.key}`} onClick={() => onNew(g.key)}><Plus size={14} strokeWidth={1.5} /></button>}
+            {!g.isCommon && <button className="icon-btn group-add" aria-label={`New session in ${g.label}`} title={`New session · ${g.path}`} onClick={() => onNew(g.path)}><Plus size={14} strokeWidth={1.5} /></button>}
             </div>
             {!isFolded(g.key) && g.sessions.map((s) => (
-              <SessionRow key={s.sessionId} s={s} now={now} focused={s.sessionId === focusedSession}
-                onClick={() => onFocus(s.sessionId)} onApprove={(a) => onApprove(s.sessionId, a)} onStop={() => onStop(s.sessionId)} />
+              row(s)
             ))}
             {!isFolded(g.key) && g.recent.length > 0 && (
               <>
@@ -102,13 +114,21 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
                   Recent <span className="count">{g.recent.length}</span>
                 </button>
                 {isOpen(g.key) && g.recent.map((s) => (
-                  <SessionRow key={s.sessionId} s={s} now={now} focused={s.sessionId === focusedSession}
-                    onClick={() => onFocus(s.sessionId)} onApprove={(a) => onApprove(s.sessionId, a)} onStop={() => onStop(s.sessionId)} />
+                  row(s)
                 ))}
               </>
             )}
           </div>
         ))}
+        {archivedList.length > 0 && (
+          <div className="group">
+            <button className="recent-toggle" aria-expanded={!!q || showArchived} onClick={() => setShowArchived((v) => !v)}>
+              {q || showArchived ? <ChevronDown size={16} strokeWidth={1.5} /> : <ChevronRight size={16} strokeWidth={1.5} />}
+              Archived <span className="count">{archivedList.length}</span>
+            </button>
+            {(q || showArchived) && archivedList.map(row)}
+          </div>
+        )}
         </div>
       </div>
       <div className="resize-handle" role="separator" aria-orientation="vertical" aria-label="Resize sidebar" onPointerDown={drag} onDoubleClick={() => onResize(SIDEBAR_DEFAULT)} />

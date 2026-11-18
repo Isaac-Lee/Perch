@@ -1,4 +1,4 @@
-import { Circle, CircleCheck, CircleDot, Square } from "lucide-react";
+import { Archive, ArchiveRestore, Circle, CircleCheck, CircleDot, Square } from "lucide-react";
 import type { AgentKind, Session, Todo } from "../lib/types";
 import { displayState, sessionTitle, shownSeconds } from "../lib/groups";
 import { fmtElapsed, stateLabel } from "../lib/format";
@@ -9,8 +9,9 @@ export const agentName = (a: AgentKind) => (a === "hermes" ? "Hermes" : a === "o
 const TONE = { running: "ok", thinking: "ok", tool: "ok", approval: "warn", question: "warn", done: "ok", ready: "muted", plain: "muted", closed: "muted", stale: "muted" } as const;
 const TODO_ICON: Record<Todo["status"], typeof Circle> = { done: CircleCheck, in_progress: CircleDot, pending: Circle };
 
-export default function SessionRow({ s, now, focused, onClick, onApprove, onStop }: {
+export default function SessionRow({ s, now, focused, onClick, onApprove, onStop, onArchive, archived }: {
   s: Session; now: number; focused: boolean; onClick: () => void; onApprove: (allow: boolean) => void; onStop: () => void;
+  onArchive?: () => void; archived?: boolean;
 }) {
   const st = displayState(s, now);
   const tone = TONE[st];
@@ -26,6 +27,12 @@ export default function SessionRow({ s, now, focused, onClick, onApprove, onStop
         {st !== "plain" && st !== "ready" && <span className={`row-state ${tone}`}>{stateLabel(st)}</span>}
         <span className="row-time">{shown !== null && fmtElapsed(shown)}</span>
         {working && <button className="row-stop" aria-label="Stop" title="진행 중인 작업을 멈춥니다." onClick={(e) => { e.stopPropagation(); onStop(); }}><Square size={14} strokeWidth={1.5} /></button>}
+        {onArchive && (
+          <button className="row-stop" aria-label={archived ? "Unarchive" : "Archive"} title={archived ? "보관을 풀고 목록에 다시 보입니다." : "보관하고 목록에서 숨깁니다."}
+            onClick={(e) => { e.stopPropagation(); onArchive(); }}>
+            {archived ? <ArchiveRestore size={14} strokeWidth={1.5} /> : <Archive size={14} strokeWidth={1.5} />}
+          </button>
+        )}
       </div>
       <div className="row-line"><span className="row-prompt ellipsis" title={s.prompt}>{sessionTitle(s)}</span>{s.subagents.length > 0 && <span className="row-sub">{s.subagents.length === 1 ? "1 agent" : `${s.subagents.length} agents`}</span>}{s.usage && <span className="row-tok" title="Tokens">{fmtTok(totalTokens(s.usage))}</span>}</div>
       {s.pending && <div className="row-pending ellipsis">{s.pending.text}</div>}

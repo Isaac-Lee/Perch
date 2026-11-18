@@ -20,13 +20,17 @@ pub fn command_for(agent: &str, windows: bool) -> (String, Vec<String>) {
     }
 }
 
-/// Like `command_for`, but hermes is started from its resolved executable (optionally `--resume <id>`).
+/// Like `command_for`, but hermes is started from its resolved executable in TUI mode (markdown, clickable links, image paste),
+/// optionally `--resume <id>`.
 pub fn launch(agent: &str, windows: bool, hermes_exe: Option<&std::path::Path>, resume: Option<&str>) -> Result<(String, Vec<String>), String> {
     if agent != "hermes" {
         return Ok(command_for(agent, windows));
     }
     let exe = hermes_exe.ok_or("hermes 실행 파일을 찾지 못했습니다")?;
-    let args = resume.map(|id| vec!["--resume".to_string(), id.to_string()]).unwrap_or_default();
+    let mut args = vec!["--tui".to_string()];
+    if let Some(id) = resume {
+        args.extend(["--resume".to_string(), id.to_string()]);
+    }
     Ok((exe.to_string_lossy().into_owned(), args))
 }
 
@@ -179,8 +183,8 @@ mod tests {
     #[test]
     fn hermes_launch() {
         let exe = std::path::Path::new("C:/h/hermes.exe");
-        assert_eq!(launch("hermes", true, Some(exe), None).unwrap(), ("C:/h/hermes.exe".to_string(), vec![]));
-        assert_eq!(launch("hermes", true, Some(exe), Some("local-1")).unwrap().1, vec!["--resume", "local-1"]);
+        assert_eq!(launch("hermes", true, Some(exe), None).unwrap(), ("C:/h/hermes.exe".to_string(), vec!["--tui".to_string()]));
+        assert_eq!(launch("hermes", true, Some(exe), Some("local-1")).unwrap().1, vec!["--tui", "--resume", "local-1"]);
         assert!(launch("hermes", true, None, None).unwrap_err().contains("찾지 못했습니다"));
         assert_eq!(launch("shell", true, None, None).unwrap(), command_for("shell", true));
     }

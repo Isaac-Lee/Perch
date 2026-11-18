@@ -22,7 +22,7 @@
 | resume 인자 | `desk.rs` `pane_create` (지금은 hermes만 허용), `pty.rs` `launch` |
 | 제목, 토큰, 폴더 보강 | `sessions.rs` `query_db`, `enrich` (state.db 조회는 Hermes 전용) |
 | 연결 버튼 | `hermes.rs` `connect`, `disconnect`, `status` |
-| 승인 키 | `sessions.rs` `approve_key` (`desk.rs` `session_approve`가 호출, 지금은 `1`/`4`) |
+| 승인 키 | `sessions.rs` `approve_key` (`desk.rs` `session_approve`가 호출, 지금은 `1`/Esc, Hermes TUI 기준) |
 | 프런트 resume 분기 | `desk/src/lib/useTauriDesk.ts` `focusSession` |
 
 ## 현재 상태

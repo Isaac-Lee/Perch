@@ -307,6 +307,26 @@ fn with_pty(desk: &Desk, id: &str, f: impl FnOnce(&mut Pty) -> Result<(), String
     }
 }
 
+/// Opens an http(s) link from a pane in the default browser. Anything else is refused: the URL comes from terminal output.
+#[tauri::command]
+pub async fn open_url(url: String) -> Result<(), String> {
+    if !(url.starts_with("https://") || url.starts_with("http://")) || url.chars().any(|c| c.is_control() || c == '"') {
+        return Err("http(s) 링크만 열 수 있습니다".into());
+    }
+    #[cfg(windows)]
+    let mut cmd = {
+        use std::os::windows::process::CommandExt;
+        let mut c = std::process::Command::new("rundll32");
+        c.args(["url.dll,FileProtocolHandler", url.as_str()]).creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        c
+    };
+    #[cfg(target_os = "macos")]
+    let mut cmd = { let mut c = std::process::Command::new("open"); c.arg(&url); c };
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let mut cmd = { let mut c = std::process::Command::new("xdg-open"); c.arg(&url); c };
+    cmd.spawn().map(|_| ()).map_err(|e| format!("브라우저를 열 수 없습니다: {e}"))
+}
+
 #[tauri::command]
 pub async fn pane_write(desk: State<'_, Desk>, id: String, data: String) -> Result<(), String> {
     with_pty(&desk, &id, |p| p.write(data.as_bytes()))

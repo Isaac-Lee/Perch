@@ -14,6 +14,10 @@ export const saveSidebarWidth = (w: number) => write("perch.sidebarWidth", w);
 export const loadCollapsed = (): string[] => { const v = read<unknown>("perch.collapsedGroups", []); return Array.isArray(v) ? v.filter((x) => typeof x === "string") : []; };
 export const saveCollapsed = (keys: string[]) => write("perch.collapsedGroups", keys);
 
+// ponytail: archived ids are never pruned; tiny strings, prune against history if it ever matters
+export const loadArchived = (): string[] => { const v = read<unknown>("perch.archivedSessions", []); return Array.isArray(v) ? v.filter((x) => typeof x === "string") : []; };
+export const saveArchived = (ids: string[]) => write("perch.archivedSessions", ids);
+
 export interface NewPaneDefaults { agent: AgentKind; cwd: string }
 export const loadNewPane = (firstFolder: string): NewPaneDefaults => {
   const v = read<Partial<NewPaneDefaults> | null>("perch.newPane", null);

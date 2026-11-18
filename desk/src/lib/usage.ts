@@ -1,5 +1,5 @@
 import type { AgentKind, Session, Usage } from "./types";
-import { COMMON_LABEL, projectLabels } from "./groups";
+import { COMMON_LABEL, folderKey, projectLabels, sessionFolder } from "./groups";
 
 export type ChartRange = "14d" | "30d" | "1y";
 export type ChartBucket = "day" | "week";
@@ -41,7 +41,7 @@ export function summarize(sessions: Session[], period: Period, now: number) {
   const withUsage = sessions.filter((s): s is Session & { usage: Usage } => s.usage !== null);
   const from = since(period, now);
   const inPeriod = withUsage.filter((s) => s.usage.startedAt >= from);
-  const labels = projectLabels(inPeriod.flatMap((s) => (s.repoRoot ? [s.repoRoot] : [])));
+  const labels = projectLabels(inPeriod.flatMap((s) => sessionFolder(s) ?? []));
 
   const total = blank("total", "Total");
   const groups = { project: new Map<string, UsageRow>(), model: new Map<string, UsageRow>(), agent: new Map<string, UsageRow>() };
@@ -56,7 +56,8 @@ export function summarize(sessions: Session[], period: Period, now: number) {
     const u = s.usage;
     add(total, u);
     apiCalls += u.apiCalls;
-    bump(groups.project, s.repoRoot ?? "common", s.repoRoot ? labels.get(s.repoRoot)! : COMMON_LABEL, u);
+    const f = sessionFolder(s);
+    bump(groups.project, f ? folderKey(f) : "common", f ? labels.get(f)! : COMMON_LABEL, u);
     bump(groups.model, u.model, u.model, u);
     bump(groups.agent, s.agent, s.agent, u);
     const row = blank(s.sessionId, s.title || s.prompt);
