@@ -14,7 +14,7 @@ const mk = (o: Partial<Session> = {}): Session => ({
 test("same-named repos get disambiguated labels, key is full path", () => {
   const g = groupSessions([mk({ repoRoot: "D:\\a\\app" }), mk({ repoRoot: "D:\\b\\app" })], NOW);
   expect(g.map((x) => x.label).sort()).toEqual(["app (a)", "app (b)"]);
-  expect(g.map((x) => x.key).sort()).toEqual(["D:\\a\\app", "D:\\b\\app"]);
+  expect(g.map((x) => x.path).sort()).toEqual(["D:\\a\\app", "D:\\b\\app"]);
 });
 
 test("unique repo name stays plain; same repo shares one group", () => {
@@ -27,6 +27,18 @@ test("unique repo name stays plain; same repo shares one group", () => {
 test("null repoRoot goes to common group", () => {
   const g = groupSessions([mk()], NOW);
   expect(g[0]).toMatchObject({ key: "common", label: COMMON_LABEL, isCommon: true });
+});
+
+test("folder without a git repo gets its own group, keyed by cwd", () => {
+  const g = groupSessions([mk({ cwd: "D:\\notes\\wiki" }), mk({ cwd: "D:\\notes\\wiki" }), mk({ cwd: "C:\\Users\\me" })], NOW);
+  expect(g.map((x) => [x.path, x.label, x.isCommon]).sort()).toEqual([["C:\\Users\\me", "me", false], ["D:\\notes\\wiki", "wiki", false]]);
+});
+
+test("one folder spelled differently (slashes, drive case, trailing separator) is one group", () => {
+  const g = groupSessions([mk({ cwd: "D:\\ysl\\perch-test" }), mk({ cwd: "d:/ysl/perch-test/" }), mk({ repoRoot: "D:/ysl/perch-test" })], NOW);
+  expect(g).toHaveLength(1);
+  expect(g[0]).toMatchObject({ label: "perch-test", path: "D:\\ysl\\perch-test" });
+  expect(g[0].sessions).toHaveLength(3);
 });
 
 test("groups with my-turn sessions come first; inner order by state then since", () => {

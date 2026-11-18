@@ -20,6 +20,7 @@ pub fn run() {
       desk::pane_create,
       desk::pane_attach,
       desk::pane_write,
+      desk::open_url,
       desk::pane_resize,
       desk::pane_close,
       desk::desk_snapshot,

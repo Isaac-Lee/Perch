@@ -46,6 +46,7 @@ export function paneAttach(id: string, cols: number, rows: number, onData: (byte
   channel.onmessage = (m) => onData(new Uint8Array(m as ArrayBuffer | number[]));
   return invoke("pane_attach", { id, cols, rows, onData: channel });
 }
+export const openUrl = (url: string) => invoke<void>("open_url", { url });
 export const paneWrite = (id: string, data: string) => invoke<void>("pane_write", { id, data });
 export const paneResize = (id: string, cols: number, rows: number) => invoke<void>("pane_resize", { id, cols, rows });
 export const paneClose = (id: string) => invoke<void>("pane_close", { id });

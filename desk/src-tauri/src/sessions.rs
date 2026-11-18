@@ -291,13 +291,14 @@ pub fn decorate(mut base: Vec<SessionInfo>, panes: &[PaneInfo]) -> Vec<SessionIn
     base
 }
 
-/// "1" (allow once) or "4" (deny) when the session is waiting for an approval.
+/// "1" (allow once) or Esc (deny) when the session is waiting for an approval. The TUI numbers its choices
+/// from what the gateway offers, so deny is not always "4"; Esc always denies.
 pub fn approve_key(sessions: &[SessionInfo], id: &str, allow: bool) -> Result<&'static str, String> {
     let s = sessions.iter().find(|s| s.session_id == id).ok_or("세션을 찾을 수 없습니다")?;
     if s.state != "approval" || s.pending.is_none() {
         return Err("승인을 기다리는 상태가 아닙니다".into());
     }
-    Ok(if allow { "1" } else { "4" })
+    Ok(if allow { "1" } else { "" })
 }
 
 // ---- PTY output: find "Session: <id>" ----
@@ -570,7 +571,7 @@ mod tests {
         assert!(approve_key(&[s.clone()], "local-1", true).is_err(), "no pending");
         s.pending = Some(Pending { kind: "approval".into(), id: "r".into(), text: "t".into() });
         assert_eq!(approve_key(&[s.clone()], "local-1", true), Ok("1"));
-        assert_eq!(approve_key(&[s.clone()], "local-1", false), Ok("4"));
+        assert_eq!(approve_key(&[s.clone()], "local-1", false), Ok(""));
         assert!(approve_key(&[s.clone()], "nope", true).is_err());
         s.state = "thinking".into();
         assert!(approve_key(&[s.clone()], "local-1", true).is_err());

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { X } from "lucide-react";
 import type { Session } from "../lib/types";
-import { COMMON_LABEL, projectLabels } from "../lib/groups";
+import { COMMON_LABEL, projectLabels, sessionFolder } from "../lib/groups";
 import { chartSeries, fmtTok, fmtTokens, summarize, type ChartBucket, type ChartPoint, type ChartRange, type Period, type UsageRow } from "../lib/usage";
 import { agentName } from "./SessionRow";
 
@@ -93,7 +93,7 @@ export default function UsageView({ sessions, now, onPick, onClose }: { sessions
   const points = useMemo(() => chartSeries(sessions, pref.range, pref.bucket, now), [sessions, pref, now]);
   const r = useMemo(() => summarize(sessions, period, now), [sessions, period, now]);
   const byId = useMemo(() => new Map(sessions.map((s) => [s.sessionId, s])), [sessions]);
-  const labels = useMemo(() => projectLabels(sessions.flatMap((s) => (s.repoRoot ? [s.repoRoot] : []))), [sessions]);
+  const labels = useMemo(() => projectLabels(sessions.flatMap((s) => sessionFolder(s) ?? [])), [sessions]);
   const t = r.total;
   const showCost = t.costUsd != null;
   const stats: [string, string][] = [
@@ -140,7 +140,7 @@ export default function UsageView({ sessions, now, onPick, onClose }: { sessions
                 return (
                   <tr key={x.sessionId} className="click" tabIndex={0} onClick={() => onPick(x.sessionId)} onKeyDown={(e) => { if (e.key === "Enter") onPick(x.sessionId); }}>
                     <td>{agentName(x.agent)}</td>
-                    <td className="ellipsis-cell proj">{s.repoRoot ? labels.get(s.repoRoot) : COMMON_LABEL}</td>
+                    <td className="ellipsis-cell proj">{labels.get(sessionFolder(s) ?? "") ?? COMMON_LABEL}</td>
                     <td className="ellipsis-cell prompt">{x.label}</td>
                     <td className="ellipsis-cell model">{s.usage!.model}</td>
                     <td className="num">{fmtTokens(x.input)}</td><td className="num">{fmtTokens(x.output)}</td><td className="num">{fmtTokens(x.cache)}</td>

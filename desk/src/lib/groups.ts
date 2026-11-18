@@ -40,15 +40,29 @@ function rank(s: Session, now: number): number {
 
 const parts = (p: string) => p.split(/[\\/]+/).filter(Boolean);
 
-/** repoRoot -> display label; same-named repos get the parent folder appended. */
+/** One key per folder however it was spelled: Hermes, git and the folder picker disagree on slashes,
+ *  drive-letter case and trailing separators. Windows paths (drive letter) compare case-insensitively. */
+export function folderKey(p: string): string {
+  const s = parts(p).join("/");
+  return /^[a-z]:/i.test(s) ? s.toLowerCase() : p.startsWith("/") ? `/${s}` : s;
+}
+
+/** The folder a session belongs to: its git repo root, else the folder it started in. */
+export const sessionFolder = (s: Session): string | null => s.repoRoot ?? (s.cwd || null);
+
+/** folder path -> display label; different folders with the same name get the parent folder appended. */
 export function projectLabels(roots: string[]): Map<string, string> {
   const uniq = [...new Set(roots)];
   const base = (r: string) => parts(r).at(-1) ?? r;
-  const count = new Map<string, number>();
-  for (const r of uniq) count.set(base(r), (count.get(base(r)) ?? 0) + 1);
+  const folders = new Map<string, Set<string>>();
+  for (const r of uniq) {
+    const b = base(r).toLowerCase();
+    if (!folders.has(b)) folders.set(b, new Set());
+    folders.get(b)!.add(folderKey(r));
+  }
   return new Map(uniq.map((r) => {
     const p = parts(r);
-    return [r, count.get(base(r))! > 1 && p.length >= 2 ? `${base(r)} (${p[p.length - 2]})` : base(r)];
+    return [r, folders.get(base(r).toLowerCase())!.size > 1 && p.length >= 2 ? `${base(r)} (${p[p.length - 2]})` : base(r)];
   }));
 }
 
@@ -57,11 +71,11 @@ export function groupSessions(sessions: Session[], now: number): Group[] {
   for (const s of sessions) {
     const age = now - s.seen;
     if (!s.paneId && age > DROP_SEC) continue;
-    const key = s.repoRoot ?? "common";
+    const root = sessionFolder(s); // "common" only when even the start folder is unknown
+    const key = root ? folderKey(root) : "common";
     let g = map.get(key);
     if (!g) {
-      const label = s.repoRoot ? (parts(s.repoRoot).at(-1) ?? s.repoRoot) : COMMON_LABEL;
-      g = { key, label, isCommon: !s.repoRoot, sessions: [], recent: [] };
+      g = { key, path: root ?? "", label: root ? (parts(root).at(-1) ?? root) : COMMON_LABEL, isCommon: !root, sessions: [], recent: [] };
       map.set(key, g);
     }
     const isRecent = !s.paneId && (s.state === "closed" || age > RECENT_SEC);
@@ -69,8 +83,8 @@ export function groupSessions(sessions: Session[], now: number): Group[] {
   }
   const groups = [...map.values()];
 
-  const labels = projectLabels(groups.filter((g) => !g.isCommon).map((g) => g.key));
-  for (const g of groups) if (!g.isCommon) g.label = labels.get(g.key)!;
+  const labels = projectLabels(groups.filter((g) => !g.isCommon).map((g) => g.path));
+  for (const g of groups) if (!g.isCommon) g.label = labels.get(g.path)!;
 
   const bySort = (a: Session, b: Session) => rank(a, now) - rank(b, now) || a.since - b.since;
   for (const g of groups) {

@@ -5,9 +5,14 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import "@xterm/xterm/css/xterm.css";
 import { TermCtx, fontStack, loadWebgl } from "../lib/termSettings";
 import { attachScrollReveal } from "../lib/useScrollReveal";
-import { paneAttach, paneResize, paneWrite } from "../lib/backend";
+import { openUrl, paneAttach, paneResize, paneWrite } from "../lib/backend";
+import type { AgentKind } from "../lib/types";
 
-export default function PtyTerminalView({ paneId, focused }: { paneId: string; focused: boolean }) {
+// A terminal cannot carry image bytes, so an image-only paste sends the key that makes the agent read the OS clipboard itself
+// (Hermes TUI and classic CLI both take Alt+V).
+const IMAGE_PASTE_KEY: Partial<Record<AgentKind, string>> = { hermes: "\x1bv", opencode: "\x16" };
+
+export default function PtyTerminalView({ paneId, focused, agent }: { paneId: string; focused: boolean; agent: AgentKind }) {
   const ref = useRef<HTMLDivElement>(null);
   const cfg = useContext(TermCtx);
   const cfgRef = useRef(cfg);
@@ -28,6 +33,8 @@ export default function PtyTerminalView({ paneId, focused }: { paneId: string; f
         const term = new Terminal({
           fontFamily: fontStack(c.fontFamily), fontSize: c.fontSize, lineHeight: 1.3, cursorBlink: true, scrollback: 5000, allowProposedApi: true,
           theme: { background: "#17181b", foreground: "#e6e6e6", cursor: "#a1a1a6" },
+          // OSC 8 links (Hermes TUI renders markdown links this way) open in the browser instead of nowhere
+          linkHandler: { activate: (_e, uri) => { openUrl(uri).catch(console.error); }, allowNonHttpProtocols: false },
         });
         const fitAddon = new FitAddon();
         term.loadAddon(fitAddon);
@@ -41,16 +48,42 @@ export default function PtyTerminalView({ paneId, focused }: { paneId: string; f
         const vp = el.querySelector<HTMLElement>(".xterm-viewport");
         const detach = vp ? attachScrollReveal(vp) : () => {};
         paneAttach(paneId, term.cols, term.rows, (b) => term.write(b)).catch(console.error);
+        // xterm turns Ctrl+V into ^V and never pastes; Ctrl+C copies only when text is selected, otherwise it stays an interrupt.
+        // e.code, not e.key: with the Korean IME on, e.key is "ㅊ"/"ㅍ".
+        term.attachCustomKeyEventHandler((e) => {
+          // xterm sends Shift+Enter as a bare CR (= submit). Hermes (TUI and classic) takes Alt+Enter (ESC CR) as a newline.
+          if (agent === "hermes" && e.code === "Enter" && e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
+            if (e.type === "keydown") paneWrite(paneId, "\x1b\r").catch(console.error);
+            e.preventDefault();
+            return false;
+          }
+          if (e.type !== "keydown" || !(e.ctrlKey || e.metaKey) || e.altKey) return true;
+          if (e.code === "KeyC" && (e.shiftKey || term.hasSelection())) {
+            if (term.hasSelection()) navigator.clipboard.writeText(term.getSelection()).catch(console.error);
+            term.clearSelection();
+            e.preventDefault();
+            return false;
+          }
+          return e.code !== "KeyV"; // false = let the browser fire its paste event, which xterm handles (bracketed paste included)
+        });
+        const onPaste = (e: ClipboardEvent) => {
+          const dt = e.clipboardData, key = IMAGE_PASTE_KEY[agent];
+          if (!dt || !key || dt.getData("text/plain") || ![...dt.items].some((i) => i.type.startsWith("image/"))) return;
+          e.preventDefault();
+          e.stopPropagation();
+          paneWrite(paneId, key).catch(console.error);
+        };
+        el.addEventListener("paste", onPaste, true);
         term.onData((d) => { paneWrite(paneId, d).catch(console.error); });
         term.onResize(({ cols, rows }) => { paneResize(paneId, cols, rows).catch(console.error); });
         const ro = new ResizeObserver(fit);
         ro.observe(el);
         api.current = { term, fit };
         if (focusedRef.current) term.focus();
-        cleanup = () => { ro.disconnect(); detach(); term.dispose(); api.current = null; };
+        cleanup = () => { el.removeEventListener("paste", onPaste, true); ro.disconnect(); detach(); term.dispose(); api.current = null; };
       });
     return () => { dead = true; cleanup(); };
-  }, [paneId]);
+  }, [paneId, agent]);
 
   useEffect(() => { if (focused) api.current?.term.focus(); }, [focused]);
 
