@@ -1,6 +1,6 @@
 [package]
 name = "perch"
-version = "0.3.0"
+version = "0.4.0"
 description = "Perch"
 authors = []
 license-file = "../../LICENSE"
@@ -27,6 +27,7 @@ tauri-plugin-single-instance = "2"
 portable-pty = "0.9"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+perch-hook = { path = "hook" }
 rusqlite = { version = "0.37", features = ["bundled"] }
 
 [dev-dependencies]

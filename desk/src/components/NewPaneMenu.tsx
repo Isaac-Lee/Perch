@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Bot, Check, ChevronDown, Folder, FolderOpen, MessageSquare, Plus, SquareTerminal, Terminal } from "lucide-react";
+import { Check, ChevronDown, Folder, FolderOpen, Plus, type LucideIcon } from "lucide-react";
+import { paneIcon } from "../lib/paneIcon";
 import type { AgentKind, PaneView } from "../lib/types";
 import type { NewPaneDefaults } from "../lib/uiSettings";
 import { attachScrollReveal } from "../lib/useScrollReveal";
@@ -7,13 +8,9 @@ import { isTauri, pickFolder } from "../lib/backend";
 import { folderName } from "../mock/sessions";
 import { formatShortcut } from "../lib/shortcuts";
 
-type Entry = { agent: AgentKind; view: PaneView; name: string; Icon: typeof Bot };
-const ENTRIES: Entry[] = [
-  { agent: "hermes", view: "chat", name: "Hermes", Icon: MessageSquare },
-  { agent: "hermes", view: "tui", name: "Hermes (TUI)", Icon: Bot },
-  { agent: "opencode", view: "chat", name: "OpenCode", Icon: SquareTerminal },
-  { agent: "shell", view: "chat", name: "Shell", Icon: Terminal },
-];
+type Entry = { agent: AgentKind; view: PaneView; name: string; Icon: LucideIcon };
+const entry = (agent: AgentKind, view: PaneView, name: string): Entry => ({ agent, view, name, Icon: paneIcon(agent, view).Icon });
+const ENTRIES: Entry[] = [entry("hermes", "chat", "Hermes"), entry("hermes", "tui", "Hermes (TUI)"), entry("opencode", "chat", "OpenCode"), entry("shell", "chat", "Shell")];
 // view only matters for hermes; opencode/shell entries match on agent alone
 const isCur = (e: Entry, d: NewPaneDefaults) => e.agent === d.agent && (e.agent !== "hermes" || e.view === d.view);
 

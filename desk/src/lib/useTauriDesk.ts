@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { WINDOW, deskSnapshot, emitChatStop, onFocusPane, onPanes, onSessions, paneClose, paneCreate, paneFocus, paneWrite, sessionApprove, sessionsSnapshot, windowFocus, type PaneInfo, type SessionInfo } from "./backend";
+import { WINDOW, deskSnapshot, emitChatStop, onFocusPane, onPanes, onSessions, paneClose, paneCreate, paneFocus, paneWrite, sessionApprove, sessionForceIdle, sessionsSnapshot, windowFocus, type PaneInfo, type SessionInfo } from "./backend";
 import type { AgentKind, Pane, PaneView, Session } from "./types";
 import { folderName } from "../mock/sessions";
 
@@ -78,6 +78,7 @@ export function useTauriDesk(hermesView: PaneView = "chat") {
     const paneId = sInfosRef.current.find((x) => x.sessionId === sessionId)?.paneId ?? sessionId;
     if (infosRef.current.find((i) => i.id === paneId)?.view === "chat") emitChatStop(paneId).catch(console.error);
     else paneWrite(paneId, "\x03").catch(console.error);
+    sessionForceIdle(sessionId).catch(console.error); // clears a "working" row the interrupt left stuck
   }, []);
   const approve = useCallback((sessionId: string, allow: boolean) => {
     sessionApprove(sessionId, allow).catch(() => focusSession(sessionId));

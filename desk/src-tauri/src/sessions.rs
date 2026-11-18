@@ -60,6 +60,9 @@ pub struct SessionInfo {
     pub tool_detail: String,
     pub prompt: String,
     pub pending: Option<Pending>,
+    /// the last reply ended with a question (post_llm_call heuristic) and `ask` is its one-line preview
+    pub asks: bool,
+    pub ask: String,
     pub subagents: Vec<Sub>,
     pub todos: Vec<Todo>,
     pub seen: u64,
@@ -133,6 +136,8 @@ pub(crate) fn parse_state(v: &Value) -> Option<SessionInfo> {
         tool_detail: s("toolDetail"),
         prompt: s("prompt"),
         pending,
+        asks: v["asks"].as_bool().unwrap_or(false),
+        ask: s("ask"),
         subagents,
         todos,
         seen: n("seen"),
@@ -432,7 +437,7 @@ pub fn usage_history_from(db: &Path) -> Vec<SessionInfo> {
         };
         out.push(SessionInfo {
             agent: "hermes".into(), session_id: id, state: "closed".into(), since: usage.started_at, turn_start: None, last_turn: None, steps: 0,
-            tool: String::new(), tool_detail: String::new(), prompt: String::new(), pending: None, subagents: vec![], todos: vec![],
+            tool: String::new(), tool_detail: String::new(), prompt: String::new(), pending: None, asks: false, ask: String::new(), subagents: vec![], todos: vec![],
             seen: usage.started_at, pane_id: None, pane: None, title, cwd, repo_root, branch, usage: Some(usage),
         });
     }
@@ -443,6 +448,18 @@ pub fn usage_history_from(db: &Path) -> Vec<SessionInfo> {
 pub async fn usage_history() -> Result<Vec<SessionInfo>, String> {
     let db = crate::hermes::home().join("state.db");
     tauri::async_runtime::spawn_blocking(move || usage_history_from(&db)).await.map_err(|e| e.to_string())
+}
+
+/// Stop button follow-up: after the interrupt had a moment to produce its own `on_session_end`, a file that still shows
+/// work is marked idle (see `perch_hook::force_idle`).
+#[tauri::command]
+pub async fn session_force_idle(session_id: String) -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        std::thread::sleep(Duration::from_millis(1500));
+        perch_hook::force_idle(&perch_home().join("sessions"), &session_id, perch_hook::now())
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -494,6 +511,7 @@ mod tests {
         assert_eq!((s[0].state.as_str(), s[0].steps, s[0].subagents[0].tool.as_deref()), ("thinking", 2, Some("terminal")));
         assert_eq!(s[0].todos[0].status, "done");
         assert_eq!(s[0].last_turn, Some(42));
+        assert_eq!((s[0].asks, s[0].ask.as_str()), (false, ""));
         assert!(p.first_seen.values().all(|&v| v == 0));
         assert!(!p.scan(2000), "unchanged -> no change");
         // a new file after the first pass gets a real first-seen time; removal is a change

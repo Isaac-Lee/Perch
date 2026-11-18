@@ -8,6 +8,8 @@ export interface Session {
   agent: AgentKind; sessionId: string; cwd: string; repoRoot: string | null; branch: string | null;
   state: SessionStateName; since: number; turnStart: number | null; lastTurn?: number | null; steps: number;
   tool: string; toolDetail: string; prompt: string; title?: string; pending: Pending | null;
+  /** the last reply ended with a question (heuristic); `ask` is its one-line preview */
+  asks?: boolean; ask?: string;
   subagents: Subagent[]; todos: Todo[]; seen: number; paneId: string | null; usage: Usage | null;
 }
 export type PaneView = "chat" | "tui";

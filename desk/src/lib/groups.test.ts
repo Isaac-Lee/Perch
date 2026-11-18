@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { COMMON_LABEL, displayState, groupSessions, groupSummary, matchSession, shownSeconds } from "./groups";
+import { COMMON_LABEL, displayState, groupSessions, groupSummary, matchSession, moveInOrder, shownSeconds } from "./groups";
 import type { Session } from "./types";
 
 const NOW = 1_000_000;
@@ -57,6 +57,50 @@ test("groups with my-turn sessions come first; inner order by state then since",
   expect(g[1].label).toBe("busy");
 });
 
+const R = "D:\\r\\sort";
+const ids = (g: { sessions: Session[] }) => g.sessions.map((s) => s.sessionId);
+const fx = () => {
+  const a = mk({ repoRoot: R, title: "banana", seen: NOW - 30, state: "idle", prompt: "x", since: NOW - 10 });
+  const b = mk({ repoRoot: R, title: "Apple 10", seen: NOW - 10, state: "approval" });
+  const c = mk({ repoRoot: R, title: "apple 2", seen: NOW - 20, state: "idle", prompt: "x", since: NOW - 20 });
+  const d = mk({ repoRoot: R, title: "", prompt: "", seen: NOW - 5 });
+  return { a, b, c, d, all: [a, b, c, d] };
+};
+
+test("sort status (default) is the old order", () => {
+  const { a, b, c, d, all } = fx();
+  expect(ids(groupSessions(all, NOW)[0])).toEqual([b, c, a, d].map((s) => s.sessionId));
+  expect(groupSessions(all, NOW, "status", ["s999"])[0].sessions).toEqual(groupSessions(all, NOW)[0].sessions);
+});
+
+test("sort recent: seen descending", () => {
+  const { a, b, c, d, all } = fx();
+  expect(ids(groupSessions(all, NOW, "recent")[0])).toEqual([d, b, c, a].map((s) => s.sessionId));
+});
+
+test("sort name: numeric, case-insensitive, empty last", () => {
+  const { a, b, c, d, all } = fx();
+  expect(ids(groupSessions(all, NOW, "name")[0])).toEqual([c, b, a, d].map((s) => s.sessionId));
+});
+
+test("sort manual: by order index, unknown ids ignored, new sessions after in status order", () => {
+  const { a, b, c, d, all } = fx();
+  const g = groupSessions(all, NOW, "manual", ["gone", a.sessionId, "gone2", c.sessionId]);
+  expect(ids(g[0])).toEqual([a, c, b, d].map((s) => s.sessionId));
+  expect(ids(groupSessions(all, NOW, "manual")[0])).toEqual(ids(groupSessions(all, NOW)[0]));
+});
+
+test("moveInOrder up, down, no-op, bounds, unknown", () => {
+  const v = ["a", "b", "c", "d"];
+  expect(moveInOrder(v, "c", 0)).toEqual(["c", "a", "b", "d"]);
+  expect(moveInOrder(v, "a", 2)).toEqual(["b", "c", "a", "d"]);
+  expect(moveInOrder(v, "b", 1)).toEqual(v);
+  expect(moveInOrder(v, "b", -5)).toEqual(["b", "a", "c", "d"]);
+  expect(moveInOrder(v, "b", 99)).toEqual(["a", "c", "d", "b"]);
+  expect(moveInOrder(v, "zz", 1)).toEqual(v);
+  expect(v).toEqual(["a", "b", "c", "d"]);
+});
+
 test("displayState: working state with no event for 10+ minutes is stale", () => {
   expect(displayState(mk({ state: "tool", seen: NOW - 601 }), NOW)).toBe("stale");
   expect(displayState(mk({ state: "tool", seen: NOW - 600 }), NOW)).toBe("tool");
@@ -87,6 +131,15 @@ test("recent: closed or >24h goes to recent, >7d dropped, paneId always stays", 
   expect(g.recent).toEqual(expect.arrayContaining([closed, old]));
 });
 
+test("dismissed pane-less session goes to recent, one with a pane stays live", () => {
+  const a = mk({ repoRoot: "D:/x/d" }), b = mk({ repoRoot: "D:/x/d" }), c = mk({ repoRoot: "D:/x/d", paneId: "p1" });
+  const [g] = groupSessions([a, b, c], NOW, "status", [], new Set([a.sessionId, c.sessionId]));
+  expect(g.sessions).toEqual(expect.arrayContaining([b, c]));
+  expect(g.sessions).toHaveLength(2);
+  expect(g.recent).toEqual([a]);
+  expect(groupSessions([a], NOW)[0].sessions).toEqual([a]);
+});
+
 test("branch does not affect grouping", () => {
   const g = groupSessions([mk({ repoRoot: "D:\\x\\solo", branch: "main" }), mk({ repoRoot: "D:\\x\\solo", branch: "feature/login" })], NOW);
   expect(g).toHaveLength(1);
@@ -113,4 +166,24 @@ test("shownSeconds: done is frozen at lastTurn, working counts from turnStart, r
   expect(shownSeconds(mk({ state: "approval", since: NOW - 7 }), NOW)).toBe(7);
   expect(shownSeconds(mk(), NOW)).toBeNull();
   expect(shownSeconds(mk({ state: "closed" }), NOW)).toBeNull();
+});
+
+test("reply: idle session whose last reply asks a question", () => {
+  const r = mk({ repoRoot: "D:/r/rp", state: "idle", prompt: "x", asks: true, ask: "A로 할까요?", lastTurn: 7 });
+  expect(displayState(r, NOW)).toBe("reply");
+  expect(displayState(mk({ state: "idle", prompt: "x", asks: false }), NOW)).toBe("done");
+  expect(displayState(mk({ state: "idle", asks: true }), NOW)).toBe("ready"); // no prompt: nothing was asked yet
+  expect(displayState(mk({ state: "thinking", prompt: "x", asks: true }), NOW)).toBe("thinking");
+  expect(shownSeconds(r, NOW)).toBe(7);
+  // rank: question < reply < done
+  const q = mk({ repoRoot: "D:/r/rp", state: "question" });
+  const d = mk({ repoRoot: "D:/r/rp", state: "idle", prompt: "x" });
+  const t = mk({ repoRoot: "D:/r/rp", state: "tool" });
+  const g = groupSessions([d, t, r, q], NOW);
+  expect(g[0].sessions).toEqual([q, r, d, t]);
+  // counts as waiting on the user
+  expect(groupSummary(g[0], NOW)).toEqual({ mine: 2, working: 1 });
+  // and pulls its group to the top
+  const other = groupSessions([mk({ repoRoot: "D:/r/z", state: "running" }), mk({ repoRoot: "D:/r/a", state: "idle", prompt: "x", asks: true })], NOW);
+  expect(other[0].label).toBe("a");
 });

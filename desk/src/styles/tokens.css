@@ -20,8 +20,46 @@
   --warn-bg: rgba(224, 137, 74, 0.12);
   --idle: #d1b350;
   --muted: #6e6e73;
+  --hover-soft: rgba(255, 255, 255, 0.03);
+  --hover: rgba(255, 255, 255, 0.06);
+  --hover-strong: rgba(255, 255, 255, 0.08);
+  --scroll-thumb: rgba(255, 255, 255, 0.18);
+  --shadow: rgba(0, 0, 0, 0.3);
+  --shadow-sm: rgba(0, 0, 0, 0.25);
+  --del: #e0705f;
+  --add-bg: rgba(95, 184, 124, 0.12);
+  --del-bg: rgba(224, 112, 95, 0.12);
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23a1a1a6' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+  /* Terminal palette. Dark themes: the terminal follows the app. Light: terminals stay dark, because agent TUIs
+     (Hermes) print truecolor text picked for dark backgrounds (cream #FFF8DC, gold #FFD700) that is unreadable on white. */
+  --term-bg: var(--surface-1);
+  --term-fg: var(--text);
+  --term-cursor: var(--text-2);
+  color-scheme: dark;
   --font-ui: "IBM Plex Sans", "IBM Plex Sans KR", "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
   --font-term: "D2Coding", "Cascadia Mono", Consolas, Menlo, monospace;
+}
+:root[data-theme="midnight"] {
+  --bg: #0d1117; --surface-1: #131a24; --surface-2: #1a2330;
+  --text: #dde3ea; --text-2: #9aa7b5; --text-3: #64717f; --muted: #64717f;
+  --accent: #6ea8fe;
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%239aa7b5' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+}
+:root[data-theme="black"] {
+  --bg: #000000; --surface-1: #0b0b0c; --surface-2: #141416;
+}
+:root[data-theme="light"] {
+  --bg: #f6f6f7; --surface-1: #ffffff; --surface-2: #ececee;
+  --text: #1c1c1e; --text-2: #5c5c63; --text-3: #8a8a90; --muted: #8a8a90;
+  --line: rgba(0, 0, 0, 0.10);
+  --accent: #2f6fdb; --ok: #277a4c; --warn: #b35514; --warn-bg: rgba(179, 85, 20, 0.12); --idle: #8f7312;
+  --hover-soft: rgba(0, 0, 0, 0.04); --hover: rgba(0, 0, 0, 0.06); --hover-strong: rgba(0, 0, 0, 0.09);
+  --scroll-thumb: rgba(0, 0, 0, 0.25);
+  --shadow: rgba(0, 0, 0, 0.15); --shadow-sm: rgba(0, 0, 0, 0.12);
+  --del: #c4412f; --add-bg: rgba(39, 122, 76, 0.12); --del-bg: rgba(196, 65, 47, 0.12);
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%235c5c63' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+  --term-bg: #17181b; --term-fg: #e6e6e6; --term-cursor: #a1a1a6;
+  color-scheme: light;
 }
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }

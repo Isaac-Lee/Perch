@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import turn from "./__fixtures__/turn.jsonl?raw";
-import { canSend, chatReducer, staleRetry, initialChat, shouldAutoReconnect, transcriptToItems, type ChatAction } from "./chatSession";
+import { activityLabel, canSend, chatReducer, fmtSec, groupItems, staleRetry, initialChat, shouldAutoReconnect, toDirective, toModelProviders, transcriptToItems, type ChatAction } from "./chatSession";
 
 const ev = (type: string, payload: object = {}): ChatAction => ({ t: "event", ev: { type, payload } });
 
@@ -172,9 +172,213 @@ describe("model change", () => {
     const data = { revision: 5, execution_generation: 3 };
     expect(staleRetry(Object.assign(new Error("stale_generation"), { data }))).toEqual({ revision: 5, executionGeneration: 3 });
     expect(staleRetry(Object.assign(new Error("stale_revision"), { data }))).toEqual({ revision: 5, executionGeneration: 3 });
+    expect(staleRetry(Object.assign(new Error("revision_conflict"), { code: 4001, data: { reason: "revision_conflict", revision: 2, execution_generation: 2 } }))).toEqual({ revision: 2, executionGeneration: 2 });
     expect(staleRetry(Object.assign(new Error("other"), { data }))).toBeNull();
     expect(staleRetry(new Error("stale_revision"))).toBeNull();
     expect(staleRetry(Object.assign(new Error("stale_revision"), { data: { revision: "x" } }))).toBeNull();
     expect(staleRetry("nope")).toBeNull();
   });
 });
+
+describe("toModelProviders", () => {
+  it("adds the current model when no provider row lists it (measured gap)", () => {
+    const r = toModelProviders({ model: "anthropic/claude-opus-4.6", provider: "auto", providers: [{ slug: "nous", name: "Nous · free tier", models: ["nous/welcome"], authenticated: true }] });
+    expect(r).toEqual([
+      { provider: "auto", providerName: "현재 모델", models: ["anthropic/claude-opus-4.6"] },
+      { provider: "nous", providerName: "Nous · free tier", models: ["nous/welcome"] },
+    ]);
+  });
+  it("keeps unauthenticated rows and marks them", () => {
+    const r = toModelProviders({ model: "nous/welcome", providers: [{ slug: "corp", name: "Corp", models: ["corp/x"], authenticated: false }, { slug: "nous", models: ["nous/welcome"] }] });
+    expect(r.map((p) => p.providerName)).toEqual(["Corp (인증 안 됨)", "nous"]);
+  });
+  it("puts the current model into the matching or is_current row, even one with no models", () => {
+    const rows = [{ slug: "a", models: ["a/1"] }, { slug: "corp", name: "Corp", models: [], is_current: true }];
+    expect(toModelProviders({ model: "corp/m", provider: "auto", providers: rows })[1]).toEqual({ provider: "corp", providerName: "Corp", models: ["corp/m"] });
+    expect(toModelProviders({ model: "a/2", provider: "a", providers: rows })[0].models).toEqual(["a/1", "a/2"]);
+    expect(toModelProviders({ model: "a/1", providers: rows })).toHaveLength(1); // empty row dropped
+  });
+  it("empty result stays empty", () => expect(toModelProviders({})).toEqual([]));
+});
+
+describe("effort, session.updated, system items", () => {
+  it("effort comes from the snapshot, session.info and effortChanged; config.get only fills a gap", () => {
+    let s = chatReducer(initialChat, { t: "snapshot", snap: { session_id: "a", info: { model: "m", reasoning_effort: "low" } } });
+    expect(s.effort).toBe("low");
+    s = chatReducer(s, { t: "event", ev: { type: "session.info", payload: { reasoning_effort: "high" } } });
+    expect(s).toMatchObject({ effort: "high", model: "m" });
+    s = chatReducer(s, { t: "effort", effort: "medium" });
+    expect(s.effort).toBe("high");
+    s = chatReducer(s, { t: "effortChanged", revision: 2, executionGeneration: 1, effort: "max" });
+    expect(s).toMatchObject({ effort: "max", revision: 2 });
+    expect(chatReducer(initialChat, { t: "effort", effort: "medium" }).effort).toBe("medium");
+  });
+  it("session.updated refreshes revision and generation only when numeric", () => {
+    let s = chatReducer(initialChat, { t: "snapshot", snap: { session_id: "a", revision: 1, execution_generation: 1 } });
+    s = chatReducer(s, ev("session.updated", { revision: 3, execution_generation: 2 }));
+    expect(s).toMatchObject({ revision: 3, executionGeneration: 2 });
+    s = chatReducer(s, ev("session.updated", { revision: "x" }));
+    expect(s).toMatchObject({ revision: 3, executionGeneration: 2 });
+  });
+  it("system items append with unique ids", () => {
+    let s = chatReducer(initialChat, { t: "userSent", id: "u0", text: "/help" });
+    s = chatReducer(s, { t: "system", text: "**out**" });
+    s = chatReducer(s, { t: "system", text: "more" });
+    expect(s.items.map((i) => i.kind)).toEqual(["user", "system", "system"]);
+    expect(new Set(s.items.map((i) => i.id)).size).toBe(3);
+  });
+});
+
+describe("toDirective", () => {
+  it("exec / untyped output, warning prefix", () => {
+    expect(toDirective({ type: "exec", output: "hi" })).toEqual({ type: "output", text: "hi" });
+    expect(toDirective({ output: "x", warning: "w" })).toEqual({ type: "output", text: "warning: w\nx" });
+    expect(toDirective({ type: "plugin" })).toEqual({ type: "output", text: "(출력 없음)" });
+  });
+  it("alias, send/skill, prefill, malformed", () => {
+    expect(toDirective({ type: "alias", target: "reasoning" })).toEqual({ type: "alias", target: "reasoning" });
+    expect(toDirective({ type: "skill", name: "s", message: "body" })).toEqual({ type: "send", message: "body", notice: undefined });
+    expect(toDirective({ type: "send", message: "m", notice: " n " })).toEqual({ type: "send", message: "m", notice: "n" });
+    expect(toDirective({ type: "prefill", message: "p" })).toMatchObject({ type: "prefill", message: "p" });
+    for (const bad of [null, "x", { type: "alias" }, { type: "send" }, { type: "weird" }]) expect(toDirective(bad)).toBeNull();
+  });
+});
+
+describe("streaming cursor", () => {
+  const streaming = (s: typeof initialChat) => s.items.map((i) => i.kind === "assistant" && i.streaming);
+  it("only the last text segment streams across tool calls; complete clears it", () => {
+    let s = initialChat;
+    for (const e of [ev("message.delta", { text: "a" }), ev("tool.start", { tool_id: "1", name: "t" }), ev("message.delta", { text: "b" }), ev("tool.start", { tool_id: "2", name: "t" }), ev("message.delta", { text: "c" })]) s = chatReducer(s, e);
+    expect(streaming(s)).toEqual([false, false, false, false, true]);
+    s = chatReducer(s, ev("message.complete", { text: "c" }));
+    expect(streaming(s).some(Boolean)).toBe(false);
+  });
+  it("an error settles a streaming item", () => {
+    let s = chatReducer(initialChat, ev("message.delta", { text: "a" }));
+    s = chatReducer(s, ev("error", { message: "x" }));
+    expect(streaming(s).some(Boolean)).toBe(false);
+  });
+});
+
+describe("turn clock", () => {
+  it("userSent with a timestamp starts the turn; message.start keeps it; complete and error clear it", () => {
+    let s = chatReducer(initialChat, { t: "userSent", id: "u0", text: "hi", at: 100 });
+    expect(s).toMatchObject({ running: true, turnStart: 100 });
+    s = chatReducer(s, { t: "event", ev: { type: "message.start" }, at: 200 });
+    expect(s.turnStart).toBe(100);
+    s = chatReducer(s, ev("message.complete", { text: "x" }));
+    expect(s).toMatchObject({ running: false, turnStart: null });
+    expect(chatReducer(initialChat, { t: "userSent", id: "u0", text: "/help" })).toMatchObject({ running: false, turnStart: null });
+    s = chatReducer(initialChat, { t: "event", ev: { type: "message.start" }, at: 300 });
+    expect(s.turnStart).toBe(300);
+    expect(chatReducer(s, ev("error", { message: "x" })).turnStart).toBeNull();
+  });
+  it("snapshot: running keeps or takes the clock, idle clears it", () => {
+    expect(chatReducer(initialChat, { t: "snapshot", snap: { session_id: "a", running: true }, at: 5 }).turnStart).toBe(5);
+    const s = chatReducer(initialChat, { t: "userSent", id: "u0", text: "hi", at: 1 });
+    expect(chatReducer(s, { t: "snapshot", snap: { session_id: "a", running: true }, at: 5 }).turnStart).toBe(1);
+    expect(chatReducer(s, { t: "snapshot", snap: { session_id: "a" }, at: 5 }).turnStart).toBeNull();
+  });
+});
+
+describe("activityLabel / fmtSec", () => {
+  const tool = (status: "running" | "done", name = "terminal", context = "npm test", progress?: string) => ({ kind: "tool" as const, id: name + status, name, context, status, progress });
+  const base = { prompts: [], status: "", generating: "" };
+  it("prompt, running tool, generating, status, thought, answer, thinking", () => {
+    const prompt = [{ kind: "approval" as const, promptId: "p", executionGeneration: 1, choices: [] }];
+    expect(activityLabel({ ...base, items: [tool("running")], prompts: prompt })).toBe("응답 대기 중");
+    expect(activityLabel({ ...base, items: [tool("running", "a", ""), tool("running")] })).toBe("terminal · npm test");
+    expect(activityLabel({ ...base, items: [tool("running", "mcp", "x", "42%")] })).toBe("mcp · x · 42%");
+    expect(activityLabel({ ...base, items: [tool("done")], generating: "terminal", status: "pondering..." })).toBe("terminal 준비 중");
+    expect(activityLabel({ ...base, items: [tool("done")], status: "pondering..." })).toBe("pondering...");
+    expect(activityLabel({ ...base, items: [{ kind: "thought", id: "r", text: "x", streaming: true }] })).toBe("생각 중");
+    expect(activityLabel({ ...base, items: [tool("done"), { kind: "assistant", id: "m", text: "x", streaming: true }] })).toBe("답변 작성 중");
+    expect(activityLabel({ ...base, items: [tool("done")] })).toBe("생각 중");
+  });
+  it("fmtSec", () => { expect(fmtSec(7)).toBe("7초"); expect(fmtSec(72)).toBe("1분 12초"); expect(fmtSec(60)).toBe("1분 0초"); });
+});
+
+describe("groupItems", () => {
+  const t = (id: string) => ({ kind: "tool" as const, id, name: "n", context: "", status: "done" as const });
+  const a = (id: string) => ({ kind: "assistant" as const, id, text: "x", streaming: false });
+  it("keeps singles, groups runs of 2+, preserves order", () => {
+    expect(groupItems([])).toEqual([]);
+    expect(groupItems([a("a")])).toEqual([a("a")]);
+    expect(groupItems([t("1")])).toEqual([t("1")]);
+    expect(groupItems([t("1"), t("2"), t("3")])).toEqual([{ kind: "tools", id: "1", items: [t("1"), t("2"), t("3")] }]);
+    const g = groupItems([t("1"), t("2"), a("a"), t("3"), a("b"), t("4"), t("5")]);
+    expect(g.map((x) => x.kind)).toEqual(["tools", "assistant", "tool", "assistant", "tools"]);
+    expect(g[4]).toMatchObject({ id: "4" });
+  });
+});
+
+describe("thoughts, status and tool details", () => {
+  const evAt = (type: string, payload: object, at?: number): ChatAction => ({ t: "event", ev: { type, payload }, at });
+  const kinds = (s: typeof initialChat) => s.items.map((i) => i.kind);
+  it("reasoning.delta streams one thought with a duration and settles on the next item", () => {
+    let s = chatReducer(initialChat, evAt("reasoning.delta", { text: "**Plan**\n" }, 1000));
+    s = chatReducer(s, evAt("reasoning.delta", { text: "go" }, 4000));
+    expect(s.items).toEqual([expect.objectContaining({ kind: "thought", text: "**Plan**\ngo", streaming: true, startedAt: 1000, durationS: 3 })]);
+    s = chatReducer(s, ev("message.delta", { text: "hi" }));
+    expect(s.items.map((i) => (i.kind === "thought" || i.kind === "assistant") && i.streaming)).toEqual([false, true]);
+  });
+  it("a thought after streaming text settles the text", () => {
+    let s = chatReducer(initialChat, ev("message.delta", { text: "a" }));
+    s = chatReducer(s, ev("reasoning.delta", { text: "t" }));
+    expect(s.items.map((i) => (i.kind === "thought" || i.kind === "assistant") && i.streaming)).toEqual([false, true]);
+    s = chatReducer(s, ev("tool.start", { tool_id: "1", name: "x" }));
+    expect(s.items.some((i) => i.kind === "thought" && i.streaming)).toBe(false);
+  });
+  it("reasoning.available adds a settled thought once, not when already streamed", () => {
+    let s = chatReducer(initialChat, ev("reasoning.available", { text: "why" }));
+    expect(s.items).toEqual([expect.objectContaining({ kind: "thought", text: "why", streaming: false })]);
+    s = chatReducer(s, ev("reasoning.available", { text: "why" }));
+    expect(s.items).toHaveLength(1);
+    let t = chatReducer(initialChat, ev("reasoning.delta", { text: "abc" }));
+    t = chatReducer(t, ev("reasoning.available", { text: "abc" }));
+    expect(t.items).toHaveLength(1);
+  });
+  it("message.complete.reasoning fills in only when the turn had no thought, before the answer", () => {
+    let s = chatReducer(initialChat, { t: "userSent", id: "u0", text: "q" });
+    s = chatReducer(s, ev("message.delta", { text: "ans" }));
+    s = chatReducer(s, ev("message.complete", { text: "ans", reasoning: "r1" }));
+    expect(kinds(s)).toEqual(["user", "thought", "assistant"]);
+    let t = chatReducer(initialChat, { t: "userSent", id: "u0", text: "q" });
+    t = chatReducer(t, ev("reasoning.delta", { text: "r1" }));
+    t = chatReducer(t, ev("message.complete", { text: "ans", reasoning: "r1" }));
+    expect(kinds(t)).toEqual(["user", "thought", "assistant"]);
+    expect(kinds(chatReducer(initialChat, ev("message.complete", { reasoning: "only" })))).toEqual(["thought"]);
+  });
+  it("thinking.delta sets and clears the Hermes status; tool.generating is cleared by tool.start; turn end clears both", () => {
+    let s = chatReducer(initialChat, ev("thinking.delta", { text: "pondering..." }));
+    expect(s.status).toBe("pondering...");
+    s = chatReducer(s, ev("thinking.delta", { text: "" }));
+    expect(s.status).toBe("");
+    s = chatReducer(s, ev("tool.generating", { name: "terminal" }));
+    expect(s.generating).toBe("terminal");
+    s = chatReducer(s, ev("tool.start", { tool_id: "1", name: "terminal" }));
+    expect(s.generating).toBe("");
+    s = chatReducer(chatReducer(s, ev("thinking.delta", { text: "x" })), ev("message.complete", {}));
+    expect(s.status).toBe("");
+  });
+  it("tool.progress labels the running tool; tool.complete maps the optional fields and clears progress", () => {
+    let s = chatReducer(initialChat, ev("tool.start", { tool_id: "1", name: "mcp", context: "c", args: { q: "x" }, labels: [{ text: "Gmail · search" }] }));
+    expect(s.items[0]).toMatchObject({ args: { q: "x" }, labels: ["Gmail · search"] });
+    s = chatReducer(s, ev("tool.progress", { tool_id: "1", name: "mcp", progress: 1, percent: 42.4 }));
+    expect(s.items[0]).toMatchObject({ progress: "42%" });
+    s = chatReducer(s, ev("tool.complete", { tool_id: "1", name: "mcp", summary: "s", result_text: "rt", inline_diff: "+a", result: "{}", is_error: false }));
+    expect(s.items[0]).toMatchObject({ status: "done", summary: "s", resultText: "rt", diff: "+a", result: "{}", args: { q: "x" }, progress: undefined });
+  });
+  it("resumed history: reasoning rows become thoughts; tool rows keep args and labels", () => {
+    const items = transcriptToItems([
+      { role: "user", text: "q" },
+      { role: "assistant", text: "a", reasoning: "why" },
+      { role: "assistant", text: "", reasoning_content: "more" },
+      { role: "tool", name: "terminal", context: "ls", args: { command: "ls" }, labels: [{ text: "L" }] },
+    ]);
+    expect(items.map((i) => i.kind)).toEqual(["user", "thought", "assistant", "thought", "tool"]);
+    expect(items[4]).toMatchObject({ args: { command: "ls" }, labels: ["L"] });
+    expect(new Set(items.map((i) => i.id)).size).toBe(items.length);
+  });
+});
+

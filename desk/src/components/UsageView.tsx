@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { X } from "lucide-react";
 import type { Session } from "../lib/types";
 import { COMMON_LABEL, projectLabels, sessionFolder } from "../lib/groups";
-import { chartSeries, fmtTok, fmtTokens, summarize, type ChartBucket, type ChartPoint, type ChartRange, type Period, type UsageRow } from "../lib/usage";
+import { chartSeries, fmtExact, fmtTokens, summarize, type ChartBucket, type ChartPoint, type ChartRange, type Period, type UsageRow } from "../lib/usage";
 import { agentName } from "./SessionRow";
 
 const PERIODS: [Period, string][] = [["today", "Today"], ["7d", "7d"], ["30d", "30d"], ["all", "All"]];
@@ -40,6 +40,9 @@ function showLabel(p: ChartPoint, i: number, n: number, pref: ChartPref): boolea
 function Chart({ points, pref }: { points: ChartPoint[]; pref: ChartPref }) {
   const max = Math.max(1, ...points.map((d) => d.total));
   const n = points.length;
+  const [hover, setHover] = useState<number | null>(null);
+  const h = hover === null ? null : points[hover];
+  const edge = hover === null ? "" : hover < n * 0.15 ? " l" : hover > n * 0.85 ? " r" : "";
   const gap = n <= 30 ? 4 : n <= 60 ? 1 : 0;
   return (
     <div className="chart">
@@ -49,12 +52,22 @@ function Chart({ points, pref }: { points: ChartPoint[]; pref: ChartPref }) {
         <div className="chart-line" style={{ top: "calc(50% - 10px)" }} />
         <div className="chart-line" style={{ bottom: 20 }} />
         <div className="chart-bars" style={{ gap }}>
-          {points.map((d) => (
-            <div key={d.key} className="chart-col" title={`${d.title} · ${fmtTok(d.total)}`}>
+          {points.map((d, i) => (
+            <div key={d.key} className={`chart-col${i === hover ? " hot" : ""}`} aria-label={`${d.title} · ${fmtExact(d.total)} tokens`} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
               <div className="chart-bar" style={{ height: `${(d.total / max) * 100}%` }} />
             </div>
           ))}
         </div>
+        {h && (
+          <div className={`chart-tip${edge}`} style={edge ? undefined : { left: `${((hover! + 0.5) / n) * 100}%` }}>
+            <div className="chart-tip-t">{h.title}</div>
+            {h.total === 0 ? <div className="chart-tip-k">No usage</div> : (
+              <>
+                {([["Total", h.total], ["Input", h.input], ["Output", h.output], ["Cache", h.cache], ["Sessions", h.sessions]] as [string, number][]).map(([k, v]) => <div key={k} className="chart-tip-r"><span>{k}</span><span>{fmtExact(v)}</span></div>)}
+              </>
+            )}
+          </div>
+        )}
         <div className="chart-x">
           {points.map((d, i) => showLabel(d, i, n, pref) && <span key={d.key} style={{ left: `${((i + 0.5) / n) * 100}%` }}>{d.label}</span>)}
         </div>

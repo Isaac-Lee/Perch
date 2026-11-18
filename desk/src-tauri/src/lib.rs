@@ -37,6 +37,7 @@ pub fn run() {
       gateway::chat_close,
       sessions::sessions_snapshot,
       sessions::usage_history,
+      sessions::session_force_idle,
       hermes::hermes_status,
       hermes::hermes_connect,
       hermes::hermes_disconnect,

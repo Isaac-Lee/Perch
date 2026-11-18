@@ -4,6 +4,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import type { AgentKind, Session } from "../lib/types";
 import { hermesScreen, terminalLines, terminalPrompt, type HermesView } from "../mock/terminal";
+import { termTheme, onThemeChange } from "../lib/theme";
 import { TermCtx, fontStack, loadWebgl } from "../lib/termSettings";
 import { attachScrollReveal } from "../lib/useScrollReveal";
 
@@ -32,7 +33,7 @@ export default function MockTerminalView({ agent, stopCount = 0, session }: { ag
         const c = cfgRef.current;
         const term = new Terminal({
           fontFamily: fontStack(c.fontFamily), fontSize: c.fontSize, lineHeight: 1.3, cursorBlink: false, scrollback: 200,
-          theme: { background: "#17181b", foreground: "#e6e6e6", cursor: "#a1a1a6" },
+          theme: termTheme(),
         });
         const fitAddon = new FitAddon();
         term.loadAddon(fitAddon);
@@ -59,10 +60,11 @@ export default function MockTerminalView({ agent, stopCount = 0, session }: { ag
           term.write(terminalPrompt(agent, term.cols));
         }
         term.onData((d) => term.write(d === "\r" ? "\r\n" : d === "\x7f" ? "\b \b" : d)); // echo only
+        const offTheme = onThemeChange(() => { term.options.theme = termTheme(); });
         const ro = new ResizeObserver(fit);
         ro.observe(el);
         api.current = { term, fit, paint };
-        cleanup = () => { ro.disconnect(); detach(); term.dispose(); api.current = null; };
+        cleanup = () => { offTheme(); ro.disconnect(); detach(); term.dispose(); api.current = null; };
       });
     return () => { dead = true; cleanup(); };
   }, [agent]);

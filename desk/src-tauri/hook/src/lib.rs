@@ -19,6 +19,52 @@ fn cut(s: &str) -> String {
     s.chars().take(80).collect()
 }
 
+fn is_item(l: &str) -> bool {
+    let l = l.trim_start();
+    let mut c = l.chars();
+    if let Some('-' | '*' | '+' | '•') = c.next() {
+        return c.next().is_some_and(char::is_whitespace);
+    }
+    let t = l.trim_start_matches(|c: char| c.is_ascii_alphanumeric());
+    let n = l.len() - t.len();
+    let marked = t.starts_with(". ") || t.starts_with(") ");
+    marked && (l[..n].bytes().all(|b| b.is_ascii_digit()) && n <= 2 || n == 1)
+}
+
+/// The question a reply ends with, or None. Looks at the last non-empty line (code blocks dropped, trailing
+/// markdown/quotes/brackets/emoji ignored); a short option list (<= 6 items) is walked past to the line above it.
+// ponytail: heuristic. Courtesy closers ("더 필요한 것이 있나요?") match too, and a question in the middle of
+// the last line is not seen. Upgrade path: an exclusion list of closers, or a model classification.
+pub fn last_question(text: &str) -> Option<String> {
+    let (mut fenced, mut lines) = (false, Vec::new());
+    for l in text.lines() {
+        let t = l.trim();
+        if t.starts_with("```") || t.starts_with("~~~") {
+            fenced = !fenced;
+        } else if !fenced {
+            let t = t.trim_end_matches(|c: char| !c.is_alphanumeric() && c != '?' && c != '？');
+            if !t.is_empty() {
+                lines.push(t);
+            }
+        }
+    }
+    let mut i = lines.len().checked_sub(1)?;
+    let mut skipped = 0;
+    while skipped < 6 && is_item(lines[i]) && i > 0 && !lines[i].ends_with(['?', '？']) {
+        i -= 1;
+        skipped += 1;
+    }
+    let q = lines[i].strip_suffix(['?', '？'])?;
+    let start = q.char_indices().filter(|&(i, c)| matches!(c, '!' | '。' | '！' | '?' | '？') || (c == '.' && q[i + 1..].starts_with(' ')))
+        .last().map_or(0, |(i, c)| i + c.len_utf8());
+    let sentence = Some(q[start..].trim()).filter(|s| !s.is_empty()).unwrap_or(q.trim());
+    Some(cut(&format!("{sentence}?")))
+}
+
+pub fn ends_with_question(text: &str) -> bool {
+    last_question(text).is_some()
+}
+
 fn tool_detail(input: &Value) -> String {
     for k in ["command", "path", "file_path", "query", "url"] {
         if let Some(t) = input.get(k).and_then(Value::as_str) {
@@ -37,7 +83,7 @@ fn set_state(st: &mut Value, name: &str, now: u64) {
 
 fn new_state(sid: &str, now: u64) -> Value {
     json!({"agent":"hermes","sessionId":sid,"state":"idle","since":now,"turnStart":null,"lastTurn":null,"steps":0,
-        "tool":"","toolDetail":"","prompt":"","pending":null,"subagents":{},"todos":[],"seen":now})
+        "tool":"","toolDetail":"","prompt":"","pending":null,"asks":false,"ask":"","subagents":{},"todos":[],"seen":now})
 }
 
 /// Pure transition for one session file. `state` is Null when no file exists. None = delete the file.
@@ -60,16 +106,28 @@ pub fn apply(state: Value, event: &Value, now: u64) -> Option<Value> {
             st["steps"] = json!(0);
             st["prompt"] = json!(cut(ex["user_message"].as_str().unwrap_or("")));
             st["pending"] = Value::Null;
+            st["asks"] = json!(false);
+            st["ask"] = json!("");
             set_state(&mut st, "thinking", now);
         }
+        // Late tool events (e.g. the post-turn memory/skill review fork shares the session id and fires tool hooks after
+        // on_session_end) must not revive a finished session: they only move `state` while a turn is open.
+        "pre_tool_call" if st["turnStart"].is_null() => {}
         "pre_tool_call" => {
             st["tool"] = json!(event["tool_name"].as_str().unwrap_or(""));
             st["toolDetail"] = json!(tool_detail(&event["tool_input"]));
             st["steps"] = json!(st["steps"].as_u64().unwrap_or(0) + 1);
             set_state(&mut st, "tool", now);
         }
+        "post_llm_call" => {
+            let q = last_question(ex["assistant_response"].as_str().unwrap_or(""));
+            st["asks"] = json!(q.is_some());
+            st["ask"] = json!(q.unwrap_or_default());
+        }
         "post_tool_call" => {
-            set_state(&mut st, "thinking", now);
+            if !st["turnStart"].is_null() {
+                set_state(&mut st, "thinking", now);
+            }
             if event["tool_name"] == "todo" {
                 // ponytail: assumes tool_input.todos = [{content|text, status}]; real shape unverified, untouched otherwise
                 if let Some(a) = event["tool_input"]["todos"].as_array() {
@@ -95,9 +153,14 @@ pub fn apply(state: Value, event: &Value, now: u64) -> Option<Value> {
         }
         "on_human_input_resolved" => {
             st["pending"] = Value::Null;
-            set_state(&mut st, "thinking", now);
+            if !st["turnStart"].is_null() {
+                set_state(&mut st, "thinking", now);
+            } else if st["state"] == "approval" || st["state"] == "question" {
+                set_state(&mut st, "idle", now);
+            }
         }
         "on_session_end" => {
+            st["pending"] = Value::Null;
             if let Some(t) = st["turnStart"].as_u64() {
                 st["lastTurn"] = json!(now.saturating_sub(t));
             }
@@ -172,11 +235,25 @@ fn lock(file: &Path) -> Lock {
     }
 }
 
+fn read(file: &Path) -> Value {
+    fs::read_to_string(file).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or(Value::Null)
+}
+
+fn write(file: &Path, v: &Value) -> Option<()> {
+    let mut t = file.as_os_str().to_owned();
+    t.push(format!(".tmp{}", std::process::id()));
+    let t = PathBuf::from(t);
+    fs::write(&t, serde_json::to_vec(v).ok()?).ok()?;
+    if fs::rename(&t, file).is_err() {
+        let _ = fs::remove_file(&t);
+    }
+    Some(())
+}
+
 fn update(dir: &Path, id: &str, event: &Value, now: u64) -> Option<()> {
     let file = session_file(dir, id);
     let _l = lock(&file);
-    let old = fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or(Value::Null);
-    match apply(old, event, now) {
+    match apply(read(&file), event, now) {
         None => {
             let _ = fs::remove_file(&file);
         }
@@ -184,16 +261,31 @@ fn update(dir: &Path, id: &str, event: &Value, now: u64) -> Option<()> {
             if v["sessionId"] == "" {
                 v["sessionId"] = json!(id);
             }
-            let mut t = file.as_os_str().to_owned();
-            t.push(format!(".tmp{}", std::process::id()));
-            let t = PathBuf::from(t);
-            fs::write(&t, serde_json::to_vec(&v).ok()?).ok()?;
-            if fs::rename(&t, &file).is_err() {
-                let _ = fs::remove_file(&t);
-            }
+            write(&file, &v)?;
         }
     }
     Some(())
+}
+
+/// Stop button: a session file that still shows work (running/thinking/tool) becomes idle. True when it changed.
+/// A real later hook event simply overrides it (a tool event only while a turn is open, so a still-running turn
+/// reappears at its next `pre_llm_call`).
+pub fn force_idle(dir: &Path, id: &str, now: u64) -> bool {
+    if !safe_id(id) {
+        return false;
+    }
+    let file = session_file(dir, id);
+    let _l = lock(&file);
+    let mut st = read(&file);
+    if !matches!(st["state"].as_str(), Some("running" | "thinking" | "tool")) {
+        return false;
+    }
+    st["turnStart"] = Value::Null;
+    st["tool"] = json!("");
+    st["toolDetail"] = json!("");
+    st["seen"] = json!(now);
+    set_state(&mut st, "idle", now);
+    write(&file, &st).is_some()
 }
 
 /// Process one hook payload against the state folder. Errors are swallowed by callers.
@@ -206,7 +298,8 @@ pub fn run(input: &str, home: &Path, now: u64) -> Option<()> {
     fs::create_dir_all(&kids).ok()?;
     match name {
         "subagent_start" | "subagent_stop" => {
-            let parent = ev["extra"]["parent_session_id"].as_str()?;
+            // Hermes promotes parent_session_id to the top-level session_id and drops it from `extra` (agent/shell_hooks.py).
+            let parent = ev["extra"]["parent_session_id"].as_str().or_else(|| ev["session_id"].as_str())?;
             let child = ev["extra"]["child_session_id"].as_str()?;
             if !safe_id(parent) || !safe_id(child) {
                 return None;
