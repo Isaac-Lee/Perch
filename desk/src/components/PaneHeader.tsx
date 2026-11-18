@@ -1,5 +1,6 @@
 import { GitBranch, Square, X } from "lucide-react";
 import { ThinkingOrb } from "thinking-orbs";
+import { useIsLight } from "../lib/theme";
 import type { Pane, Session } from "../lib/types";
 import { displayState } from "../lib/groups";
 import { fmtElapsed } from "../lib/format";
@@ -7,6 +8,7 @@ import { paneIcon } from "../lib/paneIcon";
 import { agentName } from "./SessionRow";
 
 export default function PaneHeader({ pane, session, now, focused, onClose, onStop, dragging, onDragStart }: { pane: Pane; session?: Session; now: number; focused: boolean; onClose: () => void; onStop: () => void; dragging?: boolean; onDragStart?: (e: React.PointerEvent<HTMLElement>) => void }) {
+  const light = useIsLight();
   const st = session ? displayState(session, now) : null;
   const waiting = st === "approval" || st === "question";
   return (
@@ -20,7 +22,7 @@ export default function PaneHeader({ pane, session, now, focused, onClose, onSto
       <span className="grow" />
       {st === "thinking" && session && (
         <span className="think">
-          <ThinkingOrb state="working" size={20} theme="dark" />
+          <ThinkingOrb state="working" size={20} theme={light ? "light" : "dark"} />
           <span>Thinking {fmtElapsed(now - session.since)}</span>
         </span>
       )}

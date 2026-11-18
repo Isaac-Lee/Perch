@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { clampSidebarWidth, loadNewPane, loadPaneLayout, savePaneLayout, loadDismissed, saveDismissed, loadSessionOrder, loadSessionSort, pushRecent, saveSessionOrder, saveSessionSort } from "./uiSettings";
+import { clampSidebarWidth, loadNewPane, loadPaneLayout, savePaneLayout, loadTheme, saveTheme, loadDismissed, saveDismissed, loadSessionOrder, loadSessionSort, pushRecent, saveSessionOrder, saveSessionSort } from "./uiSettings";
 
 test("pushRecent moves to front, dedupes, caps at 8", () => {
   expect(pushRecent(["a", "b", "c"], "c")).toEqual(["c", "a", "b"]);
@@ -56,6 +56,16 @@ test("dismissed sessions load validates and caps, keeping the newest", () => {
   saveDismissed(Array.from({ length: 400 }, (_, i) => `s${i}`));
   expect(loadDismissed()).toHaveLength(300);
   expect(loadDismissed().at(-1)).toBe("s399");
+  vi.unstubAllGlobals();
+});
+
+test("theme load validates, defaults to dark", () => {
+  const store: Record<string, string> = {};
+  vi.stubGlobal("localStorage", { getItem: (k: string) => store[k] ?? null, setItem: (k: string, v: string) => { store[k] = v; } });
+  expect(loadTheme()).toBe("dark");
+  saveTheme("light");
+  expect(loadTheme()).toBe("light");
+  for (const bad of ['"neon"', "3", "{not json", "null"]) { store["perch.theme"] = bad; expect(loadTheme()).toBe("dark"); }
   vi.unstubAllGlobals();
 });
 

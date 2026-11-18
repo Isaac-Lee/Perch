@@ -13,10 +13,11 @@ import UsageView from "./components/UsageView";
 import SettingsMenu from "./components/SettingsMenu";
 import ShortcutHelp from "./components/ShortcutHelp";
 import { matchDigit, matchShortcut } from "./lib/shortcuts";
-import { loadNewPane, loadRecentFolders, loadSidebarWidth, pushRecent, saveNewPane, saveRecentFolders, saveSidebarWidth } from "./lib/uiSettings";
+import { loadNewPane, loadRecentFolders, loadSidebarWidth, loadTheme, saveTheme, pushRecent, saveNewPane, saveRecentFolders, saveSidebarWidth } from "./lib/uiSettings";
 import type { AgentKind, PaneView } from "./lib/types";
 import { recentFolders } from "./mock/sessions";
 import { TermCtx, loadTerm, saveTerm } from "./lib/termSettings";
+import { applyTheme } from "./lib/theme";
 import { usePaneLayout } from "./lib/usePaneLayout";
 
 const seedFolders = isTauri ? [HOME] : recentFolders;
@@ -38,6 +39,8 @@ export default function App() {
   const [help, setHelp] = useState(false);
   const [term, setTerm] = useState(loadTerm);
   useEffect(() => saveTerm(term), [term]);
+  const [theme, setTheme] = useState(loadTheme);
+  useEffect(() => { applyTheme(theme); saveTheme(theme); }, [theme]);
   const [width, setWidth] = useState(loadSidebarWidth);
   useEffect(() => saveSidebarWidth(width), [width]);
   useEffect(() => saveNewPane(newPane), [newPane]);
@@ -98,7 +101,7 @@ export default function App() {
         <span className="grow" />
         <button className={`icon-btn${usage ? " on" : ""}`} aria-label="Token usage" aria-pressed={usage} title="Token usage" onClick={() => setUsage((u) => !u)}><ChartNoAxesColumn size={16} strokeWidth={1.5} /></button>
         <ShortcutHelp open={help} onOpenChange={setHelp} />
-        <SettingsMenu value={term} onChange={setTerm} pane={newPane} onPane={setNewPane} folders={folders} />
+        <SettingsMenu theme={theme} onTheme={setTheme} value={term} onChange={setTerm} pane={newPane} onPane={setNewPane} folders={folders} />
         <NewPaneMenu variant="bar" defaults={newPane} folders={folders} onAdd={open} onDefaults={setNewPane} onChooseFolder={chooseFolder} />
       </header>
       <div className="main">

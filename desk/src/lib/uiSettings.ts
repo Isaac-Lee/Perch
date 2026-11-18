@@ -29,6 +29,11 @@ export const saveSessionOrder = (ids: string[]) => write("perch.sessionOrder", i
 export const loadDismissed = (): string[] => { const v = read<unknown>("perch.dismissedSessions", []); return Array.isArray(v) ? v.filter((x) => typeof x === "string").slice(-MAX_ORDER) : []; };
 export const saveDismissed = (ids: string[]) => write("perch.dismissedSessions", ids.slice(-MAX_ORDER));
 
+export const THEMES = [["dark", "Dark"], ["midnight", "Midnight"], ["black", "Black"], ["light", "Light"]] as const;
+export type ThemeId = (typeof THEMES)[number][0];
+export const loadTheme = (): ThemeId => { const v = read<unknown>("perch.theme", "dark"); return THEMES.some(([id]) => id === v) ? (v as ThemeId) : "dark"; };
+export const saveTheme = (t: ThemeId) => write("perch.theme", t);
+
 export const loadPaneLayout = (): string[][] => {
   const v = read<unknown>("perch.paneLayout", []);
   return Array.isArray(v) && v.every((c) => Array.isArray(c) && c.length > 0 && c.every((x) => typeof x === "string")) ? (v as string[][]) : [];

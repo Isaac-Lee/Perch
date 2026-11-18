@@ -3,6 +3,7 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import "@xterm/xterm/css/xterm.css";
+import { termTheme, onThemeChange } from "../lib/theme";
 import { TermCtx, fontStack, loadWebgl } from "../lib/termSettings";
 import { attachScrollReveal } from "../lib/useScrollReveal";
 import { openUrl, paneAttach, paneResize, paneWrite } from "../lib/backend";
@@ -32,7 +33,7 @@ export default function PtyTerminalView({ paneId, focused, agent }: { paneId: st
         const c = cfgRef.current;
         const term = new Terminal({
           fontFamily: fontStack(c.fontFamily), fontSize: c.fontSize, lineHeight: 1.3, cursorBlink: true, scrollback: 5000, allowProposedApi: true,
-          theme: { background: "#17181b", foreground: "#e6e6e6", cursor: "#a1a1a6" },
+          theme: termTheme(),
           // OSC 8 links (Hermes TUI renders markdown links this way) open in the browser instead of nowhere
           linkHandler: { activate: (_e, uri) => { openUrl(uri).catch(console.error); }, allowNonHttpProtocols: false },
         });
@@ -76,11 +77,12 @@ export default function PtyTerminalView({ paneId, focused, agent }: { paneId: st
         el.addEventListener("paste", onPaste, true);
         term.onData((d) => { paneWrite(paneId, d).catch(console.error); });
         term.onResize(({ cols, rows }) => { paneResize(paneId, cols, rows).catch(console.error); });
+        const offTheme = onThemeChange(() => { term.options.theme = termTheme(); });
         const ro = new ResizeObserver(fit);
         ro.observe(el);
         api.current = { term, fit };
         if (focusedRef.current) term.focus();
-        cleanup = () => { el.removeEventListener("paste", onPaste, true); ro.disconnect(); detach(); term.dispose(); api.current = null; };
+        cleanup = () => { offTheme(); el.removeEventListener("paste", onPaste, true); ro.disconnect(); detach(); term.dispose(); api.current = null; };
       });
     return () => { dead = true; cleanup(); };
   }, [paneId, agent]);

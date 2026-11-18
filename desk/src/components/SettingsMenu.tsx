@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { Minus, Plus, Settings } from "lucide-react";
 import type { AgentKind } from "../lib/types";
-import type { NewPaneDefaults } from "../lib/uiSettings";
+import { THEMES, type NewPaneDefaults, type ThemeId } from "../lib/uiSettings";
 import { isTauri, hermesStatus, hermesConnect, hermesDisconnect, hermesGatewayStop, type HermesStatus } from "../lib/backend";
 import { FONT_CHOICES, clampSize, type TermSettings } from "../lib/termSettings";
 
 const CUSTOM = "__custom";
 const AGENT_CHOICES: [AgentKind, string][] = [["hermes", "Hermes"], ["opencode", "OpenCode"], ["shell", "Shell"]];
 
-export default function SettingsMenu({ value, onChange, pane, onPane, folders }: {
-  value: TermSettings; onChange: (s: TermSettings) => void; pane: NewPaneDefaults; onPane: (v: NewPaneDefaults) => void; folders: string[];
+export default function SettingsMenu({ theme, onTheme, value, onChange, pane, onPane, folders }: {
+  theme: ThemeId; onTheme: (t: ThemeId) => void; value: TermSettings; onChange: (s: TermSettings) => void; pane: NewPaneDefaults; onPane: (v: NewPaneDefaults) => void; folders: string[];
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -37,6 +37,14 @@ export default function SettingsMenu({ value, onChange, pane, onPane, folders }:
       <button className="icon-btn" aria-label="Settings" aria-expanded={open} onClick={() => setOpen(!open)}><Settings size={16} strokeWidth={1.5} /></button>
       {open && (
         <div className="menu settings">
+          <div className="set-group">
+            <div className="set-title">Appearance</div>
+            <label className="set-row"><span>Theme</span>
+              <select className="field" value={theme} onChange={(e) => onTheme(e.target.value as ThemeId)}>
+                {THEMES.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+              </select>
+            </label>
+          </div>
           <div className="set-group">
             <div className="set-title">Terminal</div>
             <label className="set-row"><span>Font</span>
