@@ -10,8 +10,13 @@ Perch는 여러 코딩 에이전트(Hermes, OpenCode)를 분할 터미널로 띄
 
 | 위치 | 내용 | 상태 |
 |---|---|---|
-| `desk/src/` | 화면 (React 19 + TypeScript). 브라우저에서는 가짜 데이터, Tauri 창에서는 실제 백엔드 | 테스트 33개 통과 |
-| `desk/src-tauri/src/` | Rust 백엔드: `pty.rs`(터미널), `desk.rs`(칸·창), `sessions.rs`(상태 수집, state.db 보강), `hermes.rs`(실행 파일 찾기, 연결) | 테스트 30개 통과 |
+| `desk/src/` | 화면 (React 19 + TypeScript). 브라우저에서는 가짜 데이터, Tauri 창에서는 실제 백엔드 | 테스트 66개 통과 |
+| `desk/src-tauri/src/` | Rust 백엔드: `pty.rs`(터미널), `desk.rs`(칸·창), `sessions.rs`(상태 수집, state.db 보강), `hermes.rs`(실행 파일 찾기, 연결) | 테스트 39개 통과 (1개는 무시) |
+| `desk/src-tauri/src/gateway.rs` | Hermes gateway 중계. `hermes gateway attach`가 준 ws:// 주소에 loopback TcpStream으로 직접 WebSocket을 말하고 JSON 줄을 채팅 칸과 주고받는다 (gateway가 Origin 헤더를 거부해서 웹뷰가 직접 못 붙는다) | 테스트 포함 |
+| `desk/src/components/Chat*.tsx` | 채팅 보기. `ChatView`(전체), `ChatMessage`(마크다운 답변·도구 줄), `ChatPrompt`(승인·질문 버튼), `ChatComposer`(입력 상자: `+` 이미지, 모델 칩과 메뉴, 엔터 아이콘) | `chatSession`, `composer` 테스트 |
+| `desk/src/lib/chatSession.ts` | 채팅 상태 리듀서와 훅. gateway 이벤트를 항목으로 바꾸고 resume, 모델 변경, 한 번의 자동 재연결을 맡는다 | 녹화한 턴(`__fixtures__/turn.jsonl`)으로 재생 테스트 |
+| `desk/src/lib/gateway.ts`, `gatewayTypes.ts` | JSON-RPC 2.0 클라이언트와 손으로 옮겨 적은 wire 타입(hermes-gateway-v1) | 테스트 통과 |
+| `desk/src/lib/markdown.tsx` | 채팅용 마크다운 렌더러 | 테스트 통과 |
 | `desk/src-tauri/hook/` | `perch-hook`: Hermes 셸 훅이 부르는 작은 바이너리. 상태 파일을 쓴다 | 테스트 3개 통과 |
 | `desk/scripts/build-hook.mjs` | 훅을 빌드해 Tauri 사이드카 위치로 복사 (`npm run hook`) | `tauri dev`/`build`가 자동 실행 |
 | `.github/workflows/build.yml` | Windows 설치 파일과 macOS(Apple Silicon) dmg를 만든다. PR과 수동 실행은 결과물만 남기고, `v*` 태그는 초안 릴리스에 붙인다 | PR #1에서 두 OS 모두 통과 |
@@ -29,7 +34,7 @@ Perch는 여러 코딩 에이전트(Hermes, OpenCode)를 분할 터미널로 띄
 git clone https://github.com/Isaac-Lee/Perch.git
 cd Perch/desk
 npm install
-npm test          # 33개 통과해야 한다
+npm test          # 66개 통과해야 한다
 npm run dev       # 브라우저 모드 (가짜 데이터) http://localhost:5173
 npm run tauri dev # 앱 창 (실제 터미널). Rust 필요
 npm run tauri build   # 릴리스 exe와 설치 파일
@@ -71,7 +76,7 @@ npm run tauri build   # 릴리스 exe와 설치 파일
 **칸 안에서 앱이 그리는 것 (Hermes 자체 화면과 중복을 줄임)**
 - 유지: 칸 하단 진행 줄, 칸 상단 생각 중 아이콘, 포커스 테두리, Stop 버튼, 헤더의 상태 점
 - 제거: 승인·질문 대기 시 헤더 경고색과 문구, 입력 줄 배경 띠, "입력 중" 라벨
-- 만들지 않음: 모델 표시 (Hermes 상태줄에 이미 있음), 별도 입력창 (에이전트의 자동완성과 선택 메뉴를 잃기 때문)
+- 만들지 않음: 모델 표시 (Hermes 상태줄에 이미 있음), 별도 입력창 (에이전트의 자동완성과 선택 메뉴를 잃기 때문). 이것은 터미널(TUI) 칸에 해당한다. v0.3.0의 채팅 보기는 입력 상자와 모델 칩을 직접 그린다.
 - 승인·질문의 자세한 내용, 입력창, 서브에이전트 독은 Hermes가 터미널 안에 직접 그린다. 앱은 패널에서 요약과 [Allow]/[Deny]만 제공한다.
 
 **추가된 기능**
@@ -109,10 +114,18 @@ npm run tauri build   # 릴리스 exe와 설치 파일
 
 ## 6. 다음에 할 일
 
-**릴리스.** `v0.1.0`은 2026-11-18에 [Releases](https://github.com/Isaac-Lee/Perch/releases)에 게시됐다 (`Perch_0.1.0_x64-setup.exe`, `Perch_0.1.0_aarch64.dmg`). 태그 빌드는 초안 릴리스에 설치 파일을 붙이고, 확인 뒤 `gh release edit v<버전> --draft=false --latest`로 게시한다. 다음 버전은 `tauri.conf.json`, `Cargo.toml`, `package.json`의 버전을 올리고 `v<버전>` 태그를 push하면 같은 과정이 돈다.
+**릴리스.** 최신은 `v0.3.0`(Hermes 채팅 보기)이고 릴리스 노트는 `docs/releases/v0.3.0.md`다. 이전 `v0.1.0`은 2026-11-18에 [Releases](https://github.com/Isaac-Lee/Perch/releases)에 게시됐다 (`Perch_0.1.0_x64-setup.exe`, `Perch_0.1.0_aarch64.dmg`). 태그 빌드는 초안 릴리스에 설치 파일을 붙이고, 확인 뒤 `gh release edit v<버전> --draft=false --latest`로 게시한다. 다음 버전은 `tauri.conf.json`, `Cargo.toml`(앱과 `hook/`), `package.json`과 두 lock 파일의 버전을 올리고 `v<버전>` 태그를 push하면 같은 과정이 돈다. v0.3.0 준비 커밋도 이 파일들만 고쳤다.
 
 - 라이선스는 MIT + Commons Clause다 (`LICENSE`). 회사 내부 사용은 허용, 판매는 금지 (사용자 결정, 2026-11-18).
 - Intel 맥용 빌드는 없다. 필요하면 워크플로 matrix에 줄을 추가한다.
+
+**채팅 보기의 알려진 한계 (v0.3.0)**
+- 코드 블록에 구문 강조가 없다.
+- 슬래시 명령 자동완성이 없다. 필요하면 TUI 칸을 쓴다.
+- 추론 강도(reasoning effort) 선택이 없다.
+- resume으로 다시 연 도구 줄에는 걸린 시간이 없다 (기록에 시간이 없다).
+- 연결이 끊기면 자동 재연결은 한 번뿐이다. 그 뒤에는 "다시 연결" 버튼을 눌러야 한다.
+- 모델 목록에는 인증된 provider의 모델만 나온다.
 
 **4단계: OpenCode 연결 — 하지 않기로 했다 (사용자 결정, 2026-11-18).** OpenCode는 칸에서 실행만 되고 상태 표시는 없다. 나중에 다시 하게 되면 `docs/ADAPTERS.md`를 따른다.
 

@@ -1,4 +1,4 @@
-import type { AgentKind } from "./types";
+import type { AgentKind, PaneView } from "./types";
 
 // ponytail: localStorage until stage 2 moves settings to a Tauri config file
 const read = <T>(key: string, fallback: T): T => {
@@ -18,11 +18,12 @@ export const saveCollapsed = (keys: string[]) => write("perch.collapsedGroups", 
 export const loadArchived = (): string[] => { const v = read<unknown>("perch.archivedSessions", []); return Array.isArray(v) ? v.filter((x) => typeof x === "string") : []; };
 export const saveArchived = (ids: string[]) => write("perch.archivedSessions", ids);
 
-export interface NewPaneDefaults { agent: AgentKind; cwd: string }
+export interface NewPaneDefaults { agent: AgentKind; cwd: string; view: PaneView }
 export const loadNewPane = (firstFolder: string): NewPaneDefaults => {
   const v = read<Partial<NewPaneDefaults> | null>("perch.newPane", null);
   const agent = v && (v.agent === "hermes" || v.agent === "opencode" || v.agent === "shell") ? v.agent : "hermes";
-  return { agent, cwd: v && typeof v.cwd === "string" && v.cwd.trim() ? v.cwd : firstFolder };
+  const view: PaneView = v && v.view === "tui" ? "tui" : "chat";
+  return { agent, view, cwd: v && typeof v.cwd === "string" && v.cwd.trim() ? v.cwd : firstFolder };
 };
 export const pushRecent = (list: string[], f: string): string[] => [f, ...list.filter((x) => x !== f)].slice(0, 8);
 export const loadRecentFolders = (seed: string[]): string[] => {

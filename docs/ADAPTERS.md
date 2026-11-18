@@ -27,5 +27,6 @@
 
 ## 현재 상태
 - Hermes만 연결돼 있다.
+- Hermes 칸은 기본으로 채팅 보기(`ChatView`)로 열리고, Perch가 Hermes gateway에 직접 붙는다 (`gateway.rs`, `desk/src/lib/chatSession.ts`). 터미널 화면은 "Hermes (TUI)"로 연다. 상태 파일은 두 방식 모두 Hermes의 shell hook이 같은 방식으로 쓰므로 패널은 그대로다. 다른 에이전트는 이 채팅 보기를 쓰지 않는다.
 - OpenCode는 보류다 (사용자 결정, 2026-11-18).
 - 칸에서 `opencode`를 실행하는 것은 지금도 된다. 패널에는 상태 없는 세션으로 나온다.

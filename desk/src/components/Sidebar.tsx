@@ -11,9 +11,9 @@ import { formatShortcut } from "../lib/shortcuts";
 
 const hiddenIn = (archived: Set<string>, s: Session) => !s.paneId && archived.has(s.sessionId);
 
-export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, onApprove, onStop, onCollapse, onUsage, onNew, newSession, width, onResize }: {
+export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, onApprove, onStop, onClosePane, onCollapse, onUsage, onNew, newSession, width, onResize }: {
   sessions: Session[]; panes: Pane[]; now: number; focusedPaneId: string | null;
-  onFocus: (id: string) => void; onApprove: (id: string, allow: boolean) => void; onStop: (id: string) => void; onCollapse: () => void; onUsage: () => void; onNew: (cwd: string) => void; newSession: React.ReactNode;
+  onFocus: (id: string) => void; onApprove: (id: string, allow: boolean) => void; onStop: (id: string) => void; onClosePane: (paneId: string) => void; onCollapse: () => void; onUsage: () => void; onNew: (cwd: string) => void; newSession: React.ReactNode;
   width: number; onResize: (w: number) => void;
 }) {
   // An archived session stays hidden until it gets an open pane again (resumed).
@@ -60,6 +60,7 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
   const row = (s: Session) => (
     <SessionRow key={s.sessionId} s={s} now={now} focused={s.sessionId === focusedSession}
       onClick={() => onFocus(s.sessionId)} onApprove={(a) => onApprove(s.sessionId, a)} onStop={() => onStop(s.sessionId)}
+      onClose={s.paneId ? () => onClosePane(s.paneId!) : undefined}
       onArchive={s.paneId ? undefined : () => toggleArchive(s.sessionId)} archived={hiddenIn(archived, s)} />
   );
   const toggle = (k: string) => setOpen((o) => { const n = new Set(o); if (!n.delete(k)) n.add(k); return n; });

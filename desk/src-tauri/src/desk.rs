@@ -22,6 +22,8 @@ pub struct PaneInfo {
     pub created_at: u64,
     /// Connected Hermes session (full id, or the banner's prefix until the session shows up)
     pub session_id: Option<String>,
+    /// "chat" (gateway view, no PTY) or "tui"; only Hermes panes can be chat
+    pub view: String,
 }
 
 struct Entry {
@@ -79,7 +81,7 @@ fn relink_entries(entries: &mut [Entry], sessions: &[SessionInfo], first_seen: &
         .collect();
     free.sort();
     let mut order: Vec<usize> = (0..entries.len())
-        .filter(|&i| entries[i].info.agent == "hermes" && entries[i].info.session_id.is_none())
+        .filter(|&i| entries[i].info.agent == "hermes" && entries[i].info.view != "chat" && entries[i].info.session_id.is_none())
         .collect();
     order.sort_by_key(|&i| entries[i].created_ms);
     for i in order {
@@ -99,15 +101,24 @@ impl Desk {
         self.0.lock().unwrap().entries.iter().map(|e| e.info.clone()).collect()
     }
 
-    /// Removes entries matching `pred`; true if any were removed. Ptys are dropped (killed) after unlocking.
-    fn remove(&self, pred: impl Fn(&PaneInfo) -> bool) -> bool {
+    /// Removes entries matching `pred`; returns their ids. Ptys are dropped (killed) after unlocking.
+    fn remove(&self, pred: impl Fn(&PaneInfo) -> bool) -> Vec<String> {
         let removed: Vec<Entry> = {
             let mut g = self.0.lock().unwrap();
             let (gone, keep) = std::mem::take(&mut g.entries).into_iter().partition(|e| pred(&e.info));
             g.entries = keep;
             gone
         };
-        !removed.is_empty()
+        removed.iter().map(|e| e.info.id.clone()).collect()
+    }
+
+    /// Ok if the pane exists and is a chat pane.
+    pub fn check_chat(&self, id: &str) -> Result<(), String> {
+        match self.0.lock().unwrap().entries.iter().find(|e| e.info.id == id) {
+            None => Err("칸이 없습니다".into()),
+            Some(e) if e.info.view != "chat" => Err("채팅 칸이 아닙니다".into()),
+            Some(_) => Ok(()),
+        }
     }
 
     pub fn relink(&self, sessions: &[SessionInfo], first_seen: &HashMap<String, u64>) -> bool {
@@ -127,7 +138,11 @@ impl Desk {
     }
 
     pub fn close_window(&self, app: &AppHandle, label: &str) {
-        if self.remove(|i| i.window == label) {
+        let gone = self.remove(|i| i.window == label);
+        for id in &gone {
+            app.state::<crate::gateway::Chats>().close(id);
+        }
+        if !gone.is_empty() {
             emit_snapshot(app);
         }
     }
@@ -174,10 +189,18 @@ pub async fn pane_create(
     agent: String,
     cwd: String,
     resume: Option<String>,
+    view: Option<String>,
 ) -> Result<String, String> {
     if !["hermes", "opencode", "shell"].contains(&agent.as_str()) {
         return Err(format!("알 수 없는 에이전트: {agent}"));
     }
+    let view = match view.as_deref() {
+        None => if agent == "hermes" { "chat" } else { "tui" },
+        Some("tui") => "tui",
+        Some("chat") if agent == "hermes" => "chat",
+        Some("chat") => return Err("채팅 보기는 hermes 칸에만 쓸 수 있습니다".into()),
+        Some(v) => return Err(format!("알 수 없는 보기: {v}")),
+    };
     if let Some(r) = &resume {
         if agent != "hermes" || r.is_empty() || r.starts_with('-') {
             return Err("resume은 hermes 세션 id에만 쓸 수 있습니다".into());
@@ -197,7 +220,7 @@ pub async fn pane_create(
         g.entries.push(Entry {
             info: PaneInfo {
                 id: id.clone(), agent, cwd, repo_root, branch, window: window.label().to_string(), created_at,
-                session_id: resume.clone(),
+                session_id: resume.clone(), view: view.into(),
             },
             pty: None,
             chan: Arc::default(),
@@ -222,6 +245,9 @@ pub async fn pane_attach(
     let (chan, agent, cwd, running, resume, linked) = {
         let g = desk.0.lock().unwrap();
         let e = g.entries.iter().find(|e| e.info.id == id).ok_or("칸이 없습니다")?;
+        if e.info.view == "chat" {
+            return Err("채팅 칸에는 터미널이 없습니다".into());
+        }
         (e.chan.clone(), e.info.agent.clone(), e.info.cwd.clone(), e.pty.is_some(), e.resume.clone(), e.info.session_id.is_some())
     };
     *chan.lock().unwrap() = Some(on_data.clone());
@@ -275,7 +301,7 @@ pub async fn pane_attach(
             }
         },
         move || {
-            if app2.state::<Desk>().remove(|i| i.id == id2) {
+            if !app2.state::<Desk>().remove(|i| i.id == id2).is_empty() {
                 emit_snapshot(&app2);
             }
         },
@@ -335,11 +361,19 @@ pub async fn pane_write(desk: State<'_, Desk>, id: String, data: String) -> Resu
 /// Answers a pending approval of a connected session by typing the menu number into its pane.
 #[tauri::command]
 pub async fn session_approve(
+    app: AppHandle,
     desk: State<'_, Desk>,
     sessions: State<'_, Sessions>,
     session_id: String,
     allow: bool,
 ) -> Result<(), String> {
+    // Chat panes have no PTY and know themselves whether a prompt is open: hand the answer to the pane.
+    let chat = desk.0.lock().unwrap().entries.iter()
+        .find(|e| e.info.session_id.as_deref() == Some(&session_id) && e.info.view == "chat")
+        .map(|e| e.info.id.clone());
+    if let Some(pane_id) = chat {
+        return app.emit("desk://chat-approve", serde_json::json!({ "paneId": pane_id, "allow": allow })).map_err(|e| e.to_string());
+    }
     let key = sessions::approve_key(&sessions.get(), &session_id, allow)?;
     let mut g = desk.0.lock().unwrap();
     match g.entries.iter_mut().find(|e| e.info.session_id.as_deref() == Some(&session_id)).and_then(|e| e.pty.as_mut()) {
@@ -354,10 +388,23 @@ pub async fn pane_resize(desk: State<'_, Desk>, id: String, cols: u16, rows: u16
 }
 
 #[tauri::command]
-pub async fn pane_close(app: AppHandle, desk: State<'_, Desk>, id: String) -> Result<(), String> {
-    if desk.remove(|i| i.id == id) {
+pub async fn pane_close(app: AppHandle, desk: State<'_, Desk>, chats: State<'_, crate::gateway::Chats>, id: String) -> Result<(), String> {
+    chats.close(&id);
+    if !desk.remove(|i| i.id == id).is_empty() {
         emit_snapshot(&app);
     }
+    Ok(())
+}
+
+/// A chat pane reports the session it created or resumed (overwrites any earlier link).
+#[tauri::command]
+pub async fn pane_set_session(app: AppHandle, desk: State<'_, Desk>, id: String, session_id: String) -> Result<(), String> {
+    {
+        let mut g = desk.0.lock().unwrap();
+        let e = g.entries.iter_mut().find(|e| e.info.id == id).ok_or("칸이 없습니다")?;
+        e.info.session_id = Some(session_id);
+    }
+    emit_snapshot(&app);
     Ok(())
 }
 
@@ -416,7 +463,7 @@ mod tests {
         Entry {
             info: PaneInfo {
                 id: id.into(), agent: agent.into(), cwd: String::new(), repo_root: None, branch: None, window: "main".into(),
-                created_at: 0, session_id: session.map(String::from),
+                created_at: 0, session_id: session.map(String::from), view: "tui".into(),
             },
             pty: None, chan: Arc::default(), created_ms, resume: None,
         }
@@ -442,6 +489,19 @@ mod tests {
         let got: Vec<_> = es.iter().map(|e| e.info.session_id.clone()).collect();
         assert_eq!(got, [Some(b.into()), Some(c.into()), None, None, Some(a.into())]);
         assert!(!relink_entries(&mut es, &ss, &fs), "stable");
+    }
+
+    #[test]
+    fn relink_skips_chat_panes() {
+        let a = "local-aaaaaaaaaaaaaaaa1111";
+        let ss = [sess(a)];
+        let fs: HashMap<String, u64> = [(a.to_string(), 2000)].into();
+        let mut es = vec![entry("p1", "hermes", 1000, None)];
+        es[0].info.view = "chat".into();
+        assert!(!relink_entries(&mut es, &ss, &fs));
+        assert_eq!(es[0].info.session_id, None);
+        es[0].info.view = "tui".into();
+        assert!(relink_entries(&mut es, &ss, &fs), "same pane as tui is linked");
     }
 
     #[test]

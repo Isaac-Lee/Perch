@@ -9,7 +9,7 @@ export default function Pane({ pane, session, now, focused, stopCount, onFocus, 
   return (
     <section className={`pane${focused ? " focused" : ""}`} style={style} onMouseDown={onFocus}>
       <PaneHeader pane={pane} session={session} now={now} focused={focused} onClose={onClose} onStop={onStop} />
-      <TerminalView paneId={pane.id} focused={focused} agent={pane.agent} stopCount={stopCount} session={session} />
+      <TerminalView paneId={pane.id} focused={focused} agent={pane.agent} stopCount={stopCount} session={session} view={pane.view} cwd={pane.cwd} sessionId={pane.sessionId} />
       <PaneFooter session={session} now={now} />
     </section>
   );

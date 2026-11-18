@@ -23,6 +23,7 @@ Hermes 연결까지 동작한다. 분할 터미널에서 Hermes, OpenCode, 셸�
 | 3 | Hermes 연결 (상태 표시, 제목, resume, 토큰 사용량) | 완료. 패널의 승인 버튼은 실제 승인 화면으로 확인하지 못했다 |
 | 4 | OpenCode 연결 | 하지 않음. 칸에서 실행은 되고 상태 표시는 없다 ([붙이는 방법](docs/ADAPTERS.md)) |
 | 5 | 오프라인 Windows 10 설치 검증 | 설치 파일은 만들어진다. 깨끗한 PC에서의 검증은 아직 |
+| 6 | Hermes 채팅 보기 (마크다운 답변, 도구 호출 줄, 승인·질문 버튼, 이미지 첨부, 모델 선택, resume). 터미널(TUI)도 그대로 고를 수 있다 | 완료. v0.3.0 |
 
 ## 설치
 
@@ -42,6 +43,8 @@ Hermes 연결까지 동작한다. 분할 터미널에서 Hermes, OpenCode, 셸�
 1. Perch의 설정(톱니바퀴) → Hermes → **Connect**를 누른다. Hermes의 `config.yaml`에 훅 블록이 추가되고, 원본은 `config.yaml.perch-backup`으로 남는다.
 2. 이어서 나오는 **Restart gateway**를 누른다. Hermes gateway는 시작할 때만 훅을 읽는다. 실행 중인 Hermes 작업은 중단된다.
 3. New session으로 Hermes를 연다.
+
+Hermes는 기본으로 채팅 보기로 열린다. 마크다운 답변, 도구 호출 줄, 승인·질문 버튼, 이미지 붙여넣기를 지원한다. 입력 상자의 `+` 버튼으로 이미지를 붙이고, 모델 칩을 누르면 모델 메뉴가 열리며, 오른쪽 엔터 아이콘이나 Enter로 보낸다. 터미널(TUI) 화면이 필요하면 New session 메뉴의 **Hermes (TUI)**를 고른다. 채팅 칸을 닫아도 Hermes 작업은 계속 돌고, 같은 세션을 다시 열면 이어서 볼 수 있다. 세션 패널의 행에 있는 X는 열린 칸을 닫고(작업은 계속된다), 열린 칸이 없는 세션은 목록에서 숨긴다. 연결이 끊기면 한 번 자동으로 다시 연결하고, 안 되면 "다시 연결" 버튼이 나온다.
 
 되돌리려면 같은 자리의 Disconnect를 누른다. 훅은 Hermes를 막지 않는다. 훅 파일이 없거나 실패해도 Hermes는 그대로 동작한다.
 
@@ -99,11 +102,13 @@ Node 20 이상이 필요하다. 앱 창과 빌드에는 Rust와 OS별 빌드 도
 | 이름 | 용도 | 라이선스 |
 |---|---|---|
 | [thinking-orbs](https://libraries.dev/) | 생각 중·진행 표시 | MIT |
+| [border-beam](https://libraries.dev/) | 채팅 입력창의 진행 표시 테두리 | MIT |
 | [unslop](https://github.com/heydamir/unslop) (Damir Sokolovsky) | 디자인 규칙 | CC BY 4.0 |
 | [codeburn](https://github.com/getagentseal/codeburn) | 토큰 사용량 읽는 방식 참고 (코드는 새로 작성) | MIT |
 | IBM Plex Sans, IBM Plex Sans KR | UI 글꼴 | SIL OFL 1.1 |
 | [D2Coding](https://github.com/naver/d2-coding-font), [Monoplex KR](https://github.com/y-kim/monoplex) | 터미널 글꼴 | SIL OFL 1.1 |
 | xterm.js, lucide | 터미널, 아이콘 | MIT, ISC |
+| [Hermes Agent](https://github.com/NousResearch/hermes-agent) | 채팅 보기의 gateway 클라이언트가 Hermes의 wire 규약(hermes-gateway-v1)을 따른다 (코드는 새로 작성) | MIT |
 
 ## 라이선스
 

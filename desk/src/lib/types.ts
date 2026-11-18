@@ -10,5 +10,6 @@ export interface Session {
   tool: string; toolDetail: string; prompt: string; title?: string; pending: Pending | null;
   subagents: Subagent[]; todos: Todo[]; seen: number; paneId: string | null; usage: Usage | null;
 }
-export interface Pane { id: string; agent: AgentKind; cwd: string; sessionId: string | null; title: string; branch: string | null }
+export type PaneView = "chat" | "tui";
+export interface Pane { id: string; agent: AgentKind; cwd: string; sessionId: string | null; title: string; branch: string | null; view?: PaneView } // optional: mock panes (src/mock) never set it
 export interface Group { key: string; path: string; label: string; isCommon: boolean; sessions: Session[]; recent: Session[] }
