@@ -243,3 +243,19 @@ describe("toDirective", () => {
     for (const bad of [null, "x", { type: "alias" }, { type: "send" }, { type: "weird" }]) expect(toDirective(bad)).toBeNull();
   });
 });
+
+describe("streaming cursor", () => {
+  const streaming = (s: typeof initialChat) => s.items.map((i) => i.kind === "assistant" && i.streaming);
+  it("only the last text segment streams across tool calls; complete clears it", () => {
+    let s = initialChat;
+    for (const e of [ev("message.delta", { text: "a" }), ev("tool.start", { tool_id: "1", name: "t" }), ev("message.delta", { text: "b" }), ev("tool.start", { tool_id: "2", name: "t" }), ev("message.delta", { text: "c" })]) s = chatReducer(s, e);
+    expect(streaming(s)).toEqual([false, false, false, false, true]);
+    s = chatReducer(s, ev("message.complete", { text: "c" }));
+    expect(streaming(s).some(Boolean)).toBe(false);
+  });
+  it("an error settles a streaming item", () => {
+    let s = chatReducer(initialChat, ev("message.delta", { text: "a" }));
+    s = chatReducer(s, ev("error", { message: "x" }));
+    expect(streaming(s).some(Boolean)).toBe(false);
+  });
+});

@@ -1,12 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Check, ChevronDown, CornerDownLeft, Plus, Square } from "lucide-react";
-import { BorderBeam } from "border-beam";
 import { applyCompletion, EFFORT_LEVELS, enterAction, modelLabel } from "../lib/composer";
 import { attachScrollReveal } from "../lib/useScrollReveal";
 
 type Attachment = { path: string; mime: string; url: string };
-// must match .chat-box in chat.css: 11px plain, 16px squircle (BorderBeam clips to this radius)
-const BEAM_RADIUS = typeof CSS !== "undefined" && CSS.supports?.("corner-shape", "squircle") ? 16 : 11;
 type Providers = { provider: string; providerName: string; models: string[] }[];
 type SlashItem = { text: string; display?: string; meta?: string; kind?: string | null };
 type SlashResult = { items: SlashItem[]; replaceFrom: number };
@@ -150,7 +147,6 @@ export default function ChatComposer({ running, disabled, focused, model, effort
   return (
     <div className="chat-composer">
       {err && <div className="chat-composer-err">{err}</div>}
-      {/* Always mounted; only `active` flips, so the textarea keeps focus and text while the agent runs. */}
       {menu === "effort" && (
         <div className="menu chat-model-menu chat-effort-menu" role="menu" ref={(el) => { menuRef.current = el; if (el) attachScrollReveal(el); }}>
           {EFFORT_LEVELS.map((lv) => (
@@ -189,54 +185,52 @@ export default function ChatComposer({ running, disabled, focused, model, effort
           ))}
         </div>
       )}
-      <BorderBeam size="md" borderRadius={BEAM_RADIUS} theme="dark" colorVariant="ocean" strength={0.6} active={running}>
-        <div className="chat-box" onMouseDown={(e) => { if (!(e.target instanceof HTMLElement && e.target.closest("button, textarea"))) { e.preventDefault(); ref.current?.focus(); } }}>
-          {atts.length > 0 && (
-            <div className="chat-thumbs">
-              {atts.map((a) => (
-                <div className="chat-thumb" key={a.path}>
-                  <img src={a.url} alt="" />
-                  <button className="chat-thumb-x" aria-label="첨부 제거" onClick={() => remove(a)}>×</button>
-                </div>
-              ))}
-            </div>
-          )}
-          <div className="chat-row">
-            <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden onChange={onPick} />
-            <button className="chat-icon-btn" aria-label="이미지 첨부" title="이미지 첨부" disabled={disabled} onClick={() => fileRef.current?.click()}><Plus size={16} strokeWidth={1.75} /></button>
-            <textarea
-              ref={ref}
-              rows={1}
-              value={text}
-              placeholder="메시지 입력 — Enter 전송, Shift+Enter 줄바꿈, / 명령"
-              onChange={(e) => setText(e.target.value)}
-              onPaste={onPaste}
-              onKeyDown={(e) => {
-                if (slash && slash.typed === text && !e.nativeEvent.isComposing && e.keyCode !== 229) {
-                  const n = slash.items.length, it = slash.items[sel];
-                  if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); setSel((sel + (e.key === "ArrowDown" ? 1 : n - 1)) % n); return; }
-                  if (e.key === "Escape") { e.preventDefault(); setSlash(null); return; }
-                  // Enter on an already complete command still sends
-                  const done = applyCompletion(text, it, slash.replaceFrom).trimEnd() === text.trimEnd();
-                  if ((e.key === "Tab" && !e.shiftKey) || (e.key === "Enter" && !e.shiftKey && !done)) { e.preventDefault(); accept(it); return; }
-                }
-                if (enterAction({ key: e.key, shiftKey: e.shiftKey, isComposing: e.nativeEvent.isComposing, keyCode: e.keyCode }) === "send") { e.preventDefault(); send(); }
-              }}
-            />
-            <button className="chat-model chat-effort" ref={effortRef} aria-haspopup="menu" aria-expanded={menu === "effort"} disabled={disabled || running || !onSetEffort}
-              title={running ? "작업 중에는 추론 강도를 바꿀 수 없습니다" : "추론 강도 · " + (effort ?? "?")} onClick={toggleEffort}>
-              <span className="ellipsis">{effort ?? "추론"}</span><ChevronDown size={12} strokeWidth={1.5} />
-            </button>
-            <button className="chat-model" ref={modelRef} aria-haspopup="menu" aria-expanded={menu !== "closed" && menu !== "effort"} disabled={disabled || running || !onListModels}
-              title={running ? "작업 중에는 모델을 바꿀 수 없습니다" : model ? "Model · " + model : "모델"} onClick={toggleMenu}>
-              <span className="ellipsis">{model ? modelLabel(model) : "모델"}</span><ChevronDown size={12} strokeWidth={1.5} />
-            </button>
-            {stopMode
-              ? <button className="chat-icon-btn" aria-label="중지" title="중지" onClick={onStop}><Square size={12} strokeWidth={1.75} /></button>
-              : <button className="chat-icon-btn chat-send" aria-label="전송" title="전송 (Enter)" onClick={send} disabled={empty || disabled}><CornerDownLeft size={16} strokeWidth={1.75} /></button>}
+      <div className="chat-box" onMouseDown={(e) => { if (!(e.target instanceof HTMLElement && e.target.closest("button, textarea"))) { e.preventDefault(); ref.current?.focus(); } }}>
+        {atts.length > 0 && (
+          <div className="chat-thumbs">
+            {atts.map((a) => (
+              <div className="chat-thumb" key={a.path}>
+                <img src={a.url} alt="" />
+                <button className="chat-thumb-x" aria-label="첨부 제거" onClick={() => remove(a)}>×</button>
+              </div>
+            ))}
           </div>
+        )}
+        <div className="chat-row">
+          <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden onChange={onPick} />
+          <button className="chat-icon-btn" aria-label="이미지 첨부" title="이미지 첨부" disabled={disabled} onClick={() => fileRef.current?.click()}><Plus size={16} strokeWidth={1.75} /></button>
+          <textarea
+            ref={ref}
+            rows={1}
+            value={text}
+            placeholder="메시지 입력 — Enter 전송, Shift+Enter 줄바꿈, / 명령"
+            onChange={(e) => setText(e.target.value)}
+            onPaste={onPaste}
+            onKeyDown={(e) => {
+              if (slash && slash.typed === text && !e.nativeEvent.isComposing && e.keyCode !== 229) {
+                const n = slash.items.length, it = slash.items[sel];
+                if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); setSel((sel + (e.key === "ArrowDown" ? 1 : n - 1)) % n); return; }
+                if (e.key === "Escape") { e.preventDefault(); setSlash(null); return; }
+                // Enter on an already complete command still sends
+                const done = applyCompletion(text, it, slash.replaceFrom).trimEnd() === text.trimEnd();
+                if ((e.key === "Tab" && !e.shiftKey) || (e.key === "Enter" && !e.shiftKey && !done)) { e.preventDefault(); accept(it); return; }
+              }
+              if (enterAction({ key: e.key, shiftKey: e.shiftKey, isComposing: e.nativeEvent.isComposing, keyCode: e.keyCode }) === "send") { e.preventDefault(); send(); }
+            }}
+          />
+          <button className="chat-model chat-effort" ref={effortRef} aria-haspopup="menu" aria-expanded={menu === "effort"} disabled={disabled || running || !onSetEffort}
+            title={running ? "작업 중에는 추론 강도를 바꿀 수 없습니다" : "추론 강도 · " + (effort ?? "?")} onClick={toggleEffort}>
+            <span className="ellipsis">{effort ?? "추론"}</span><ChevronDown size={12} strokeWidth={1.5} />
+          </button>
+          <button className="chat-model" ref={modelRef} aria-haspopup="menu" aria-expanded={menu !== "closed" && menu !== "effort"} disabled={disabled || running || !onListModels}
+            title={running ? "작업 중에는 모델을 바꿀 수 없습니다" : model ? "Model · " + model : "모델"} onClick={toggleMenu}>
+            <span className="ellipsis">{model ? modelLabel(model) : "모델"}</span><ChevronDown size={12} strokeWidth={1.5} />
+          </button>
+          {stopMode
+            ? <button className="chat-icon-btn" aria-label="중지" title="중지" onClick={onStop}><Square size={12} strokeWidth={1.75} /></button>
+            : <button className="chat-icon-btn chat-send" aria-label="전송" title="전송 (Enter)" onClick={send} disabled={empty || disabled}><CornerDownLeft size={16} strokeWidth={1.75} /></button>}
         </div>
-      </BorderBeam>
+      </div>
     </div>
   );
 }

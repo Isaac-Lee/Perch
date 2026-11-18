@@ -88,6 +88,4 @@
 @supports (corner-shape: squircle) {
   .chat-box { border-radius: 16px; corner-shape: squircle; }
   .chat-icon-btn, .chat-model { border-radius: 8px; corner-shape: squircle; }
-  /* BorderBeam draws its layers with circular clip-path: inset(0 round N); drop that clip so border-radius + corner-shape shape them (the wrapper's overflow: hidden follows the squircle too) */
-  .chat-composer [data-beam], .chat-composer [data-beam]::before, .chat-composer [data-beam]::after, .chat-composer [data-beam] [data-beam-bloom] { corner-shape: squircle !important; clip-path: none !important; }
 }

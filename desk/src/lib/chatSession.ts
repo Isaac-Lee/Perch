@@ -93,12 +93,16 @@ export function chatReducer(s: ChatState, a: ChatAction): ChatState {
     case "modelChanged": return { ...s, revision: a.revision, executionGeneration: a.executionGeneration, model: a.model };
     case "effortChanged": return { ...s, revision: a.revision, executionGeneration: a.executionGeneration, effort: a.effort };
     case "effort": return s.effort ? s : { ...s, effort: a.effort };
-    case "system": return { ...s, items: [...s.items, { kind: "system", id: `s${s.items.length}`, text: a.text }] };
+    case "system": return { ...s, items: [...settle(s.items), { kind: "system", id: `s${s.items.length}`, text: a.text }] };
     case "promptDone": return dropPrompt(s, a.promptId);
-    case "userSent": return { ...s, items: [...s.items, { kind: "user", id: a.id, text: a.text, images: a.images }] };
+    case "userSent": return { ...s, items: [...settle(s.items), { kind: "user", id: a.id, text: a.text, images: a.images }] };
     case "event": return onEvent(typeof a.ev.execution_generation === "number" ? { ...s, executionGeneration: a.ev.execution_generation } : s, a.ev);
   }
 }
+
+/** At most one streaming item, and only the last: any item appended after a streaming text settles it. Same array when nothing streams. */
+const settle = (items: ChatItem[]): ChatItem[] =>
+  items.some((i) => i.kind === "assistant" && i.streaming) ? items.map((i) => (i.kind === "assistant" && i.streaming ? { ...i, streaming: false } : i)) : items;
 
 function onEvent(s: ChatState, ev: GatewayEvent): ChatState {
   const p = ev.payload ?? {};
@@ -109,20 +113,20 @@ function onEvent(s: ChatState, ev: GatewayEvent): ChatState {
     case "message.delta": {
       if (typeof p.text !== "string" || p.text === "") return s;
       if (live) return { ...s, items: [...s.items.slice(0, -1), { ...live, text: live.text + p.text }] };
-      return { ...s, items: [...s.items, { kind: "assistant", id: `m${s.items.length}`, text: p.text, streaming: true }] };
+      return { ...s, items: [...settle(s.items), { kind: "assistant", id: `m${s.items.length}`, text: p.text, streaming: true }] };
     }
     case "message.complete": {
       const text = typeof p.text === "string" ? p.text : null;
       if (live) return { ...s, running: false, items: [...s.items.slice(0, -1), { ...live, text: text ?? live.text, streaming: false }] };
-      if (!text) return { ...s, running: false };
-      return { ...s, running: false, items: [...s.items, { kind: "assistant", id: `m${s.items.length}`, text, streaming: false }] };
+      if (!text) return { ...s, running: false, items: settle(s.items) };
+      return { ...s, running: false, items: [...settle(s.items), { kind: "assistant", id: `m${s.items.length}`, text, streaming: false }] };
     }
-    case "tool.start": return { ...s, items: [...s.items, { kind: "tool", id: str(p.tool_id) || `t${s.items.length}`, name: str(p.name), context: str(p.context), status: "running" }] };
+    case "tool.start": return { ...s, items: [...settle(s.items), { kind: "tool", id: str(p.tool_id) || `t${s.items.length}`, name: str(p.name), context: str(p.context), status: "running" }] };
     case "tool.complete": {
       const id = str(p.tool_id);
       const patch = { status: (p.is_error ? "error" : "done") as "error" | "done", durationS: typeof p.duration_s === "number" ? p.duration_s : undefined, result: typeof p.result === "string" ? p.result : undefined };
       if (s.items.some((i) => i.kind === "tool" && i.id === id)) return { ...s, items: s.items.map((i) => (i.kind === "tool" && i.id === id ? { ...i, ...patch } : i)) };
-      return { ...s, items: [...s.items, { kind: "tool", id: id || `t${s.items.length}`, name: str(p.name), context: str(p.context), ...patch }] };
+      return { ...s, items: [...settle(s.items), { kind: "tool", id: id || `t${s.items.length}`, name: str(p.name), context: str(p.context), ...patch }] };
     }
     case "session.info": {
       const model = str(p.model), effort = str(p.reasoning_effort);
@@ -135,7 +139,7 @@ function onEvent(s: ChatState, ev: GatewayEvent): ChatState {
     case "clarify.request": return addPrompt(s, toPrompt(p, "clarify"));
     case "approval.settled":
     case "clarify.settled": return dropPrompt(s, str(p.prompt_id));
-    case "error": return { ...s, running: false, items: [...s.items, { kind: "error", id: `e${s.items.length}`, text: str(p.message) || str(p.text) || "오류가 발생했습니다" }] };
+    case "error": return { ...s, running: false, items: [...settle(s.items), { kind: "error", id: `e${s.items.length}`, text: str(p.message) || str(p.text) || "오류가 발생했습니다" }] };
     default: return s;
   }
 }

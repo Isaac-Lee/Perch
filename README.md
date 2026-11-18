@@ -102,7 +102,6 @@ Node 20 이상이 필요하다. 앱 창과 빌드에는 Rust와 OS별 빌드 도
 | 이름 | 용도 | 라이선스 |
 |---|---|---|
 | [thinking-orbs](https://libraries.dev/) | 생각 중·진행 표시 | MIT |
-| [border-beam](https://libraries.dev/) | 채팅 입력창의 진행 표시 테두리 | MIT |
 | [unslop](https://github.com/heydamir/unslop) (Damir Sokolovsky) | 디자인 규칙 | CC BY 4.0 |
 | [codeburn](https://github.com/getagentseal/codeburn) | 토큰 사용량 읽는 방식 참고 (코드는 새로 작성) | MIT |
 | IBM Plex Sans, IBM Plex Sans KR | UI 글꼴 | SIL OFL 1.1 |
