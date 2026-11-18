@@ -66,7 +66,18 @@ export function projectLabels(roots: string[]): Map<string, string> {
   }));
 }
 
-export function groupSessions(sessions: Session[], now: number): Group[] {
+export type SessionSort = "status" | "recent" | "name" | "manual";
+export const SESSION_SORTS: SessionSort[] = ["status", "recent", "name", "manual"];
+
+/** New array: `id` moved so it ends at `toIndex` (clamped). Unknown id or no change returns a copy. */
+export function moveInOrder(visibleIds: string[], id: string, toIndex: number): string[] {
+  const out = visibleIds.filter((x) => x !== id);
+  if (out.length === visibleIds.length) return visibleIds.slice();
+  out.splice(Math.max(0, Math.min(out.length, toIndex)), 0, id);
+  return out;
+}
+
+export function groupSessions(sessions: Session[], now: number, sort: SessionSort = "status", order: string[] = []): Group[] {
   const map = new Map<string, Group>();
   for (const s of sessions) {
     const age = now - s.seen;
@@ -87,8 +98,17 @@ export function groupSessions(sessions: Session[], now: number): Group[] {
   for (const g of groups) if (!g.isCommon) g.label = labels.get(g.path)!;
 
   const bySort = (a: Session, b: Session) => rank(a, now) - rank(b, now) || a.since - b.since;
+  const pos = new Map(order.map((id, i) => [id, i] as const));
+  const title = (s: Session) => sessionTitle(s);
+  const cmp: Record<SessionSort, (a: Session, b: Session) => number> = {
+    status: bySort,
+    recent: (a, b) => b.seen - a.seen || bySort(a, b),
+    name: (a, b) => Number(!title(a)) - Number(!title(b)) || title(a).localeCompare(title(b), undefined, { numeric: true, sensitivity: "base" }) || bySort(a, b),
+    // unknown (new) sessions go after the known ones, in status order
+    manual: (a, b) => (pos.get(a.sessionId) ?? Infinity) - (pos.get(b.sessionId) ?? Infinity) || bySort(a, b),
+  };
   for (const g of groups) {
-    g.sessions.sort(bySort);
+    g.sessions.sort(cmp[sort]);
     g.recent.sort((a, b) => b.seen - a.seen);
   }
   const mine = (g: Group) => g.sessions.some((s) => MY_TURN.includes(s.state));

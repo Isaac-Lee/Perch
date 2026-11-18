@@ -1,4 +1,5 @@
 import type { AgentKind, PaneView } from "./types";
+import { SESSION_SORTS, type SessionSort } from "./groups";
 
 // ponytail: localStorage until stage 2 moves settings to a Tauri config file
 const read = <T>(key: string, fallback: T): T => {
@@ -17,6 +18,13 @@ export const saveCollapsed = (keys: string[]) => write("perch.collapsedGroups", 
 // ponytail: archived ids are never pruned; tiny strings, prune against history if it ever matters
 export const loadArchived = (): string[] => { const v = read<unknown>("perch.archivedSessions", []); return Array.isArray(v) ? v.filter((x) => typeof x === "string") : []; };
 export const saveArchived = (ids: string[]) => write("perch.archivedSessions", ids);
+
+export const loadSessionSort = (): SessionSort => { const v = read<unknown>("perch.sessionSort", "status"); return SESSION_SORTS.includes(v as SessionSort) ? (v as SessionSort) : "status"; };
+export const saveSessionSort = (s: SessionSort) => write("perch.sessionSort", s);
+
+export const MAX_ORDER = 300;
+export const loadSessionOrder = (): string[] => { const v = read<unknown>("perch.sessionOrder", []); return Array.isArray(v) ? v.filter((x) => typeof x === "string").slice(0, MAX_ORDER) : []; };
+export const saveSessionOrder = (ids: string[]) => write("perch.sessionOrder", ids.slice(0, MAX_ORDER));
 
 export interface NewPaneDefaults { agent: AgentKind; cwd: string; view: PaneView }
 export const loadNewPane = (firstFolder: string): NewPaneDefaults => {

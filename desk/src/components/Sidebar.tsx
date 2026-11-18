@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, PanelLeftClose, Plus, Search, X } from "lucide-react";
-import type { Pane, Session } from "../lib/types";
-import { MY_TURN, displayState, groupSessions, groupSummary, matchSession } from "../lib/groups";
+import { ArrowUpDown, Check, ChevronDown, ChevronRight, PanelLeftClose, Plus, Search, X } from "lucide-react";
+import type { Group, Pane, Session } from "../lib/types";
+import { MY_TURN, SESSION_SORTS, displayState, groupSessions, groupSummary, matchSession, moveInOrder, type SessionSort } from "../lib/groups";
 import SessionRow from "./SessionRow";
-import { clampSidebarWidth, SIDEBAR_DEFAULT, loadArchived, loadCollapsed, saveArchived, saveCollapsed } from "../lib/uiSettings";
+import { clampSidebarWidth, SIDEBAR_DEFAULT, MAX_ORDER, loadArchived, loadCollapsed, loadSessionOrder, loadSessionSort, saveArchived, saveCollapsed, saveSessionOrder, saveSessionSort } from "../lib/uiSettings";
 import { useScrollReveal } from "../lib/useScrollReveal";
+import { useRowDrag } from "../lib/useRowDrag";
+
+const SORT_LABEL: Record<SessionSort, string> = { status: "Status", recent: "Recent activity", name: "Name", manual: "Manual order" };
 import { fmtTok, summarize } from "../lib/usage";
 
 import { formatShortcut } from "../lib/shortcuts";
@@ -20,10 +23,40 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
   const [archived, setArchived] = useState<Set<string>>(() => new Set(loadArchived()));
   const toggleArchive = (id: string) => setArchived((o) => { const n = new Set(o); if (!n.delete(id)) n.add(id); saveArchived([...n]); return n; });
   const shown = useMemo(() => sessions.filter((s) => !hiddenIn(archived, s)), [sessions, archived]);
-  const allGroups = useMemo(() => groupSessions(shown, now), [shown, now]);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [sort, setSort] = useState<SessionSort>(loadSessionSort);
+  const [order, setOrder] = useState<string[]>(loadSessionOrder);
+  const allGroups = useMemo(() => groupSessions(shown, now, sort, order), [shown, now, sort, order]);
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
-  const groups = useMemo(() => (q ? groupSessions(shown.filter((s) => matchSession(s, q)), now) : allGroups), [q, shown, now, allGroups]);
+  const groups = useMemo(() => (q ? groupSessions(shown.filter((s) => matchSession(s, q)), now, sort, order) : allGroups), [q, shown, now, allGroups, sort, order]);
+  const chooseSort = (s: SessionSort) => { setSort(s); saveSessionSort(s); };
+  // Reordering switches to manual; the saved order is the whole visible order so nothing jumps.
+  const reorder = (gkey: string, id: string, to: number) => {
+    const g = allGroups.find((x) => x.key === gkey);
+    if (!g) return;
+    const moved = moveInOrder(g.sessions.map((s) => s.sessionId), id, to);
+    const vis = allGroups.flatMap((x) => (x.key === gkey ? moved : x.sessions.map((s) => s.sessionId)));
+    const seen = new Set(vis);
+    const next = [...vis, ...order.filter((i) => !seen.has(i))].slice(0, MAX_ORDER);
+    setOrder(next); saveSessionOrder(next); chooseSort("manual");
+  };
+  const refocus = useRef<string | null>(null);
+  const { drag: rowDrag, suppressClick, onPointerDown } = useRowDrag(!q, bodyRef, reorder);
+  useEffect(() => { // React moves the row's DOM node on reorder, which drops focus
+    if (refocus.current) bodyRef.current?.querySelector<HTMLElement>(`[data-sid="${CSS.escape(refocus.current)}"]`)?.focus();
+    refocus.current = null;
+  });
+  const [sortOpen, setSortOpen] = useState(false);
+  const sortRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!sortOpen) return;
+    const h = (e: MouseEvent) => { if (!sortRef.current?.contains(e.target as Node)) setSortOpen(false); };
+    const k = (e: KeyboardEvent) => { if (e.key === "Escape") setSortOpen(false); };
+    document.addEventListener("mousedown", h);
+    document.addEventListener("keydown", k);
+    return () => { document.removeEventListener("mousedown", h); document.removeEventListener("keydown", k); };
+  }, [sortOpen]);
   const archivedList = useMemo(() => sessions.filter((s) => hiddenIn(archived, s) && (!q || matchSession(s, q))).sort((a, b) => b.seen - a.seen), [sessions, archived, q]);
   const [showArchived, setShowArchived] = useState(false);
   const [open, setOpen] = useState<Set<string>>(new Set());
@@ -37,7 +70,6 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
   };
-  const bodyRef = useRef<HTMLDivElement>(null);
   useScrollReveal(bodyRef);
   const [more, setMore] = useState(false);
   useEffect(() => {
@@ -57,9 +89,19 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
   const todayTok = useMemo(() => summarize(sessions, "today", now).total.total, [sessions, now]);
   const isFolded = (k: string) => !q && folded.has(k);
   const isOpen = (k: string) => !!q || open.has(k);
-  const row = (s: Session) => (
+  const row = (s: Session, g?: Group) => (
     <SessionRow key={s.sessionId} s={s} now={now} focused={s.sessionId === focusedSession}
-      onClick={() => onFocus(s.sessionId)} onApprove={(a) => onApprove(s.sessionId, a)} onStop={() => onStop(s.sessionId)}
+      drag={g && !q ? {
+        dragging: rowDrag?.id === s.sessionId,
+        onPointerDown: (e) => onPointerDown(e, s.sessionId),
+        onMove: (dir) => {
+          const i = g.sessions.indexOf(s), to = i + dir;
+          if (to < 0 || to >= g.sessions.length) return;
+          refocus.current = s.sessionId;
+          reorder(g.key, s.sessionId, to);
+        },
+      } : undefined}
+      onClick={() => { if (!suppressClick.current) onFocus(s.sessionId); }} onApprove={(a) => onApprove(s.sessionId, a)} onStop={() => onStop(s.sessionId)}
       onClose={s.paneId ? () => onClosePane(s.paneId!) : undefined}
       onArchive={s.paneId ? undefined : () => toggleArchive(s.sessionId)} archived={hiddenIn(archived, s)} />
   );
@@ -76,19 +118,33 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
       </div>
       <div className="side-actions">
         {newSession}
-        <label className="side-action">
-          <Search size={16} strokeWidth={1.5} />
-          <input id="session-search" placeholder="Search" aria-label="Search sessions" value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Escape") { setQuery(""); e.currentTarget.blur(); } }} />
-          {query ? <button className="icon-btn" aria-label="Clear search" onClick={() => setQuery("")}><X size={14} strokeWidth={1.5} /></button> : <kbd>{formatShortcut("search")}</kbd>}
-        </label>
+        <div className="side-search">
+          <label className="side-action">
+            <Search size={16} strokeWidth={1.5} />
+            <input id="session-search" placeholder="Search" aria-label="Search sessions" value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Escape") { setQuery(""); e.currentTarget.blur(); } }} />
+            {query ? <button className="icon-btn" aria-label="Clear search" onClick={() => setQuery("")}><X size={14} strokeWidth={1.5} /></button> : <kbd>{formatShortcut("search")}</kbd>}
+          </label>
+          <div className="menu-wrap" ref={sortRef}>
+            <button className="icon-btn" aria-label="Sort sessions" aria-expanded={sortOpen} title={`Sort · ${SORT_LABEL[sort]}`} onClick={() => setSortOpen((v) => !v)}><ArrowUpDown size={16} strokeWidth={1.5} /></button>
+            {sortOpen && (
+              <div className="menu" role="menu">
+                {SESSION_SORTS.map((s) => (
+                  <button key={s} className="menu-item" role="menuitemradio" aria-checked={s === sort} onClick={() => { chooseSort(s); setSortOpen(false); }}>
+                    {SORT_LABEL[s]}{s === sort && <Check className="check" size={16} strokeWidth={1.5} />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
       <div className="side-body" ref={bodyRef}>
         <div>
         {q && groups.length === 0 && archivedList.length === 0 && <div className="side-empty">일치하는 세션이 없습니다.</div>}
         {groups.map((g) => (
-          <div key={g.key} className="group">
+          <div key={g.key} className="group" data-gkey={g.key}>
             <div className="group-head">
             <button className="group-title" aria-expanded={!isFolded(g.key)} onClick={() => fold(g.key)}>
               {isFolded(g.key) ? <ChevronRight size={16} strokeWidth={1.5} /> : <ChevronDown size={16} strokeWidth={1.5} />}
@@ -105,9 +161,8 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
             </button>
             {!g.isCommon && <button className="icon-btn group-add" aria-label={`New session in ${g.label}`} title={`New session · ${g.path}`} onClick={() => onNew(g.path)}><Plus size={14} strokeWidth={1.5} /></button>}
             </div>
-            {!isFolded(g.key) && g.sessions.map((s) => (
-              row(s)
-            ))}
+            {!isFolded(g.key) && g.sessions.map((s) => row(s, g))}
+            {rowDrag?.gkey === g.key && <div className="drop-line" style={{ top: rowDrag.y }} />}
             {!isFolded(g.key) && g.recent.length > 0 && (
               <>
                 <button className="recent-toggle" onClick={() => toggle(g.key)}>
@@ -127,7 +182,7 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
               {q || showArchived ? <ChevronDown size={16} strokeWidth={1.5} /> : <ChevronRight size={16} strokeWidth={1.5} />}
               Archived <span className="count">{archivedList.length}</span>
             </button>
-            {(q || showArchived) && archivedList.map(row)}
+            {(q || showArchived) && archivedList.map((s) => row(s))}
           </div>
         )}
         </div>

@@ -15,7 +15,12 @@ button:focus-visible, .row:focus-visible { outline: 1px solid var(--accent); out
 .side-title { font-weight: 500; }
 .side-sum { color: var(--text-3); font-size: 12px; line-height: 16px; }
 .side-body { flex: 1; overflow-y: auto; padding-bottom: 16px; }
-.group { padding-top: 8px; }
+.group { position: relative; padding-top: 8px; }
+.side-search { display: flex; align-items: center; gap: 2px; }
+.side-search .side-action { flex: 1; min-width: 0; }
+.row.dragging { opacity: 0.5; }
+.drop-line { position: absolute; left: 12px; right: 12px; height: 2px; margin-top: -1px; background: var(--accent); border-radius: 1px; pointer-events: none; z-index: 5; }
+body.row-dragging, body.row-dragging * { cursor: grabbing !important; user-select: none; }
 .group-title { width: 100%; text-align: left; display: flex; gap: 8px; align-items: center; padding: 4px 16px 4px 12px; color: var(--text-2); font-weight: 500; }
 .count { color: var(--text-3); font-weight: 400; font-size: 12px; }
 .row { padding: 8px 16px 8px 14px; border-left: 2px solid transparent; border-top: 1px solid transparent; border-bottom: 1px solid transparent; cursor: pointer; display: flex; flex-direction: column; gap: 4px; transition: background-color 0.12s; }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import turn from "./__fixtures__/turn.jsonl?raw";
-import { canSend, chatReducer, staleRetry, initialChat, shouldAutoReconnect, toDirective, toModelProviders, transcriptToItems, type ChatAction } from "./chatSession";
+import { activityLabel, canSend, chatReducer, fmtSec, groupItems, staleRetry, initialChat, shouldAutoReconnect, toDirective, toModelProviders, transcriptToItems, type ChatAction } from "./chatSession";
 
 const ev = (type: string, payload: object = {}): ChatAction => ({ t: "event", ev: { type, payload } });
 
@@ -257,5 +257,52 @@ describe("streaming cursor", () => {
     let s = chatReducer(initialChat, ev("message.delta", { text: "a" }));
     s = chatReducer(s, ev("error", { message: "x" }));
     expect(streaming(s).some(Boolean)).toBe(false);
+  });
+});
+
+describe("turn clock", () => {
+  it("userSent with a timestamp starts the turn; message.start keeps it; complete and error clear it", () => {
+    let s = chatReducer(initialChat, { t: "userSent", id: "u0", text: "hi", at: 100 });
+    expect(s).toMatchObject({ running: true, turnStart: 100 });
+    s = chatReducer(s, { t: "event", ev: { type: "message.start" }, at: 200 });
+    expect(s.turnStart).toBe(100);
+    s = chatReducer(s, ev("message.complete", { text: "x" }));
+    expect(s).toMatchObject({ running: false, turnStart: null });
+    expect(chatReducer(initialChat, { t: "userSent", id: "u0", text: "/help" })).toMatchObject({ running: false, turnStart: null });
+    s = chatReducer(initialChat, { t: "event", ev: { type: "message.start" }, at: 300 });
+    expect(s.turnStart).toBe(300);
+    expect(chatReducer(s, ev("error", { message: "x" })).turnStart).toBeNull();
+  });
+  it("snapshot: running keeps or takes the clock, idle clears it", () => {
+    expect(chatReducer(initialChat, { t: "snapshot", snap: { session_id: "a", running: true }, at: 5 }).turnStart).toBe(5);
+    const s = chatReducer(initialChat, { t: "userSent", id: "u0", text: "hi", at: 1 });
+    expect(chatReducer(s, { t: "snapshot", snap: { session_id: "a", running: true }, at: 5 }).turnStart).toBe(1);
+    expect(chatReducer(s, { t: "snapshot", snap: { session_id: "a" }, at: 5 }).turnStart).toBeNull();
+  });
+});
+
+describe("activityLabel / fmtSec", () => {
+  const tool = (status: "running" | "done", name = "terminal", context = "npm test") => ({ kind: "tool" as const, id: name + status, name, context, status });
+  it("prompt, running tool, streaming text, thinking", () => {
+    const prompt = [{ kind: "approval" as const, promptId: "p", executionGeneration: 1, choices: [] }];
+    expect(activityLabel({ items: [tool("running")], prompts: prompt })).toBe("응답 대기 중");
+    expect(activityLabel({ items: [tool("running", "a", ""), tool("running")], prompts: [] })).toBe("terminal · npm test");
+    expect(activityLabel({ items: [tool("done"), { kind: "assistant", id: "m", text: "x", streaming: true }], prompts: [] })).toBe("답변 작성 중");
+    expect(activityLabel({ items: [tool("done")], prompts: [] })).toBe("생각 중");
+  });
+  it("fmtSec", () => { expect(fmtSec(7)).toBe("7초"); expect(fmtSec(72)).toBe("1분 12초"); expect(fmtSec(60)).toBe("1분 0초"); });
+});
+
+describe("groupItems", () => {
+  const t = (id: string) => ({ kind: "tool" as const, id, name: "n", context: "", status: "done" as const });
+  const a = (id: string) => ({ kind: "assistant" as const, id, text: "x", streaming: false });
+  it("keeps singles, groups runs of 2+, preserves order", () => {
+    expect(groupItems([])).toEqual([]);
+    expect(groupItems([a("a")])).toEqual([a("a")]);
+    expect(groupItems([t("1")])).toEqual([t("1")]);
+    expect(groupItems([t("1"), t("2"), t("3")])).toEqual([{ kind: "tools", id: "1", items: [t("1"), t("2"), t("3")] }]);
+    const g = groupItems([t("1"), t("2"), a("a"), t("3"), a("b"), t("4"), t("5")]);
+    expect(g.map((x) => x.kind)).toEqual(["tools", "assistant", "tool", "assistant", "tools"]);
+    expect(g[4]).toMatchObject({ id: "4" });
   });
 });

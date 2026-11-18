@@ -9,17 +9,24 @@ export const agentName = (a: AgentKind) => (a === "hermes" ? "Hermes" : a === "o
 const TONE = { running: "ok", thinking: "ok", tool: "ok", approval: "warn", question: "warn", done: "ok", ready: "muted", plain: "muted", closed: "muted", stale: "muted" } as const;
 const TODO_ICON: Record<Todo["status"], typeof Circle> = { done: CircleCheck, in_progress: CircleDot, pending: Circle };
 
-export default function SessionRow({ s, now, focused, onClick, onApprove, onStop, onArchive, onClose, archived }: {
+export interface RowDrag { dragging: boolean; onPointerDown: (e: React.PointerEvent<HTMLElement>) => void; onMove: (dir: -1 | 1) => void }
+
+export default function SessionRow({ s, now, focused, onClick, onApprove, onStop, onArchive, onClose, archived, drag }: {
   s: Session; now: number; focused: boolean; onClick: () => void; onApprove: (allow: boolean) => void; onStop: () => void;
-  onArchive?: () => void; onClose?: () => void; archived?: boolean;
+  onArchive?: () => void; onClose?: () => void; archived?: boolean; drag?: RowDrag;
 }) {
   const st = displayState(s, now);
   const tone = TONE[st];
   const shown = shownSeconds(s, now);
   const working = st === "running" || st === "thinking" || st === "tool";
   return (
-    <div className={`row${focused ? " focused" : ""}`} role="button" tabIndex={0} onClick={onClick}
-      onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) onClick(); }}>
+    <div className={`row${focused ? " focused" : ""}${drag?.dragging ? " dragging" : ""}`} role="button" tabIndex={0} onClick={onClick}
+      data-sid={drag ? s.sessionId : undefined} onPointerDown={drag?.onPointerDown}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (drag && e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) { e.preventDefault(); drag.onMove(e.key === "ArrowUp" ? -1 : 1); }
+        else if (e.key === "Enter" || e.key === " ") onClick();
+      }}>
       <div className="row-top">
         <span className={`dot ${tone}${working ? " blink" : ""}`} />
         <span className="row-agent">{agentName(s.agent)}</span>

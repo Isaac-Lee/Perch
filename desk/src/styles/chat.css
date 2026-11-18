@@ -5,8 +5,13 @@
 .chat-user { display: flex; justify-content: flex-end; }
 .chat-bubble { max-width: 85%; padding: 8px 12px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px 12px 2px 12px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; }
 .chat-assistant { line-height: 1.65; overflow-wrap: anywhere; }
-.chat-cursor { display: inline-block; width: 7px; height: 1.1em; margin-left: 2px; vertical-align: text-bottom; background: var(--accent); animation: chat-blink 1s steps(2, start) infinite; }
-@keyframes chat-blink { to { visibility: hidden; } }
+.chat-live { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; line-height: 20px; }
+.chat-live-label { min-width: 0; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-live-time { flex: none; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.chat-chev { display: inline-block; vertical-align: -2px; margin-right: 4px; transition: transform 0.12s; }
+.chat-chev.open { transform: rotate(90deg); }
+.chat-tool-failed { color: var(--warn); }
+.chat-tools-body { padding-left: 14px; }
 .chat-tool-row { display: block; width: 100%; text-align: left; padding: 2px 8px; border-radius: 4px; color: var(--text-3); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chat-tool-row:hover { background: var(--surface-2); color: var(--text-2); }
 .chat-tool.running .chat-tool-row { color: var(--idle); }

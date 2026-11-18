@@ -16,18 +16,18 @@ export interface ChatPrompt {
   /** clarify batch with several questions: shown as text, answered with one free-text reply */
   questions?: string[];
 }
-export interface ChatState { conn: "connecting" | "ready" | "closed" | "error"; error?: string; sessionId: string | null; executionGeneration: number; revision: number; running: boolean; items: ChatItem[]; prompts: ChatPrompt[]; model: string | null; effort: string | null }
-export const initialChat: ChatState = { conn: "connecting", sessionId: null, executionGeneration: 0, revision: 0, running: false, items: [], prompts: [], model: null, effort: null };
+export interface ChatState { conn: "connecting" | "ready" | "closed" | "error"; error?: string; sessionId: string | null; executionGeneration: number; revision: number; running: boolean; items: ChatItem[]; prompts: ChatPrompt[]; model: string | null; effort: string | null; /** ms epoch the current turn began; set from timestamps the dispatcher passes in (the reducer stays pure) */ turnStart: number | null }
+export const initialChat: ChatState = { conn: "connecting", sessionId: null, executionGeneration: 0, revision: 0, running: false, items: [], prompts: [], model: null, effort: null, turnStart: null };
 export type ChatAction =
   | { t: "conn"; conn: ChatState["conn"]; error?: string }
-  | { t: "snapshot"; snap: any }
+  | { t: "snapshot"; snap: any; at?: number }
   | { t: "modelChanged"; revision: number; executionGeneration: number; model: string }
   | { t: "effortChanged"; revision: number; executionGeneration: number; effort: string }
   | { t: "effort"; effort: string }
   | { t: "system"; text: string }
   | { t: "promptDone"; promptId: string }
-  | { t: "userSent"; id: string; text: string; images?: string[] }
-  | { t: "event"; ev: GatewayEvent };
+  | { t: "userSent"; id: string; text: string; images?: string[]; /** set for a real prompt (not a slash command): starts the turn clock at once */ at?: number }
+  | { t: "event"; ev: GatewayEvent; at?: number };
 
 const str = (v: unknown) => (typeof v === "string" ? v : "");
 
@@ -88,15 +88,22 @@ export function chatReducer(s: ChatState, a: ChatAction): ChatState {
       ...s, conn: "ready", error: undefined, sessionId: a.snap.session_id ?? null,
       executionGeneration: typeof a.snap.execution_generation === "number" ? a.snap.execution_generation : s.executionGeneration,
       revision: typeof a.snap.revision === "number" ? a.snap.revision : 0,
-      running: !!a.snap.running, model: a.snap.info?.model || s.model, effort: str(a.snap.info?.reasoning_effort) || s.effort, items: transcriptToItems(a.snap.messages ?? []), prompts: (Array.isArray(a.snap.prompts) ? a.snap.prompts : []).map((p: any) => toPrompt(p, p?.kind)).filter((p: ChatPrompt | null): p is ChatPrompt => !!p),
+      running: !!a.snap.running, turnStart: a.snap.running ? s.turnStart ?? a.at ?? null : null, model: a.snap.info?.model || s.model, effort: str(a.snap.info?.reasoning_effort) || s.effort, items: transcriptToItems(a.snap.messages ?? []), prompts: (Array.isArray(a.snap.prompts) ? a.snap.prompts : []).map((p: any) => toPrompt(p, p?.kind)).filter((p: ChatPrompt | null): p is ChatPrompt => !!p),
     };
     case "modelChanged": return { ...s, revision: a.revision, executionGeneration: a.executionGeneration, model: a.model };
     case "effortChanged": return { ...s, revision: a.revision, executionGeneration: a.executionGeneration, effort: a.effort };
     case "effort": return s.effort ? s : { ...s, effort: a.effort };
     case "system": return { ...s, items: [...settle(s.items), { kind: "system", id: `s${s.items.length}`, text: a.text }] };
     case "promptDone": return dropPrompt(s, a.promptId);
-    case "userSent": return { ...s, items: [...settle(s.items), { kind: "user", id: a.id, text: a.text, images: a.images }] };
-    case "event": return onEvent(typeof a.ev.execution_generation === "number" ? { ...s, executionGeneration: a.ev.execution_generation } : s, a.ev);
+    case "userSent": return {
+      ...s, items: [...settle(s.items), { kind: "user", id: a.id, text: a.text, images: a.images }],
+      ...(a.at != null && !s.running ? { running: true, turnStart: a.at } : {}),
+    };
+    case "event": {
+      const n = onEvent(typeof a.ev.execution_generation === "number" ? { ...s, executionGeneration: a.ev.execution_generation } : s, a.ev);
+      if (a.ev.type === "message.start") return { ...n, turnStart: s.turnStart ?? a.at ?? null };
+      return a.ev.type === "message.complete" || a.ev.type === "error" ? { ...n, turnStart: null } : n;
+    }
   }
 }
 
@@ -143,6 +150,30 @@ function onEvent(s: ChatState, ev: GatewayEvent): ChatState {
     default: return s;
   }
 }
+
+export type ToolItem = Extract<ChatItem, { kind: "tool" }>;
+export type ToolGroup = { kind: "tools"; id: string; items: ToolItem[] };
+/** Runs of 2+ consecutive tool items become one group (id = first tool's id, stable while it grows). */
+export function groupItems(items: ChatItem[]): (ChatItem | ToolGroup)[] {
+  const out: (ChatItem | ToolGroup)[] = [];
+  let run: ToolItem[] = [];
+  const flush = () => { if (run.length > 1) out.push({ kind: "tools", id: run[0].id, items: run }); else out.push(...run); run = []; };
+  for (const i of items) { if (i.kind === "tool") run.push(i); else { flush(); out.push(i); } }
+  flush();
+  return out;
+}
+
+/** Text of the live status row. */
+export function activityLabel(s: Pick<ChatState, "items" | "prompts">): string {
+  if (s.prompts.length) return "응답 대기 중";
+  const tool = [...s.items].reverse().find((i): i is ToolItem => i.kind === "tool" && i.status === "running");
+  if (tool) return [tool.name, tool.context].filter(Boolean).join(" · ");
+  const last = s.items[s.items.length - 1];
+  return last?.kind === "assistant" && last.streaming ? "답변 작성 중" : "생각 중";
+}
+
+/** 7초, 1분 12초 */
+export const fmtSec = (sec: number) => (sec >= 60 ? `${Math.floor(sec / 60)}분 ${sec % 60}초` : `${sec}초`);
 
 const closedMsg = "연결이 끊어졌습니다";
 
@@ -218,9 +249,9 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
       try {
         offs.push(rpc.onEvent((ev) => {
           if (dead) return;
-          dispatch({ t: "event", ev });
+          dispatch({ t: "event", ev, at: Date.now() });
           if (ev.type === "session.replay_gap" && stateRef.current.sessionId) // events were lost: re-read the whole session
-            rpc.request<SessionSnapshot>("session.resume", { session_id: stateRef.current.sessionId }).then((snap) => { if (!dead) dispatch({ t: "snapshot", snap }); }, console.error);
+            rpc.request<SessionSnapshot>("session.resume", { session_id: stateRef.current.sessionId }).then((snap) => { if (!dead) dispatch({ t: "snapshot", snap, at: Date.now() }); }, console.error);
         }));
         offs.push(rpc.onClosed((reason) => {
           if (dead) return;
@@ -243,7 +274,7 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
           ? rpc.request<SessionSnapshot>("session.resume", { session_id: rid })
           : rpc.request<SessionSnapshot>("session.create", { request_id: crypto.randomUUID(), source: "tui", cwd }));
         if (dead) return;
-        dispatch({ t: "snapshot", snap });
+        dispatch({ t: "snapshot", snap, at: Date.now() });
         if (!snap.info?.reasoning_effort) // the snapshot may not carry it; failure just leaves the label generic
           rpc.request<{ value?: string }>("config.get", { key: "reasoning", session_id: snap.session_id }).then((r) => { if (!dead && r?.value) dispatch({ t: "effort", effort: r.value }); }, () => {});
         autoUsed.current = 0; // connected: re-arm
@@ -332,8 +363,9 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
     send(text: string, attachments?: { path: string; mime: string }[]) {
       const sid = stateRef.current.sessionId;
       if (!sid || !canSend(stateRef.current)) return;
-      dispatch({ t: "userSent", id: `u${stateRef.current.items.length}`, text, images: attachments?.map((a) => a.path) });
-      if (!attachments?.length && isSlashCommand(text)) runSlash(sid, text).catch((e) => say(e instanceof Error ? e.message : String(e)));
+      const slash = !attachments?.length && isSlashCommand(text);
+      dispatch({ t: "userSent", id: `u${stateRef.current.items.length}`, text, images: attachments?.map((a) => a.path), ...(slash ? {} : { at: Date.now() }) });
+      if (slash) runSlash(sid, text).catch((e) => say(e instanceof Error ? e.message : String(e)));
       else submit(sid, text, attachments);
     },
     async completeSlash(text: string): Promise<{ items: { text: string; display?: string; meta?: string; kind?: string | null }[]; replaceFrom: number }> {
