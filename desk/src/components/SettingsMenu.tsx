@@ -18,7 +18,7 @@ export default function SettingsMenu({ theme, onTheme, value, onChange, pane, on
   const [restart, setRestart] = useState<"" | "ask" | "done">("");
   const hermesCall = (f: () => Promise<HermesStatus>, changed = false) => {
     setError("");
-    f().then((s) => { setHermes(s); if (changed) setRestart("ask"); }, (e) => setError(String(e)));
+    f().then((s) => { setHermes(s); if (changed || s.autoUpdated) setRestart("ask"); }, (e) => setError(String(e)));
   };
   useEffect(() => {
     if (!open) { setRestart(""); return; }
@@ -98,6 +98,11 @@ export default function SettingsMenu({ theme, onTheme, value, onChange, pane, on
             <div className="set-group">
               <div className="set-title">Hermes</div>
               <div className="set-row"><span>Status</span><span className="set-value">{hermes?.connected ? "Connected" : "Not connected"}</span></div>
+              {hermes?.outdated && (
+                <div className="set-row"><span>훅이 이전 버전입니다</span>
+                  <button className="btn" onClick={() => hermesCall(hermesConnect, true)}>Update</button>
+                </div>
+              )}
               {hermes && !hermes.exe && <div className="menu-help">hermes 실행 파일을 찾지 못했습니다.</div>}
               <div className="set-row"><span>Folder</span><span className="set-value ellipsis" title={hermes?.home}>{hermes?.home}</span></div>
               <div className="set-row"><span />

@@ -8,14 +8,15 @@ use std::net::{Shutdown, TcpStream};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::ipc::Channel;
-use tauri::State;
+use tauri::{Manager, State};
 
 #[derive(Debug)]
 pub struct Attach {
     pub host: String,
     pub port: u16,
     pub path: String,
-    /// Includes the one-time ticket: never log or put into an error.
+    /// `path` may carry the legacy session token and `protocols` the one-time ticket: never log either or put them into an error.
+    /// Empty for a legacy `hermes serve` (token auth in the query string).
     pub protocols: Vec<String>,
 }
 
@@ -46,8 +47,12 @@ pub fn parse_attach(json: &str) -> Result<Attach, String> {
 
 pub fn handshake_request(a: &Attach, key: &str) -> String {
     format!(
-        "GET {} HTTP/1.1\r\nHost: {}:{}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {}\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Protocol: {}\r\n\r\n",
-        a.path, a.host, a.port, key, a.protocols.join(", ")
+        "GET {} HTTP/1.1\r\nHost: {}:{}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {}\r\nSec-WebSocket-Version: 13\r\n{}\r\n",
+        a.path,
+        a.host,
+        a.port,
+        key,
+        if a.protocols.is_empty() { String::new() } else { format!("Sec-WebSocket-Protocol: {}\r\n", a.protocols.join(", ")) }
     )
 }
 
@@ -216,10 +221,22 @@ impl Chats {
     }
 }
 
-fn attach() -> Result<Attach, String> {
+/// Error text from the JSON verdict `hermes gateway attach` prints on stdout when it fails.
+/// Only `detail`, `reason_code` and `state` are read (never the ticket). None if `stdout` is not JSON or has none of them.
+fn attach_failure(stdout: &str) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_str(stdout.trim()).ok()?;
+    ["detail", "reason_code", "state"]
+        .iter()
+        .find_map(|k| v.get(*k).and_then(|x| x.as_str()).filter(|s| !s.is_empty()))
+        .map(String::from)
+}
+
+/// `Ok(None)`: this hermes has no `gateway attach` (< 0.23.1), use `legacy_attach`.
+fn attach() -> Result<Option<Attach>, String> {
     let exe = crate::hermes::exe().ok_or("hermes 실행 파일을 찾을 수 없습니다")?;
     let mut cmd = std::process::Command::new(exe);
-    cmd.args(["gateway", "attach", "--json", "--start", "--timeout", "60"])
+    // --recover stops a still-running older gateway once and starts the current one
+    cmd.args(["gateway", "attach", "--json", "--recover", "--timeout", "60"])
         .stdin(std::process::Stdio::null());
     #[cfg(windows)]
     {
@@ -228,12 +245,84 @@ fn attach() -> Result<Attach, String> {
     }
     let out = cmd.output().map_err(|e| format!("hermes를 실행할 수 없습니다: {e}"))?;
     if !out.status.success() {
+        if out.status.code() == Some(2) {
+            return Ok(None); // argparse rejected the unknown subcommand
+        }
+        if let Some(m) = attach_failure(&String::from_utf8_lossy(&out.stdout)) {
+            return Err(m);
+        }
         let err = String::from_utf8_lossy(&out.stderr);
         let chars: Vec<char> = err.trim().chars().collect();
         let tail: String = chars[chars.len().saturating_sub(300)..].iter().collect();
         return Err(if tail.is_empty() { "gateway에 연결하지 못했습니다".into() } else { tail });
     }
-    parse_attach(&String::from_utf8_lossy(&out.stdout))
+    parse_attach(&String::from_utf8_lossy(&out.stdout)).map(Some)
+}
+
+/// One `hermes serve` child shared by all panes: (child, port, token).
+#[derive(Default)]
+pub struct LegacyServe(Mutex<Option<(std::process::Child, u16, String)>>);
+
+impl LegacyServe {
+    /// Called on app exit.
+    pub fn kill(&self) {
+        if let Some((c, _, _)) = self.0.lock().unwrap().as_mut() {
+            let _ = c.kill();
+        }
+    }
+}
+
+fn session_token() -> String {
+    use std::hash::{BuildHasher, Hasher};
+    let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+    // ponytail: loopback-only token, swap for getrandom if it ever matters
+    (0..2)
+        .map(|_| {
+            let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+            h.write_u128(t);
+            h.write_u32(std::process::id());
+            format!("{:016x}", h.finish())
+        })
+        .collect()
+}
+
+/// Older Hermes (no `gateway attach`): runs our own `hermes serve` on a free loopback port, started lazily and reused.
+fn legacy_attach(state: &LegacyServe) -> Result<Attach, String> {
+    let mut g = state.0.lock().unwrap(); // held while starting, so panes connecting together share one child
+    let alive = g.as_mut().is_some_and(|e| matches!(e.0.try_wait(), Ok(None)));
+    if let (true, Some((_, port, token))) = (alive, g.as_ref()) {
+        return Ok(Attach { host: "127.0.0.1".into(), port: *port, path: format!("/api/ws?token={token}"), protocols: vec![] });
+    }
+    let exe = crate::hermes::exe().ok_or("hermes 실행 파일을 찾을 수 없습니다")?;
+    // ponytail: the port is only known free until the child binds it; another process could grab it in between
+    let port = std::net::TcpListener::bind("127.0.0.1:0").and_then(|l| l.local_addr()).map_err(|e| e.to_string())?.port();
+    let token = session_token();
+    let mut cmd = std::process::Command::new(exe);
+    cmd.args(["serve", "--host", "127.0.0.1", "--port", &port.to_string()])
+        .env("HERMES_DASHBOARD_SESSION_TOKEN", &token)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    let mut child = cmd.spawn().map_err(|e| format!("hermes serve를 실행할 수 없습니다: {e}"))?;
+    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    for _ in 0..300 {
+        if let Ok(Some(st)) = child.try_wait() {
+            let code = st.code().map_or("알 수 없음".to_string(), |c| c.to_string());
+            return Err(format!("hermes serve가 종료되었습니다 (종료 코드 {code}). 터미널에서 `hermes serve`를 실행해 원인을 확인하세요."));
+        }
+        if TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(200)).is_ok() {
+            *g = Some((child, port, token.clone()));
+            return Ok(Attach { host: "127.0.0.1".into(), port, path: format!("/api/ws?token={token}"), protocols: vec![] });
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+    let _ = child.kill();
+    Err("hermes serve가 60초 안에 시작되지 않았습니다. 터미널에서 `hermes serve`를 실행해 원인을 확인하세요.".into())
 }
 
 /// Connects and upgrades; returns the stream plus any bytes that arrived after the response headers.
@@ -296,12 +385,19 @@ fn read_loop(mut r: TcpStream, w: Arc<Mutex<TcpStream>>, rest: Vec<u8>, on_line:
 pub async fn chat_connect(
     desk: State<'_, Desk>,
     chats: State<'_, Chats>,
+    app: tauri::AppHandle,
     id: String,
     on_line: Channel<String>,
 ) -> Result<(), String> {
     desk.check_chat(&id)?;
     let epoch = chats.begin(&id);
-    let (stream, rest) = tauri::async_runtime::spawn_blocking(|| connect(&attach()?))
+    let (stream, rest) = tauri::async_runtime::spawn_blocking(move || {
+        let a = match attach()? {
+            Some(a) => a,
+            None => legacy_attach(&app.state::<LegacyServe>())?,
+        };
+        connect(&a)
+    })
         .await
         .map_err(|e| e.to_string())??;
     let w = Arc::new(Mutex::new(stream.try_clone().map_err(|e| e.to_string())?));
@@ -340,6 +436,21 @@ mod tests {
         assert!(parse_attach(r#"{"url":"ws://127.0.0.1:1/api/ws","protocols":[]}"#).is_err());
         let e = parse_attach(r#"{"url":"wss://h/","protocols":["hermes-gateway-ticket.SECRET"]}"#).unwrap_err();
         assert!(!e.contains("SECRET"));
+    }
+
+    #[test]
+    fn attach_failure_picks_fields() {
+        assert_eq!(attach_failure(r#"{"state":"incompatible","reason_code":"runtime_protocol","detail":"old gateway"}"#).as_deref(), Some("old gateway"));
+        assert_eq!(attach_failure(r#"{"state":"incompatible","reason_code":"runtime_protocol"}"#).as_deref(), Some("runtime_protocol"));
+        assert_eq!(attach_failure(r#"{"state":"failed"}"#).as_deref(), Some("failed"));
+        assert_eq!(attach_failure("usage: hermes ..."), None);
+    }
+
+    #[test]
+    fn handshake_without_protocols_omits_header() {
+        let a = Attach { host: "127.0.0.1".into(), port: 1, path: "/api/ws?token=t".into(), protocols: vec![] };
+        let r = handshake_request(&a, "k");
+        assert!(!r.contains("Sec-WebSocket-Protocol") && r.ends_with("Sec-WebSocket-Version: 13\r\n\r\n"));
     }
 
     #[test]

@@ -450,12 +450,12 @@ pub async fn usage_history() -> Result<Vec<SessionInfo>, String> {
     tauri::async_runtime::spawn_blocking(move || usage_history_from(&db)).await.map_err(|e| e.to_string())
 }
 
-/// Stop button follow-up: after the interrupt had a moment to produce its own `on_session_end`, a file that still shows
+/// Stop / resync follow-up (`delay_ms` 0 = now): after the interrupt had a moment to produce its own `on_session_end`, a file that still shows
 /// work is marked idle (see `perch_hook::force_idle`).
 #[tauri::command]
-pub async fn session_force_idle(session_id: String) -> Result<bool, String> {
+pub async fn session_force_idle(session_id: String, delay_ms: Option<u64>) -> Result<bool, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        std::thread::sleep(Duration::from_millis(1500));
+        std::thread::sleep(Duration::from_millis(delay_ms.unwrap_or(1500)));
         perch_hook::force_idle(&perch_home().join("sessions"), &session_id, perch_hook::now())
     })
     .await

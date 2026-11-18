@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import turn from "./__fixtures__/turn.jsonl?raw";
-import { activityLabel, canSend, chatReducer, fmtSec, groupItems, staleRetry, initialChat, shouldAutoReconnect, toDirective, toModelProviders, transcriptToItems, type ChatAction } from "./chatSession";
+import { STUCK_MSG, WATCHDOG_MS, activityLabel, canSend, submitFailure, watchdogDue, chatReducer, fmtSec, groupItems, staleRetry, initialChat, shouldAutoReconnect, toDirective, toModelProviders, transcriptToItems, type ChatAction } from "./chatSession";
 
 const ev = (type: string, payload: object = {}): ChatAction => ({ t: "event", ev: { type, payload } });
 
@@ -379,6 +379,85 @@ describe("thoughts, status and tool details", () => {
     expect(items.map((i) => i.kind)).toEqual(["user", "thought", "assistant", "thought", "tool"]);
     expect(items[4]).toMatchObject({ args: { command: "ls" }, labels: ["L"] });
     expect(new Set(items.map((i) => i.id)).size).toBe(items.length);
+  });
+});
+
+// real frames from a probe against Hermes v0.23.2 (trimmed): the gateway's own running flag, and the submit receipt
+const INFO_RUNNING = { type: "session.info", seq: 3, execution_generation: 1, payload: { running: true, pending: [{ status: "started", outcome: null, execution_generation: 1 }] } };
+const INFO_IDLE = { type: "session.info", seq: 43, execution_generation: 1, payload: { running: false, pending: [] } };
+const RECEIPT = { admission_id: "916446b0", ref: { profile_id: "p", session_id: "local-1" }, sequence: 21, status: "queued", outcome: null, authority_epoch: 3, execution_generation: null };
+const info = (f: object, at?: number): ChatAction => ({ t: "event", ev: f as any, at });
+
+describe("gateway running flag", () => {
+  it("session.info running:false ends a turn like message.complete without text", () => {
+    let s = chatReducer(initialChat, { t: "event", ev: { type: "message.start" }, at: 100 });
+    s = chatReducer(s, ev("message.delta", { text: "par" }));
+    s = chatReducer(s, ev("thinking.delta", { text: "hm" }));
+    s = chatReducer(s, info(INFO_IDLE, 200_000));
+    expect(s).toMatchObject({ running: false, turnStart: null, status: "", generating: "" });
+    expect(s.items[0]).toMatchObject({ kind: "assistant", text: "par", streaming: false });
+  });
+
+  it("ignores running:false inside the 3 s optimistic window after a local send, accepts it later", () => {
+    let s = chatReducer(initialChat, { t: "userSent", id: "u0", text: "hi", at: 1000 });
+    s = chatReducer(s, info(INFO_IDLE, 2500));
+    expect(s.running).toBe(true);
+    expect(chatReducer(s, info(INFO_IDLE, 4001)).running).toBe(false);
+    // once message.start was seen, the window no longer protects
+    let t = chatReducer(initialChat, { t: "userSent", id: "u0", text: "hi", at: 1000 });
+    t = chatReducer(t, { t: "event", ev: { type: "message.start" }, at: 1100 });
+    expect(chatReducer(t, info(INFO_IDLE, 1200)).running).toBe(false);
+  });
+
+  it("running:true starts the clock only when none runs", () => {
+    let s = chatReducer(initialChat, info(INFO_RUNNING, 500));
+    expect(s).toMatchObject({ running: true, turnStart: 500 });
+    s = chatReducer(s, info(INFO_RUNNING, 900));
+    expect(s.turnStart).toBe(500);
+    expect(chatReducer(initialChat, info(INFO_IDLE, 10)).running).toBe(false);
+    // a session.info without the flag changes nothing
+    expect(chatReducer(s, ev("session.info", { model: "m" })).running).toBe(true);
+  });
+
+  it("clear drops the indicators; real frames bring them back", () => {
+    const run = () => chatReducer(chatReducer(initialChat, { t: "event", ev: { type: "message.start" }, at: 10 }), ev("tool.start", { tool_id: "t", name: "x" }));
+    const cleared = chatReducer(run(), { t: "clear" });
+    expect(cleared).toMatchObject({ running: false, turnStart: null, cleared: true });
+    const withAt = (a: ChatAction): ChatAction => ({ ...a, at: 77 } as ChatAction);
+    for (const frame of [ev("message.delta", { text: "x" }), ev("tool.start", { tool_id: "t2", name: "y" }), info(INFO_RUNNING)]) {
+      const r = chatReducer(cleared, withAt(frame));
+      expect(r.running).toBe(true);
+      expect(r.turnStart).toBe(77);
+      expect(r.cleared).toBe(false);
+    }
+    // a late frame that is not a sign of life leaves it cleared
+    expect(chatReducer(cleared, ev("thinking.delta", { text: "z" })).running).toBe(false);
+  });
+
+  it("a snapshot adopts running:false and drops local system lines (history is authoritative)", () => {
+    let s = chatReducer(initialChat, { t: "snapshot", snap: { session_id: "a", running: true, messages: [] }, at: 1 });
+    s = chatReducer(s, { t: "system", text: STUCK_MSG });
+    expect(s.items).toHaveLength(1);
+    s = chatReducer(s, { t: "snapshot", snap: { session_id: "a", running: false, messages: [{ role: "user", content: "q" }] }, at: 2 });
+    expect(s.running).toBe(false);
+    expect(s.items.every((i) => i.kind !== "system")).toBe(true);
+  });
+
+  it("submitFailure reads the receipt status", () => {
+    expect(submitFailure(RECEIPT)).toBeNull();
+    expect(submitFailure({ ...RECEIPT, status: "started" })).toBeNull();
+    expect(submitFailure({})).toBeNull();
+    expect(submitFailure({ ...RECEIPT, status: "terminal", outcome: "rejected" })).toContain("terminal: rejected");
+    expect(submitFailure(null)).toBeNull();
+  });
+
+  it("watchdog is due after 45 s of silence while running and connected, not more often", () => {
+    const N = 1_000_000;
+    expect(watchdogDue(N, N - WATCHDOG_MS, 0, true, "ready")).toBe(true);
+    expect(watchdogDue(N, N - WATCHDOG_MS + 1, 0, true, "ready")).toBe(false);
+    expect(watchdogDue(N, N - 99_999, N - 10_000, true, "ready")).toBe(false);
+    expect(watchdogDue(N, N - 99_999, 0, false, "ready")).toBe(false);
+    expect(watchdogDue(N, N - 99_999, 0, true, "closed")).toBe(false);
   });
 });
 

@@ -24,7 +24,7 @@ export type SessionInfo = {
   paneId: string | null; title: string | null; cwd: string; repoRoot: string | null; branch: string | null;
   usage: { model: string; input: number; output: number; cacheRead: number; cacheWrite: number; reasoning: number; apiCalls: number; costUsd: number | null; startedAt: number } | null;
 };
-export type HermesStatus = { home: string; exe: string | null; connected: boolean; hookPath: string };
+export type HermesStatus = { home: string; exe: string | null; connected: boolean; hookPath: string; outdated: boolean; autoUpdated: boolean };
 
 export let HOME = "";
 export let WINDOW = "main";
@@ -46,7 +46,8 @@ export const paneSetSession = (id: string, sessionId: string) => invoke<void>("p
 export const sessionsSnapshot = () => invoke<SessionInfo[]>("sessions_snapshot");
 export const onSessions = (cb: (s: SessionInfo[]) => void): Promise<() => void> => listen<SessionInfo[]>("desk://sessions", (e) => cb(e.payload));
 export const sessionApprove = (sessionId: string, allow: boolean) => invoke<void>("session_approve", { sessionId, allow });
-export const sessionForceIdle = (sessionId: string) => invoke<boolean>("session_force_idle", { sessionId });
+/** Marks a still-"working" session file idle. delayMs 0 = now (chat resync); the TUI Stop waits a moment for Hermes' own on_session_end. */
+export const sessionForceIdle = (sessionId: string, delayMs = 1500) => invoke<boolean>("session_force_idle", { sessionId, delayMs });
 export const hermesStatus = () => invoke<HermesStatus>("hermes_status");
 export const hermesConnect = () => invoke<HermesStatus>("hermes_connect");
 export const hermesDisconnect = () => invoke<HermesStatus>("hermes_disconnect");

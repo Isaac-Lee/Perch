@@ -87,6 +87,7 @@ Choice questions add `  ❯ 1. <choice>` rows plus `Other (type your answer)`; n
 ## Gateway (chat view) notes
 Wire contract `hermes-gateway-v1`, newline-delimited JSON-RPC over a WebSocket. Measured against Hermes v0.23.2; see the design spec for details.
 - `hermes gateway attach --json --start` prints the `url` and `protocols`. The one-time ticket is carried in the WebSocket subprotocol, valid once and for about 30 s, so every connect asks for a fresh one. Never store or log it.
+- `gateway attach` needs Hermes >= 0.23.1; Perch runs it with `--recover` (stops a still-running older gateway once, starts the current one). Older Hermes (exit code 2) falls back to a Perch-owned `hermes serve` with `HERMES_DASHBOARD_SESSION_TOKEN` set, connected at `/api/ws?token=` with no subprotocol. `session.mutate` does not exist before 0.22, so those actions error there.
 - The gateway answers 403 to any request that has an `Origin` header. A webview always sends one, so it cannot connect itself; the Rust side (`gateway.rs`) connects and relays lines (`chat_connect` / `chat_send` / `chat_close`). When the socket ends, the relay sends one last line `{"perch":"closed","reason":"..."}`.
 - `prompt.submit` requires a `submission_id`.
 - Approvals and questions arrive as events (`approval.request`, `clarify.request`). Answer with `approval.respond` / `clarify.respond` using the prompt's own `execution_generation`, not the session's current one.

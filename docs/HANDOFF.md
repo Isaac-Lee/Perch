@@ -114,7 +114,7 @@ npm run tauri build   # 릴리스 exe와 설치 파일
 
 ## 6. 다음에 할 일
 
-**릴리스.** 최신은 `v0.4.0`(채팅 보기 개선과 칸·세션 배치)이고 릴리스 노트는 `docs/releases/v0.4.0.md`다. 직전 `v0.3.0`(Hermes 채팅 보기)의 노트는 `docs/releases/v0.3.0.md`다. 이전 `v0.1.0`은 2026-11-18에 [Releases](https://github.com/Isaac-Lee/Perch/releases)에 게시됐다 (`Perch_0.1.0_x64-setup.exe`, `Perch_0.1.0_aarch64.dmg`). 태그 빌드는 초안 릴리스에 설치 파일을 붙이고, 확인 뒤 `gh release edit v<버전> --draft=false --latest`로 게시한다. 다음 버전은 `tauri.conf.json`, `Cargo.toml`(앱과 `hook/`), `package.json`과 두 lock 파일의 버전을 올리고 `v<버전>` 태그를 push하면 같은 과정이 돈다. v0.3.0 준비 커밋도 이 파일들만 고쳤다.
+**릴리스.** 최신은 `v0.4.1`(표 표시와 멈춘 상태 표시 수정)이고 릴리스 노트는 `docs/releases/v0.4.1.md`다. 직전 `v0.4.0`(채팅 보기 개선과 칸·세션 배치)의 노트는 `docs/releases/v0.4.0.md`다. 이전 `v0.1.0`은 2026-11-18에 [Releases](https://github.com/Isaac-Lee/Perch/releases)에 게시됐다 (`Perch_0.1.0_x64-setup.exe`, `Perch_0.1.0_aarch64.dmg`). 태그 빌드는 초안 릴리스에 설치 파일을 붙이고, 확인 뒤 `gh release edit v<버전> --draft=false --latest`로 게시한다. 다음 버전은 `tauri.conf.json`, `Cargo.toml`(앱과 `hook/`), `package.json`과 두 lock 파일의 버전을 올리고 `v<버전>` 태그를 push하면 같은 과정이 돈다. v0.3.0 준비 커밋도 이 파일들만 고쳤다.
 
 - 라이선스는 MIT + Commons Clause다 (`LICENSE`). 회사 내부 사용은 허용, 판매는 금지 (사용자 결정, 2026-11-18).
 - Intel 맥용 빌드는 없다. 필요하면 워크플로 matrix에 줄을 추가한다.
@@ -147,6 +147,8 @@ npm run tauri build   # 릴리스 exe와 설치 파일
 - `/new`, `/clear`, `/resume`, `/branch`, `/compress`, `/undo`, `/retry`, `/quit`는 채팅 보기에서 쓸 수 없다. 게이트웨이가 받지 않는다. 필요하면 TUI 칸을 쓴다.
 - 모델 목록에 없는 모델(사내 모델 등)은 `/model <이름> [--provider <slug>]`로 지정한다. 사내 모델 환경에서는 아직 확인하지 못했다.
 - 한 줄 상태 표시, 생각 줄, 도구 상세, 슬래시 팝업은 실제 앱에서 충분히 확인하지 못했다.
+- Hermes가 턴을 끝내지 않고 멈춘 경우: 사용자 PC에서 "Thinking"이 계속 남는 보고가 있었으나 재현하지 못했다. Perch는 게이트웨이의 `session.info.running`을 따르고, 45초 동안 프레임이 없으면 `session.resume`으로 확인한다. Stop 뒤 3초 안에 끝나지 않으면 "Hermes가 이 턴을 아직 끝내지 않았습니다"라고 알리고, Stop을 한 번 더 누르면 Perch의 표시만 정리한다(Hermes 쪽 턴은 계속될 수 있고, 다음 프레임이 오면 표시가 다시 켜진다). 원인 확인용 증거: Hermes `agent.log`의 "tui prompt accepted" 줄과 짝이 되는 "tui turn finished" 줄이 있는지 본다. 짝이 없으면 Hermes 쪽에서 멈춘 것이다.
+- 훅 목록은 앱 시작 때 오래된 것이 있으면 자동으로 갱신한다(다른 hooks가 config.yaml에 있으면 실패하고, 설정 창에 Update 버튼이 나온다). 실행 중인 gateway는 새 세션을 만들거나 resume할 때 config.yaml을 다시 읽는다.
 
 **4단계: OpenCode 연결 — 하지 않기로 했다 (사용자 결정, 2026-11-18).** OpenCode는 칸에서 실행만 되고 상태 표시는 없다. 나중에 다시 하게 되면 `docs/ADAPTERS.md`를 따른다.
 

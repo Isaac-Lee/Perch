@@ -6,7 +6,7 @@ export type Block =
   | { t: "code"; lang: string; text: string; open: boolean }   // open: no closing ``` yet
   | { t: "list"; ordered: boolean; items: { text: string; children: Block[] }[] }
   | { t: "quote"; children: Block[] } | { t: "hr" }
-  | { t: "table"; head: string[]; rows: string[][] };
+  | { t: "table"; head: string[]; rows: string[][]; align?: string[] };
 
 const FENCE = /^\s{0,3}```\s*([^\s`]*)/;
 const FENCE_END = /^\s{0,3}```\s*$/;
@@ -17,8 +17,29 @@ const TABLE_SEP = /^\s*\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)*\|?\s*$/;
 
 const isBlank = (l: string) => l.trim() === "";
 const indentOf = (l: string) => l.length - l.trimStart().length;
-const cells = (l: string) => l.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+// split a table row on unescaped pipes outside backtick code spans; `\|` unescapes to `|`
+function cells(l: string): string[] {
+  const s = l.trim().replace(/^\|/, "");
+  const out: string[] = [];
+  let cur = "";
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === "\\" && s[i + 1] === "|") { cur += "|"; i++; }
+    else if (c === "`" && s.indexOf("`", i + 1) > 0) {
+      const e = s.indexOf("`", i + 1);
+      cur += s.slice(i, e + 1).replace(/\\\|/g, "|");
+      i = e;
+    } else if (c === "|") { out.push(cur.trim()); cur = ""; }
+    else cur += c;
+  }
+  out.push(cur.trim());
+  if (out.length > 1 && out[out.length - 1] === "") out.pop();
+  return out;
+}
+const isTableStart = (lines: string[], i: number) =>
+  lines[i].includes("|") && i + 1 < lines.length && lines[i + 1].includes("|") && TABLE_SEP.test(lines[i + 1]);
 const startsBlock = (l: string) => FENCE.test(l) || HEADING.test(l) || HR.test(l) || l.startsWith(">") || ITEM.test(l);
+const alignOf = (c: string) => (c.startsWith(":") ? (c.endsWith(":") ? "center" : "left") : c.endsWith(":") ? "right" : "");
 
 function parseLines(lines: string[]): Block[] {
   const out: Block[] = [];
@@ -45,12 +66,14 @@ function parseLines(lines: string[]): Block[] {
       out.push({ t: "quote", children: parseLines(inner) });
       continue;
     }
-    if (line.includes("|") && i + 1 < lines.length && lines[i + 1].includes("|") && TABLE_SEP.test(lines[i + 1])) {
+    if (isTableStart(lines, i)) {
       const head = cells(line);
+      const align = cells(lines[i + 1]).map(alignOf);
       i += 2;
       const rows: string[][] = [];
-      while (i < lines.length && !isBlank(lines[i]) && lines[i].includes("|")) rows.push(cells(lines[i++]));
-      out.push({ t: "table", head, rows });
+      // keep the grid rectangular: pad short rows, drop extra cells
+      while (i < lines.length && !isBlank(lines[i]) && lines[i].includes("|")) rows.push(head.map((_, k) => cells(lines[i])[k] ?? "")), i++;
+      out.push(align.some(Boolean) ? { t: "table", head, rows, align } : { t: "table", head, rows });
       continue;
     }
     const m = ITEM.exec(line);
@@ -86,7 +109,7 @@ function parseLines(lines: string[]): Block[] {
     }
     const para = [line];
     i++;
-    while (i < lines.length && !isBlank(lines[i]) && !startsBlock(lines[i])) para.push(lines[i++]);
+    while (i < lines.length && !isBlank(lines[i]) && !startsBlock(lines[i]) && !isTableStart(lines, i)) para.push(lines[i++]);
     out.push({ t: "p", text: para.join("\n") });
   }
   return out;
@@ -160,6 +183,8 @@ function CodeBlock({ lang, text }: { lang: string; text: string }) {
   );
 }
 
+const al = (a: string[] | undefined, j: number) => (a?.[j] ? { textAlign: a[j] as "left" } : undefined);
+
 function render(blocks: Block[], onLink: OnLink): ReactNode[] {
   return blocks.map((b, i): ReactNode => {
     switch (b.t) {
@@ -175,8 +200,8 @@ function render(blocks: Block[], onLink: OnLink): ReactNode[] {
       case "table":
         return (
           <table key={i} className="md-table">
-            <thead><tr>{b.head.map((c, j) => <th key={j}>{inline(c, onLink)}</th>)}</tr></thead>
-            <tbody>{b.rows.map((r, j) => <tr key={j}>{r.map((c, k) => <td key={k}>{inline(c, onLink)}</td>)}</tr>)}</tbody>
+            <thead><tr>{b.head.map((c, j) => <th key={j} style={al(b.align, j)}>{inline(c, onLink)}</th>)}</tr></thead>
+            <tbody>{b.rows.map((r, j) => <tr key={j}>{r.map((c, k) => <td key={k} style={al(b.align, k)}>{inline(c, onLink)}</td>)}</tr>)}</tbody>
           </table>
         );
     }
