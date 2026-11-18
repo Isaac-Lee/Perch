@@ -13,6 +13,7 @@ pub fn run() {
     .plugin(tauri_plugin_dialog::init())
     .manage(desk::Desk::default())
     .manage(gateway::Chats::default())
+    .manage(gateway::LegacyServe::default())
     .manage(sessions::Sessions::default())
     .setup(|app| {
       hermes::auto_update();
@@ -50,6 +51,11 @@ pub fn run() {
         app.state::<desk::Desk>().close_window(app, window.label());
       }
     })
-    .run(tauri::generate_context!())
-    .expect("error while building tauri application");
+    .build(tauri::generate_context!())
+    .expect("error while building tauri application")
+    .run(|app, ev| {
+      if let tauri::RunEvent::Exit = ev {
+        app.state::<gateway::LegacyServe>().kill();
+      }
+    });
 }
