@@ -1,0 +1,8 @@
+.hl-com { color: var(--text-3); font-style: italic; }
+.hl-str { color: var(--ok); }
+.hl-num { color: var(--warn); }
+.hl-kw { color: var(--accent); }
+.hl-add { color: var(--ok); background: rgba(95, 184, 124, 0.12); }
+.hl-del { color: #e0705f; background: rgba(224, 112, 95, 0.12); }
+.hl-hunk { color: var(--accent); }
+.hl-meta { color: var(--text-2); font-weight: 600; }

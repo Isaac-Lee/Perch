@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import turn from "./__fixtures__/turn.jsonl?raw";
-import { canSend, chatReducer, staleRetry, initialChat, shouldAutoReconnect, transcriptToItems, type ChatAction } from "./chatSession";
+import { canSend, chatReducer, staleRetry, initialChat, shouldAutoReconnect, toDirective, toModelProviders, transcriptToItems, type ChatAction } from "./chatSession";
 
 const ev = (type: string, payload: object = {}): ChatAction => ({ t: "event", ev: { type, payload } });
 
@@ -172,9 +172,74 @@ describe("model change", () => {
     const data = { revision: 5, execution_generation: 3 };
     expect(staleRetry(Object.assign(new Error("stale_generation"), { data }))).toEqual({ revision: 5, executionGeneration: 3 });
     expect(staleRetry(Object.assign(new Error("stale_revision"), { data }))).toEqual({ revision: 5, executionGeneration: 3 });
+    expect(staleRetry(Object.assign(new Error("revision_conflict"), { code: 4001, data: { reason: "revision_conflict", revision: 2, execution_generation: 2 } }))).toEqual({ revision: 2, executionGeneration: 2 });
     expect(staleRetry(Object.assign(new Error("other"), { data }))).toBeNull();
     expect(staleRetry(new Error("stale_revision"))).toBeNull();
     expect(staleRetry(Object.assign(new Error("stale_revision"), { data: { revision: "x" } }))).toBeNull();
     expect(staleRetry("nope")).toBeNull();
+  });
+});
+
+describe("toModelProviders", () => {
+  it("adds the current model when no provider row lists it (measured gap)", () => {
+    const r = toModelProviders({ model: "anthropic/claude-opus-4.6", provider: "auto", providers: [{ slug: "nous", name: "Nous · free tier", models: ["nous/welcome"], authenticated: true }] });
+    expect(r).toEqual([
+      { provider: "auto", providerName: "현재 모델", models: ["anthropic/claude-opus-4.6"] },
+      { provider: "nous", providerName: "Nous · free tier", models: ["nous/welcome"] },
+    ]);
+  });
+  it("keeps unauthenticated rows and marks them", () => {
+    const r = toModelProviders({ model: "nous/welcome", providers: [{ slug: "corp", name: "Corp", models: ["corp/x"], authenticated: false }, { slug: "nous", models: ["nous/welcome"] }] });
+    expect(r.map((p) => p.providerName)).toEqual(["Corp (인증 안 됨)", "nous"]);
+  });
+  it("puts the current model into the matching or is_current row, even one with no models", () => {
+    const rows = [{ slug: "a", models: ["a/1"] }, { slug: "corp", name: "Corp", models: [], is_current: true }];
+    expect(toModelProviders({ model: "corp/m", provider: "auto", providers: rows })[1]).toEqual({ provider: "corp", providerName: "Corp", models: ["corp/m"] });
+    expect(toModelProviders({ model: "a/2", provider: "a", providers: rows })[0].models).toEqual(["a/1", "a/2"]);
+    expect(toModelProviders({ model: "a/1", providers: rows })).toHaveLength(1); // empty row dropped
+  });
+  it("empty result stays empty", () => expect(toModelProviders({})).toEqual([]));
+});
+
+describe("effort, session.updated, system items", () => {
+  it("effort comes from the snapshot, session.info and effortChanged; config.get only fills a gap", () => {
+    let s = chatReducer(initialChat, { t: "snapshot", snap: { session_id: "a", info: { model: "m", reasoning_effort: "low" } } });
+    expect(s.effort).toBe("low");
+    s = chatReducer(s, { t: "event", ev: { type: "session.info", payload: { reasoning_effort: "high" } } });
+    expect(s).toMatchObject({ effort: "high", model: "m" });
+    s = chatReducer(s, { t: "effort", effort: "medium" });
+    expect(s.effort).toBe("high");
+    s = chatReducer(s, { t: "effortChanged", revision: 2, executionGeneration: 1, effort: "max" });
+    expect(s).toMatchObject({ effort: "max", revision: 2 });
+    expect(chatReducer(initialChat, { t: "effort", effort: "medium" }).effort).toBe("medium");
+  });
+  it("session.updated refreshes revision and generation only when numeric", () => {
+    let s = chatReducer(initialChat, { t: "snapshot", snap: { session_id: "a", revision: 1, execution_generation: 1 } });
+    s = chatReducer(s, ev("session.updated", { revision: 3, execution_generation: 2 }));
+    expect(s).toMatchObject({ revision: 3, executionGeneration: 2 });
+    s = chatReducer(s, ev("session.updated", { revision: "x" }));
+    expect(s).toMatchObject({ revision: 3, executionGeneration: 2 });
+  });
+  it("system items append with unique ids", () => {
+    let s = chatReducer(initialChat, { t: "userSent", id: "u0", text: "/help" });
+    s = chatReducer(s, { t: "system", text: "**out**" });
+    s = chatReducer(s, { t: "system", text: "more" });
+    expect(s.items.map((i) => i.kind)).toEqual(["user", "system", "system"]);
+    expect(new Set(s.items.map((i) => i.id)).size).toBe(3);
+  });
+});
+
+describe("toDirective", () => {
+  it("exec / untyped output, warning prefix", () => {
+    expect(toDirective({ type: "exec", output: "hi" })).toEqual({ type: "output", text: "hi" });
+    expect(toDirective({ output: "x", warning: "w" })).toEqual({ type: "output", text: "warning: w\nx" });
+    expect(toDirective({ type: "plugin" })).toEqual({ type: "output", text: "(출력 없음)" });
+  });
+  it("alias, send/skill, prefill, malformed", () => {
+    expect(toDirective({ type: "alias", target: "reasoning" })).toEqual({ type: "alias", target: "reasoning" });
+    expect(toDirective({ type: "skill", name: "s", message: "body" })).toEqual({ type: "send", message: "body", notice: undefined });
+    expect(toDirective({ type: "send", message: "m", notice: " n " })).toEqual({ type: "send", message: "m", notice: "n" });
+    expect(toDirective({ type: "prefill", message: "p" })).toMatchObject({ type: "prefill", message: "p" });
+    for (const bad of [null, "x", { type: "alias" }, { type: "send" }, { type: "weird" }]) expect(toDirective(bad)).toBeNull();
   });
 });

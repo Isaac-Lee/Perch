@@ -28,5 +28,7 @@ export default function ChatMessage({ item }: { item: ChatItem }) {
     }
     case "error":
       return <div className="chat-error">{item.text}</div>;
+    case "system":
+      return <div className="chat-system"><Markdown text={item.text} onLink={(u) => { openUrl(u).catch(console.error); }} /></div>;
   }
 }

@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
+import { highlight } from "./highlight";
 
 export type Block =
   | { t: "p"; text: string } | { t: "h"; level: 1 | 2 | 3 | 4 | 5 | 6; text: string }
@@ -147,13 +148,14 @@ function inline(s: string, onLink: OnLink): ReactNode[] {
 }
 
 function CodeBlock({ lang, text }: { lang: string; text: string }) {
+  const toks = useMemo(() => highlight(lang, text), [lang, text]);
   return (
     <div className="md-code">
       <div className="md-code-head">
         <span>{lang}</span>
         <button type="button" className="md-copy" onClick={() => { try { void navigator.clipboard.writeText(text).catch(() => {}); } catch { /* no clipboard */ } }}>복사</button>
       </div>
-      <pre><code>{text}</code></pre>
+      <pre><code>{toks.map((k, i) => k.t ? <span key={i} className={"hl-" + k.t}>{k.s}</span> : k.s)}</code></pre>
     </div>
   );
 }

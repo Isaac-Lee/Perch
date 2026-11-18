@@ -8,7 +8,7 @@ import ChatMessage from "./ChatMessage";
 export default function ChatView({ paneId, cwd, sessionId, focused }: { paneId: string; cwd: string; sessionId: string | null; focused: boolean }) {
   // Session id at first render only (equal to the pane id means none yet); a later paneSetSession must not reconnect.
   const [resumeId] = useState(() => (sessionId && sessionId !== paneId ? sessionId : null));
-  const { state, retrying, send, stop, reconnect, attachImage, listModels, setModel, answerApproval, answerClarify } = useChatSession(paneId, cwd, resumeId);
+  const { state, retrying, draft, send, stop, reconnect, attachImage, listModels, setModel, setEffort, completeSlash, answerApproval, answerClarify } = useChatSession(paneId, cwd, resumeId);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const toBottom = () => { const el = scrollRef.current; if (el) el.scrollTop = el.scrollHeight; };
@@ -45,7 +45,7 @@ export default function ChatView({ paneId, cwd, sessionId, focused }: { paneId: 
           {state.conn === "connecting" && <div className="chat-status">연결 중…</div>}
         </div>
       </div>
-      <ChatComposer model={state.model ?? undefined} running={state.running} disabled={state.conn !== "ready"} focused={focused} onSend={(t, a) => { stick.current = true; send(t, a); }} onStop={stop} onAttach={attachImage} onListModels={listModels} onSetModel={setModel} />
+      <ChatComposer model={state.model ?? undefined} effort={state.effort ?? undefined} draft={draft} running={state.running} disabled={state.conn !== "ready"} focused={focused} onSend={(t, a) => { stick.current = true; send(t, a); }} onStop={stop} onAttach={attachImage} onListModels={listModels} onSetModel={setModel} onSetEffort={setEffort} onCompleteSlash={completeSlash} />
     </div>
   );
 }

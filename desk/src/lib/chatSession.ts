@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { chatClose, chatConnect, chatSend, paneSetSession } from "./backend";
-import { imageExt, toBase64 } from "./composer";
+import { BLOCKED_SLASH, imageExt, isSlashCommand, parseModelArg, parseSlash, toBase64 } from "./composer";
 import { createRpc, type Rpc } from "./gateway";
 import type { GatewayEvent, SessionSnapshot } from "./gatewayTypes";
 
@@ -8,19 +8,23 @@ export type ChatItem =
   | { kind: "user"; id: string; text: string; images?: string[] }
   | { kind: "assistant"; id: string; text: string; streaming: boolean }
   | { kind: "tool"; id: string; name: string; context: string; status: "running" | "done" | "error"; durationS?: number; result?: string }
-  | { kind: "error"; id: string; text: string };
+  | { kind: "error"; id: string; text: string }
+  | { kind: "system"; id: string; text: string };
 export interface ChatPrompt {
   kind: "approval" | "clarify"; promptId: string; executionGeneration: number; choices: string[];
   command?: string; description?: string; question?: string; multiSelect?: boolean;
   /** clarify batch with several questions: shown as text, answered with one free-text reply */
   questions?: string[];
 }
-export interface ChatState { conn: "connecting" | "ready" | "closed" | "error"; error?: string; sessionId: string | null; executionGeneration: number; revision: number; running: boolean; items: ChatItem[]; prompts: ChatPrompt[]; model: string | null }
-export const initialChat: ChatState = { conn: "connecting", sessionId: null, executionGeneration: 0, revision: 0, running: false, items: [], prompts: [], model: null };
+export interface ChatState { conn: "connecting" | "ready" | "closed" | "error"; error?: string; sessionId: string | null; executionGeneration: number; revision: number; running: boolean; items: ChatItem[]; prompts: ChatPrompt[]; model: string | null; effort: string | null }
+export const initialChat: ChatState = { conn: "connecting", sessionId: null, executionGeneration: 0, revision: 0, running: false, items: [], prompts: [], model: null, effort: null };
 export type ChatAction =
   | { t: "conn"; conn: ChatState["conn"]; error?: string }
   | { t: "snapshot"; snap: any }
   | { t: "modelChanged"; revision: number; executionGeneration: number; model: string }
+  | { t: "effortChanged"; revision: number; executionGeneration: number; effort: string }
+  | { t: "effort"; effort: string }
+  | { t: "system"; text: string }
   | { t: "promptDone"; promptId: string }
   | { t: "userSent"; id: string; text: string; images?: string[] }
   | { t: "event"; ev: GatewayEvent };
@@ -84,9 +88,12 @@ export function chatReducer(s: ChatState, a: ChatAction): ChatState {
       ...s, conn: "ready", error: undefined, sessionId: a.snap.session_id ?? null,
       executionGeneration: typeof a.snap.execution_generation === "number" ? a.snap.execution_generation : s.executionGeneration,
       revision: typeof a.snap.revision === "number" ? a.snap.revision : 0,
-      running: !!a.snap.running, model: a.snap.info?.model || s.model, items: transcriptToItems(a.snap.messages ?? []), prompts: (Array.isArray(a.snap.prompts) ? a.snap.prompts : []).map((p: any) => toPrompt(p, p?.kind)).filter((p: ChatPrompt | null): p is ChatPrompt => !!p),
+      running: !!a.snap.running, model: a.snap.info?.model || s.model, effort: str(a.snap.info?.reasoning_effort) || s.effort, items: transcriptToItems(a.snap.messages ?? []), prompts: (Array.isArray(a.snap.prompts) ? a.snap.prompts : []).map((p: any) => toPrompt(p, p?.kind)).filter((p: ChatPrompt | null): p is ChatPrompt => !!p),
     };
     case "modelChanged": return { ...s, revision: a.revision, executionGeneration: a.executionGeneration, model: a.model };
+    case "effortChanged": return { ...s, revision: a.revision, executionGeneration: a.executionGeneration, effort: a.effort };
+    case "effort": return s.effort ? s : { ...s, effort: a.effort };
+    case "system": return { ...s, items: [...s.items, { kind: "system", id: `s${s.items.length}`, text: a.text }] };
     case "promptDone": return dropPrompt(s, a.promptId);
     case "userSent": return { ...s, items: [...s.items, { kind: "user", id: a.id, text: a.text, images: a.images }] };
     case "event": return onEvent(typeof a.ev.execution_generation === "number" ? { ...s, executionGeneration: a.ev.execution_generation } : s, a.ev);
@@ -117,7 +124,12 @@ function onEvent(s: ChatState, ev: GatewayEvent): ChatState {
       if (s.items.some((i) => i.kind === "tool" && i.id === id)) return { ...s, items: s.items.map((i) => (i.kind === "tool" && i.id === id ? { ...i, ...patch } : i)) };
       return { ...s, items: [...s.items, { kind: "tool", id: id || `t${s.items.length}`, name: str(p.name), context: str(p.context), ...patch }] };
     }
-    case "session.info": return typeof p.model === "string" && p.model ? { ...s, model: p.model } : s;
+    case "session.info": {
+      const model = str(p.model), effort = str(p.reasoning_effort);
+      return model || effort ? { ...s, model: model || s.model, effort: effort || s.effort } : s;
+    }
+    // keeps later session.mutate calls from going stale
+    case "session.updated": return { ...s, revision: typeof p.revision === "number" ? p.revision : s.revision, executionGeneration: typeof p.execution_generation === "number" ? p.execution_generation : s.executionGeneration };
     case "session.usage": return typeof p.usage?.model === "string" && p.usage.model ? { ...s, model: p.usage.model } : s;
     case "approval.request": return addPrompt(s, toPrompt(p, "approval"));
     case "clarify.request": return addPrompt(s, toPrompt(p, "clarify"));
@@ -135,11 +147,42 @@ export const shouldAutoReconnect = (sessionId: string | null, attemptsUsed: numb
 /** Current counters from a stale_revision / stale_generation RPC error, or null when a retry makes no sense. */
 export function staleRetry(err: unknown): { revision: number; executionGeneration: number } | null {
   const e = err as { message?: string; data?: { revision?: unknown; execution_generation?: unknown } } | null;
-  if (!e || !/^stale_(revision|generation)$/.test(String(e.message))) return null;
+  if (!e || !/^(stale_revision|stale_generation|revision_conflict)$/.test(String(e.message))) return null;
   const { revision, execution_generation: gen } = e.data ?? {};
   return typeof revision === "number" && typeof gen === "number" ? { revision, executionGeneration: gen } : null;
 }
 export interface ModelProvider { provider: string; providerName: string; models: string[] }
+interface ModelOptions { model?: string; provider?: string; providers?: { slug: string; name?: string; models?: string[]; authenticated?: boolean; is_current?: boolean }[] }
+/** model.options rows -> picker groups. Unauthenticated providers stay (in-house models), and the session's current model is added when no row lists it. */
+export function toModelProviders(r: ModelOptions): ModelProvider[] {
+  const rows = r.providers ?? [];
+  const cur = str(r.model);
+  const home = cur && !rows.some((p) => p.models?.includes(cur)) ? (rows.find((p) => p.slug === r.provider) ?? rows.find((p) => p.is_current)) : undefined;
+  const out = rows
+    .map((p) => ({ provider: p.slug, providerName: (p.name || p.slug) + (p.authenticated === false ? " (인증 안 됨)" : ""), models: [...(p.models ?? []), ...(p === home ? [cur] : [])] }))
+    .filter((p) => p.models.length > 0);
+  return cur && !home && !out.some((p) => p.models.includes(cur)) ? [{ provider: str(r.provider), providerName: "현재 모델", models: [cur] }, ...out] : out;
+}
+
+/** What to do with a slash.exec / command.dispatch result (parseCommandDispatch in hermes shared slash.ts). */
+export type SlashDirective =
+  | { type: "output"; text: string }
+  | { type: "alias"; target: string }
+  | { type: "send" | "prefill"; message: string; notice?: string };
+export function toDirective(raw: any): SlashDirective | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const notice = str(raw.notice).trim() || undefined;
+  switch (raw.type) {
+    case undefined: case "exec": case "plugin": {
+      const out = str(raw.output) || "(출력 없음)";
+      return { type: "output", text: str(raw.warning) ? `warning: ${raw.warning}\n${out}` : out };
+    }
+    case "alias": return str(raw.target) ? { type: "alias", target: raw.target } : null;
+    case "prefill": return typeof raw.message === "string" ? { type: "prefill", message: raw.message, notice } : null;
+    case "send": case "skill": return typeof raw.message === "string" ? { type: "send", message: raw.message, notice } : null;
+    default: return null;
+  }
+}
 /** Nothing is delivered while the socket is down, so no user bubble either. */
 export const canSend = (s: ChatState) => s.conn === "ready" && !!s.sessionId;
 
@@ -154,6 +197,7 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
   const autoUsed = useRef(0); // automatic reconnects since the last successful connection (max 1)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [retrying, setRetrying] = useState(false);
+  const [draft, setDraft] = useState({ text: "", n: 0 }); // /undo-style prefill; the composer applies it when n changes
 
   useEffect(() => {
     let dead = false;
@@ -196,6 +240,8 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
           : rpc.request<SessionSnapshot>("session.create", { request_id: crypto.randomUUID(), source: "tui", cwd }));
         if (dead) return;
         dispatch({ t: "snapshot", snap });
+        if (!snap.info?.reasoning_effort) // the snapshot may not carry it; failure just leaves the label generic
+          rpc.request<{ value?: string }>("config.get", { key: "reasoning", session_id: snap.session_id }).then((r) => { if (!dead && r?.value) dispatch({ t: "effort", effort: r.value }); }, () => {});
         autoUsed.current = 0; // connected: re-arm
         const stored = snap.stored_session_id ?? snap.session_id;
         resumeRef.current = stored;
@@ -219,14 +265,80 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
     rpcRef.current.request(method, { session_id: stateRef.current.sessionId, execution_generation: pr.executionGeneration, prompt_id: promptId, ...field }).then(done, done);
   };
 
+  const submit = (sid: string, text: string, attachments?: { path: string; mime: string }[]) =>
+    call("prompt.submit", { session_id: sid, text, submission_id: crypto.randomUUID(), ...(attachments?.length ? { attachments } : {}) });
+  const say = (text: string) => dispatch({ t: "system", text });
+  // slash.exec first; command.dispatch handles skill/send/alias names it does not know. An alias is followed once.
+  async function runSlash(sid: string, text: string, aliased = false): Promise<void> {
+    const rpc = rpcRef.current;
+    if (!rpc) return;
+    const { name, arg } = parseSlash(text);
+    if (!name) return say("명령 이름이 없습니다");
+    if (name === "model") { // the gateway has no slash.exec for it; this also reaches models that model.options does not list
+      const pick = parseModelArg(arg);
+      if (!pick) return say("모델 버튼에서 고르거나 /model <이름> [--provider <slug>] 로 지정하세요");
+      return changeModel(pick.provider, pick.model).then(() => say("모델을 바꿨습니다: " + pick.model), (e) => { const m = e instanceof Error ? e.message : String(e); say(m === "model_resolution_failed" ? `모델을 찾지 못했습니다: ${pick.model}. provider를 지정해 보세요 (예: /model ${pick.model} --provider custom)` : "모델을 바꾸지 못했습니다: " + m); });
+    }
+    if (BLOCKED_SLASH.has(name)) return say(`이 명령은 채팅 보기에서 지원하지 않습니다. TUI 칸을 쓰세요: /${name}`);
+    let raw: unknown;
+    try { raw = await rpc.request("slash.exec", { session_id: sid, command: text.replace(/^\/+/, "").trim() }); }
+    catch (execErr) {
+      try { raw = await rpc.request("command.dispatch", { session_id: sid, name, arg }); }
+      catch (e2) {
+        const m = (x: unknown) => (x instanceof Error ? x.message : String(x));
+        // the fallback's "not a quick/plugin/skill command" is routing noise when slash.exec failed for a real reason
+        const real = /not a quick\/plugin\/(?:bundle\/)?skill command/i.test(m(e2)) ? execErr : e2;
+        return say(m(real) === "unsupported_command" ? `알 수 없는 명령입니다: /${name}` : `/${name} 실패: ${m(real)}`);
+      }
+    }
+    const d = toDirective(raw);
+    if (!d) return say(`/${name}: 응답을 해석하지 못했습니다`);
+    if (d.type === "output") return say(d.text);
+    if (d.type === "alias") return aliased ? say(`/${name}: 별칭이 순환합니다`) : runSlash(sid, `/${d.target} ${arg}`, true);
+    if (d.notice) say(d.notice);
+    if (!d.message.trim()) return;
+    if (d.type === "prefill") setDraft((x) => ({ text: d.message, n: x.n + 1 }));
+    else submit(sid, d.message); // the typed command is already the user bubble; the expanded message is model-facing
+  }
+  // The gateway stays authoritative for the mutation; success carries the new counters.
+  async function mutate(operation: string, payload: object) {
+    const rpc = rpcRef.current, sid = stateRef.current.sessionId;
+    if (!rpc || !sid) throw new Error("연결되지 않았습니다");
+    type Res = { revision: number; execution_generation: number; model?: string; effort?: string };
+    const run = (revision: number, gen: number) => rpc.request<Res>("session.mutate", {
+      session_id: sid, request_id: crypto.randomUUID(), expected_revision: revision, expected_generation: gen, operation, payload,
+    });
+    try { return await run(stateRef.current.revision, stateRef.current.executionGeneration); }
+    catch (e) {
+      const retry = staleRetry(e);
+      if (!retry) throw e;
+      return await run(retry.revision, retry.executionGeneration);
+    }
+  }
+
+  async function changeModel(provider: string, model: string): Promise<void> {
+    const r = await mutate("model", { model, ...(provider && provider !== "auto" ? { provider } : {}) });
+    dispatch({ t: "modelChanged", revision: r.revision, executionGeneration: r.execution_generation, model: r.model || model });
+  }
+
   return {
     state,
     retrying,
+    draft,
     send(text: string, attachments?: { path: string; mime: string }[]) {
       const sid = stateRef.current.sessionId;
       if (!sid || !canSend(stateRef.current)) return;
       dispatch({ t: "userSent", id: `u${stateRef.current.items.length}`, text, images: attachments?.map((a) => a.path) });
-      call("prompt.submit", { session_id: sid, text, submission_id: crypto.randomUUID(), ...(attachments?.length ? { attachments } : {}) });
+      if (!attachments?.length && isSlashCommand(text)) runSlash(sid, text).catch((e) => say(e instanceof Error ? e.message : String(e)));
+      else submit(sid, text, attachments);
+    },
+    async completeSlash(text: string): Promise<{ items: { text: string; display?: string; meta?: string; kind?: string | null }[]; replaceFrom: number }> {
+      const rpc = rpcRef.current, sid = stateRef.current.sessionId;
+      if (!rpc || !sid) return { items: [], replaceFrom: 1 };
+      try {
+        const r = await rpc.request<{ items?: any[]; replace_from?: number }>("complete.slash", { text, session_id: sid });
+        return { items: (r.items ?? []).filter((i) => i && typeof i.text === "string"), replaceFrom: typeof r.replace_from === "number" ? r.replace_from : 1 };
+      } catch { return { items: [], replaceFrom: 1 }; }
     },
     stop() { call("session.interrupt", base()); },
     answerApproval(promptId: string, choice: string) { respond("approval.respond", promptId, { choice }); },
@@ -243,27 +355,12 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
     async listModels(): Promise<ModelProvider[]> {
       const rpc = rpcRef.current, sid = stateRef.current.sessionId;
       if (!rpc || !sid) throw new Error("연결되지 않았습니다");
-      const r = await rpc.request<{ providers?: { slug: string; name?: string; models?: string[]; authenticated?: boolean }[] }>("model.options", { session_id: sid });
-      return (r.providers ?? [])
-        .filter((p) => p.authenticated !== false && Array.isArray(p.models) && p.models.length > 0)
-        .map((p) => ({ provider: p.slug, providerName: p.name || p.slug, models: p.models! }));
+      return toModelProviders(await rpc.request<ModelOptions>("model.options", { session_id: sid }));
     },
-    async setModel(provider: string, model: string): Promise<void> {
-      const rpc = rpcRef.current, sid = stateRef.current.sessionId;
-      if (!rpc || !sid) throw new Error("연결되지 않았습니다");
-      type Res = { revision: number; execution_generation: number; model?: string };
-      const run = (revision: number, gen: number) => rpc.request<Res>("session.mutate", {
-        session_id: sid, request_id: crypto.randomUUID(), expected_revision: revision, expected_generation: gen,
-        operation: "model", payload: { model, provider },
-      });
-      let r: Res;
-      try { r = await run(stateRef.current.revision, stateRef.current.executionGeneration); }
-      catch (e) {
-        const retry = staleRetry(e);
-        if (!retry) throw e;
-        r = await run(retry.revision, retry.executionGeneration);
-      }
-      dispatch({ t: "modelChanged", revision: r.revision, executionGeneration: r.execution_generation, model: r.model || model });
+    setModel: changeModel,
+    async setEffort(effort: string): Promise<void> {
+      const r = await mutate("reasoning", { effort });
+      dispatch({ t: "effortChanged", revision: r.revision, executionGeneration: r.execution_generation, effort: r.effort || effort });
     },
     reconnect() { setNonce((n) => n + 1); },
   };
