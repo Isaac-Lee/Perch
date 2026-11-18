@@ -3,7 +3,7 @@ import { COMMON_LABEL, folderKey, projectLabels, sessionFolder } from "./groups"
 
 export type ChartRange = "14d" | "30d" | "1y";
 export type ChartBucket = "day" | "week";
-export interface ChartPoint { key: string; label: string; title: string; total: number }
+export interface ChartPoint { key: string; label: string; title: string; total: number; input: number; output: number; cache: number; sessions: number }
 export type Period = "today" | "7d" | "30d" | "all";
 
 export function totalTokens(u: Usage): number {
@@ -12,10 +12,16 @@ export function totalTokens(u: Usage): number {
 
 export function fmtTokens(n: number): string {
   if (n < 1000) return String(n);
-  const f = (v: number, d: number) => String(Number(v.toFixed(d)));
-  if (n < 1_000_000) return `${f(n / 1000, 1)}k`;
-  return `${f(n / 1_000_000, 2)}M`;
+  // [suffix, unit size, decimals]; round on integers (exact .5 ties), roll over to the next unit when rounding hits 1000
+  const units = [["k", 1e3, 1], ["M", 1e6, 2], ["B", 1e9, 2]] as const;
+  for (const [s, size, d] of units) {
+    const v = Math.round(n / (size / 10 ** d)) / 10 ** d;
+    if (v < 1000 || s === "B") return `${v}${s}`;
+  }
+  return String(n); // unreachable
 }
+
+export const fmtExact = (n: number) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
 export const fmtTok = (n: number) => `Ŧ ${fmtTokens(n)}`;
 
@@ -78,17 +84,22 @@ export function summarize(sessions: Session[], period: Period, now: number) {
 const RANGE_DAYS = { "14d": 14, "30d": 30, "1y": 365 } as const;
 const RANGE_WEEKS = { "14d": 2, "30d": 5, "1y": 53 } as const;
 
+type Parts = Omit<ChartPoint, "key" | "label" | "title">;
+const NONE: Parts = { total: 0, input: 0, output: 0, cache: 0, sessions: 0 };
+
 // Buckets by local usage.startedAt; empty buckets are kept; oldest -> newest, last bucket contains `now`.
 export function chartSeries(sessions: Session[], range: ChartRange, bucket: ChartBucket, now: number): ChartPoint[] {
   const t = new Date(now * 1000);
   const [y, m, d] = [t.getFullYear(), t.getMonth(), t.getDate()];
   const mondayOffset = (date: Date) => (date.getDay() + 6) % 7; // days since Monday
   const bucketKey = (date: Date) => dayKey(bucket === "day" ? date : new Date(date.getFullYear(), date.getMonth(), date.getDate() - mondayOffset(date)));
-  const sums = new Map<string, number>();
+  const sums = new Map<string, Parts>();
   for (const s of sessions) {
     if (!s.usage) continue;
     const k = bucketKey(new Date(s.usage.startedAt * 1000));
-    sums.set(k, (sums.get(k) ?? 0) + totalTokens(s.usage));
+    const p = sums.get(k) ?? { total: 0, input: 0, output: 0, cache: 0, sessions: 0 };
+    p.total += totalTokens(s.usage); p.input += s.usage.input; p.output += s.usage.output; p.cache += s.usage.cacheRead + s.usage.cacheWrite; p.sessions++;
+    sums.set(k, p);
   }
   const n = bucket === "day" ? RANGE_DAYS[range] : RANGE_WEEKS[range];
   const step = bucket === "day" ? 1 : 7;
@@ -97,7 +108,7 @@ export function chartSeries(sessions: Session[], range: ChartRange, bucket: Char
     const date = new Date(y, m, last - (n - 1 - i) * step);
     const key = dayKey(date);
     const md = `${date.getMonth() + 1}/${date.getDate()}`;
-    if (bucket === "week") return { key, label: md, title: `${key} ~ ${dayKey(new Date(y, m, last - (n - 1 - i) * step + 6))}`, total: sums.get(key) ?? 0 };
-    return { key, label: i === 0 || date.getDate() === 1 ? md : String(date.getDate()), title: key, total: sums.get(key) ?? 0 };
+    if (bucket === "week") return { key, label: md, title: `${key} ~ ${dayKey(new Date(y, m, last - (n - 1 - i) * step + 6))}`, ...(sums.get(key) ?? NONE) };
+    return { key, label: i === 0 || date.getDate() === 1 ? md : String(date.getDate()), title: key, ...(sums.get(key) ?? NONE) };
   });
 }

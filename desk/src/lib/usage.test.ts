@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { chartSeries, fmtTokens, summarize, totalTokens } from "./usage";
+import { chartSeries, fmtExact, fmtTokens, summarize, totalTokens } from "./usage";
 import type { Session, Usage } from "./types";
 
 const NOW = new Date(2026, 10, 17, 15, 0, 0).getTime() / 1000; // local 2026-11-17 15:00
@@ -17,6 +17,19 @@ test("fmtTokens boundaries", () => {
   expect(fmtTokens(950)).toBe("950");
   expect(fmtTokens(12_400)).toBe("12.4k");
   expect(fmtTokens(2_150_000)).toBe("2.15M");
+});
+
+test("fmtTokens tier rollover and B tier", () => {
+  const cases: [number, string][] = [
+    [999, "999"], [1000, "1k"], [999_949, "999.9k"], [999_950, "1M"], [1_500_000, "1.5M"],
+    [999_994_999, "999.99M"], [999_995_000, "1B"], [1_000_000_000, "1B"], [1_230_000_000, "1.23B"],
+    [2_500_000_000_000, "2500B"],
+  ];
+  for (const [n, s] of cases) expect(fmtTokens(n)).toBe(s);
+});
+
+test("fmtExact thousands separators", () => {
+  expect([0, 950, 12_400, 1_234_567_890].map(fmtExact)).toEqual(["0", "950", "12,400", "1,234,567,890"]);
 });
 
 test("totalTokens excludes reasoning", () => {
@@ -53,9 +66,9 @@ test("chartSeries point counts per range/bucket", () => {
 
 test("day series: oldest first, last is today, labels/keys/titles", () => {
   const r = chartSeries([mk(), mk({ usage: u({ startedAt: NOW - 3 * DAY }) })], "14d", "day", NOW);
-  expect(r[13]).toEqual({ key: "2026-11-17", label: "17", title: "2026-11-17", total: T });
+  expect(r[13]).toEqual({ key: "2026-11-17", label: "17", title: "2026-11-17", total: T, input: 100, output: 50, cache: 15, sessions: 1 });
   expect(r[10].total).toBe(T);
-  expect(r[0]).toEqual({ key: "2026-11-04", label: "11/4", title: "2026-11-04", total: 0 });
+  expect(r[0]).toEqual({ key: "2026-11-04", label: "11/4", title: "2026-11-04", total: 0, input: 0, output: 0, cache: 0, sessions: 0 });
   const m = chartSeries([], "30d", "day", NOW);
   expect(m.find((p) => p.key === "2026-11-01")!.label).toBe("11/1");
   expect(m.find((p) => p.key === "2026-10-31")!.label).toBe("31");
@@ -63,7 +76,9 @@ test("day series: oldest first, last is today, labels/keys/titles", () => {
 
 test("week series: Monday start, 1st bucket contains now, title Mon ~ Sun", () => {
   const r = chartSeries([mk()], "1y", "week", NOW);
-  expect(r[52]).toEqual({ key: "2026-11-16", label: "11/16", title: "2026-11-16 ~ 2026-11-22", total: T });
+  expect(r[52]).toEqual({ key: "2026-11-16", label: "11/16", title: "2026-11-16 ~ 2026-11-22", total: T, input: 100, output: 50, cache: 15, sessions: 1 });
+  const two = chartSeries([mk(), mk({ usage: u({ input: 7, cacheRead: 1, cacheWrite: 2 }) })], "14d", "day", NOW)[13];
+  expect(two).toMatchObject({ total: T + 7 + 50 + 3, input: 107, output: 100, cache: 18, sessions: 2 });
   expect(r[0].key).toBe("2025-11-17");
 });
 

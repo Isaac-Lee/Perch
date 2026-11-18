@@ -173,6 +173,14 @@ button:focus-visible, .row:focus-visible { outline: 1px solid var(--accent); out
 .chart-line { position: absolute; left: 0; right: 0; height: 1px; background: var(--line); }
 .chart-bars { position: absolute; left: 0; right: 0; top: 0; bottom: 20px; display: flex; align-items: flex-end; }
 .chart-col { flex: 1 1 0; min-width: 1px; height: 100%; display: flex; align-items: flex-end; }
+.chart-col.hot .chart-bar { filter: brightness(1.25); }
+.chart-tip { position: absolute; top: 0; transform: translateX(-50%); z-index: 10; min-width: 150px; padding: 6px 8px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); font-size: 12px; line-height: 16px; pointer-events: none; white-space: nowrap; }
+.chart-tip.l { left: 0; transform: none; }
+.chart-tip.r { right: 0; transform: none; }
+.chart-tip-t { color: var(--text-2); margin-bottom: 2px; }
+.chart-tip-k { color: var(--text-3); }
+.chart-tip-r { display: flex; justify-content: space-between; gap: 16px; font-variant-numeric: tabular-nums; }
+.chart-tip-r span:first-child { color: var(--text-3); }
 .chart-bar { width: 100%; background: var(--accent); border-radius: 2px 2px 0 0; }
 .chart-x { position: absolute; left: 0; right: 0; bottom: 0; height: 16px; color: var(--text-3); font-size: 12px; line-height: 16px; }
 .chart-x span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; font-variant-numeric: tabular-nums; }
