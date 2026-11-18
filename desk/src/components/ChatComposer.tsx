@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Check, ChevronDown, CornerDownLeft, Plus, Square } from "lucide-react";
 import { applyCompletion, EFFORT_LEVELS, enterAction, modelLabel } from "../lib/composer";
 import { attachScrollReveal } from "../lib/useScrollReveal";
@@ -38,6 +38,9 @@ export default function ChatComposer({ running, disabled, focused, model, effort
   completeRef.current = onCompleteSlash; // callers pass a new function every render; the debounce must not restart on it
   const slashRef = useRef<HTMLDivElement>(null);
   const effortRef = useRef<HTMLButtonElement>(null);
+  const compRef = useRef<HTMLDivElement>(null);
+  const [anchor, setAnchor] = useState(12); // right offset of the open menu: its button's right edge
+  const [composing, setComposing] = useState(false);
   const [providers, setProviders] = useState<Providers>([]);
   const [menuErr, setMenuErr] = useState("");
   const modelRef = useRef<HTMLButtonElement>(null);
@@ -46,7 +49,7 @@ export default function ChatComposer({ running, disabled, focused, model, effort
   live.current = atts;
 
   // Grow with content up to 8 lines, then scroll.
-  useLayoutEffect(() => {
+  const fit = useCallback(() => {
     const el = ref.current;
     if (!el) return;
     el.style.height = "auto";
@@ -56,7 +59,17 @@ export default function ChatComposer({ running, disabled, focused, model, effort
     const max = line * 8 + pad;
     el.style.height = `${Math.min(el.scrollHeight, max)}px`;
     el.style.overflowY = el.scrollHeight > max ? "auto" : "hidden";
-  }, [text]);
+  }, []);
+  useLayoutEffect(fit, [text, fit]);
+  // A width change re-wraps the text (also back to fewer lines); only width, so setting the height cannot loop the observer.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    let w = el.clientWidth;
+    const ro = new ResizeObserver(() => { if (el.clientWidth !== w) { w = el.clientWidth; fit(); } });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [fit]);
 
   // Focus only on mount and on the false -> true transition, so a selection elsewhere in the pane is not stolen.
   useEffect(() => { if (focused) ref.current?.focus(); }, [focused]);
@@ -97,9 +110,11 @@ export default function ChatComposer({ running, disabled, focused, model, effort
     ref.current?.focus();
   };
   const msg = (x: unknown) => String((x as { message?: string })?.message ?? x).split(/\r?\n/)[0];
-  const toggleEffort = () => setMenu(menu === "effort" ? "closed" : "effort");
+  const anchorTo = (btn: HTMLButtonElement | null) => { const c = compRef.current; if (c && btn) setAnchor(Math.max(12, c.getBoundingClientRect().right - btn.getBoundingClientRect().right)); };
+  const toggleEffort = () => { anchorTo(effortRef.current); setMenu(menu === "effort" ? "closed" : "effort"); };
   const toggleMenu = () => {
     if (menu !== "closed" || !onListModels) { setMenu("closed"); return; }
+    anchorTo(modelRef.current);
     setMenu("loading");
     onListModels().then((p) => { setProviders(p); setMenu("ready"); }, (x) => { setMenuErr(msg(x)); setMenu("error"); });
   };
@@ -145,10 +160,10 @@ export default function ChatComposer({ running, disabled, focused, model, effort
 
   const stopMode = running && empty;
   return (
-    <div className="chat-composer">
+    <div className="chat-composer" ref={compRef}>
       {err && <div className="chat-composer-err">{err}</div>}
       {menu === "effort" && (
-        <div className="menu chat-model-menu chat-effort-menu" role="menu" ref={(el) => { menuRef.current = el; if (el) attachScrollReveal(el); }}>
+        <div className="menu chat-model-menu chat-effort-menu" role="menu" style={{ right: anchor }} ref={(el) => { menuRef.current = el; if (el) attachScrollReveal(el); }}>
           {EFFORT_LEVELS.map((lv) => (
             <button key={lv} className="menu-item" role="menuitemradio" aria-checked={lv === effort} onClick={() => pickEffort(lv)}>
               <span className="ellipsis">{lv}</span>{lv === effort && <Check className="check" size={16} strokeWidth={1.5} />}
@@ -169,7 +184,7 @@ export default function ChatComposer({ running, disabled, focused, model, effort
         </div>
       )}
       {menu !== "closed" && menu !== "effort" && (
-        <div className="menu chat-model-menu" role="menu" ref={(el) => { menuRef.current = el; if (el) attachScrollReveal(el); }}>
+        <div className="menu chat-model-menu" role="menu" style={{ right: anchor }} ref={(el) => { menuRef.current = el; if (el) attachScrollReveal(el); }}>
           {menu === "loading" && <div className="menu-label">불러오는 중…</div>}
           {menu === "error" && <div className="menu-label">{menuErr}</div>}
           {menu === "ready" && providers.length === 0 && <div className="menu-label">사용할 수 있는 모델이 없습니다</div>}
@@ -199,11 +214,16 @@ export default function ChatComposer({ running, disabled, focused, model, effort
         <div className="chat-row">
           <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden onChange={onPick} />
           <button className="chat-icon-btn" aria-label="이미지 첨부" title="이미지 첨부" disabled={disabled} onClick={() => fileRef.current?.click()}><Plus size={16} strokeWidth={1.75} /></button>
+          <div className="chat-input">
+          {!text && !composing && <span className="chat-ph" aria-hidden="true">메시지 입력 — Enter 전송, Shift+Enter 줄바꿈, / 명령</span>}
           <textarea
             ref={ref}
+            aria-label="메시지 입력"
+            onCompositionStart={() => setComposing(true)}
+            onCompositionEnd={() => setComposing(false)}
             rows={1}
             value={text}
-            placeholder="메시지 입력 — Enter 전송, Shift+Enter 줄바꿈, / 명령"
+            placeholder=""
             onChange={(e) => setText(e.target.value)}
             onPaste={onPaste}
             onKeyDown={(e) => {
@@ -218,13 +238,14 @@ export default function ChatComposer({ running, disabled, focused, model, effort
               if (enterAction({ key: e.key, shiftKey: e.shiftKey, isComposing: e.nativeEvent.isComposing, keyCode: e.keyCode }) === "send") { e.preventDefault(); send(); }
             }}
           />
-          <button className="chat-model chat-effort" ref={effortRef} aria-haspopup="menu" aria-expanded={menu === "effort"} disabled={disabled || running || !onSetEffort}
-            title={running ? "작업 중에는 추론 강도를 바꿀 수 없습니다" : "추론 강도 · " + (effort ?? "?")} onClick={toggleEffort}>
-            <span className="ellipsis">{effort ?? "추론"}</span><ChevronDown size={12} strokeWidth={1.5} />
-          </button>
+          </div>
           <button className="chat-model" ref={modelRef} aria-haspopup="menu" aria-expanded={menu !== "closed" && menu !== "effort"} disabled={disabled || running || !onListModels}
             title={running ? "작업 중에는 모델을 바꿀 수 없습니다" : model ? "Model · " + model : "모델"} onClick={toggleMenu}>
             <span className="ellipsis">{model ? modelLabel(model) : "모델"}</span><ChevronDown size={12} strokeWidth={1.5} />
+          </button>
+          <button className="chat-model chat-effort" ref={effortRef} aria-haspopup="menu" aria-expanded={menu === "effort"} disabled={disabled || running || !onSetEffort}
+            title={running ? "작업 중에는 추론 강도를 바꿀 수 없습니다" : "추론 강도 · " + (effort ?? "?")} onClick={toggleEffort}>
+            <span className="ellipsis">{effort ?? "추론"}</span><ChevronDown size={12} strokeWidth={1.5} />
           </button>
           {stopMode
             ? <button className="chat-icon-btn" aria-label="중지" title="중지" onClick={onStop}><Square size={12} strokeWidth={1.75} /></button>

@@ -44,7 +44,7 @@
 .chat-model:disabled { cursor: default; opacity: 0.6; }
 .chat-model svg { flex: none; margin-top: -3px; } /* keeps the chevron centred despite the 3px top padding */
 /* opens upward from the meta row, right-aligned; high specificity so App.css .menu does not win */
-.chat-composer .menu.chat-model-menu { top: auto; left: auto; right: 12px; bottom: calc(100% + 6px); z-index: 20; width: max-content; min-width: 220px; max-width: 360px; max-height: 320px; }
+.chat-composer .menu.chat-model-menu { top: auto; left: auto; right: 12px; /* overridden inline to sit above the opening button */ bottom: calc(100% + 6px); z-index: 20; width: max-content; min-width: 220px; max-width: min(360px, calc(100% - 24px)); max-height: 320px; }
 .chat-effort { max-width: 30%; }
 .chat-composer .menu.chat-effort-menu { min-width: 160px; }
 /* slash-command popup: above the box, left-aligned, full width */
@@ -56,6 +56,9 @@
 .chat-slash-tag { flex: none; color: var(--text-3); font-size: 10.5px; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
 /* Hangul ink hangs ~2px below the baseline while Latin sits on it, so one baseline cannot centre both; this 2.67/3.33 split (device pixels at 150% scaling, sum stays 6px) centres Hangul ink (placeholder and typical input are Korean); Latin ends up ~0.3px high. */
 .chat-composer textarea { resize: none; box-sizing: border-box; flex: 1; min-width: 0; padding: 2.67px 0 3.33px; background: transparent; color: var(--text); border: 0; outline: 0; font: inherit; font-size: 14px; line-height: 20px; overflow-y: hidden; }
+.chat-input { position: relative; flex: 1; min-width: 0; display: flex; }
+/* own placeholder (a native one wraps): same metrics as the textarea below, one line, tail fades when cut off */
+.chat-ph { position: absolute; left: 0; right: 0; top: 0; padding: 2.67px 0 3.33px; font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; pointer-events: none; color: var(--text-3); -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
 .chat-composer-err { color: var(--warn); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chat-thumb { position: relative; }
 .chat-thumb img { display: block; height: 56px; max-width: 120px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); }
