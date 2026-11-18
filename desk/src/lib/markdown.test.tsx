@@ -39,4 +39,31 @@ describe("markdown", () => {
       { text: "a", children: [{ t: "list", ordered: false, items: [{ text: "b", children: [] }] }] }, { text: "c", children: [] }] }]);
     expect(parseBlocks("text\n- a")).toEqual([{ t: "p", text: "text" }, { t: "list", ordered: false, items: [{ text: "a", children: [] }] }]);
   });
+  it("tables", () => {
+    const T = (head: string[], rows: string[][], align?: string[]) => ({ t: "table", head, rows, ...(align ? { align } : {}) });
+    // 1 directly after a paragraph line
+    expect(parseBlocks("다음은 비교표입니다:\n| a | b |\n|---|---|\n| 1 | 2 |")).toEqual([{ t: "p", text: "다음은 비교표입니다:" }, T(["a", "b"], [["1", "2"]])]);
+    // 2 inside a list item
+    expect(parseBlocks("- item\n  | a | b |\n  |---|---|\n  | 1 | 2 |")).toEqual([{ t: "list", ordered: false, items: [{ text: "item", children: [T(["a", "b"], [["1", "2"]])] }] }]);
+    expect(md("- item\n  | a |\n  |---|\n  | 1 |")).toMatch(/<li>item<table/);
+    // 3 leading spaces
+    expect(parseBlocks("   | a | b |\n   |---|---|\n   | 1 | 2 |")).toEqual([T(["a", "b"], [["1", "2"]])]);
+    // 4 no outer pipes
+    expect(parseBlocks("a | b\n--- | ---\n1 | 2")).toEqual([T(["a", "b"], [["1", "2"]])]);
+    // 5 escaped pipe stays in the cell; pipe in a code span does not split
+    expect(parseBlocks("| a | b |\n|---|---|\n| x\\|y | `a|b` |")).toEqual([T(["a", "b"], [["x|y", "`a|b`"]])]);
+    expect(md("| a |\n|---|\n| `a|b` |")).toContain("<td><code>a|b</code></td>");
+    // 6 ragged rows
+    expect(parseBlocks("| a | b |\n|---|---|\n| 1 |\n| 1 | 2 | 3 |")).toEqual([T(["a", "b"], [["1", ""], ["1", "2"]])]);
+    // 7 alignment
+    expect(parseBlocks("| a | b | c |\n|:--|:-:|--:|\n| 1 | 2 | 3 |")).toEqual([T(["a", "b", "c"], [["1", "2", "3"]], ["left", "center", "right"])]);
+    const html = md("| a | b | c |\n|:--|:-:|--:|\n| 1 | 2 | 3 |");
+    expect(html).toContain('<th style="text-align:left">'); expect(html).toContain('<td style="text-align:center">'); expect(html).toContain('<td style="text-align:right">3</td>');
+    // 8 streaming
+    expect(() => md("| a | b |\n|---|---|\n| 1")).not.toThrow();
+    expect(parseBlocks("| a | b |\n|---|---|\n| 1")).toEqual([T(["a", "b"], [["1", ""]])]);
+    // 9 no false positives
+    expect(parseBlocks("run cat x | grep y\nthen more")).toEqual([{ t: "p", text: "run cat x | grep y\nthen more" }]);
+    expect(parseBlocks("text\ncat x | grep y\n---")[0]).toMatchObject({ t: "p" });
+  });
 });
