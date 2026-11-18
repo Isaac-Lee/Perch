@@ -1,8 +1,14 @@
 import { useSyncExternalStore } from "react";
 import type { ITheme } from "@xterm/xterm";
 import type { ThemeId } from "./uiSettings";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { isTauri } from "./backend";
 
-export const applyTheme = (t: ThemeId) => { document.documentElement.dataset.theme = t; };
+export const applyTheme = (t: ThemeId) => {
+  document.documentElement.dataset.theme = t;
+  // Native titlebar (Windows) only knows light/dark.
+  if (isTauri) getCurrentWindow().setTheme(t === "light" ? "light" : "dark").catch(() => {});
+};
 
 const watch = (cb: () => void) => {
   const mo = new MutationObserver(cb);
