@@ -13,8 +13,8 @@ const opencode = [
   "워크플로 3개를 갱신했습니다. 계속 확인합니다.", "",
 ];
 const shell = [
-  `${d("PS D:\\ysl\\st-alpha>")} git status`, "On branch main", "nothing to commit, working tree clean",
-  `${d("PS D:\\ysl\\st-alpha>")} node --version`, "v24.1.0",
+  `${d("PS D:\\ysl\\todo-api>")} git status`, "On branch main", "nothing to commit, working tree clean",
+  `${d("PS D:\\ysl\\todo-api>")} node --version`, "v24.1.0",
 ];
 
 /** Blank cells carry no content and xterm skips them, so pad the row with spaces and step back; this lets the input band span the full width. */
@@ -22,7 +22,7 @@ const fill = (cols: number) => (cols > 3 ? " ".repeat(cols - 2) + `[${cols - 2}
 
 /** Written without a trailing newline so the cursor stays on the input line. */
 export const terminalPrompt = (agent: Exclude<AgentKind, "hermes">, cols: number) =>
-  agent === "shell" ? d("PS D:\\ysl\\st-alpha> ") + fill(cols - 18) :`${d("─".repeat(Math.max(cols, 1)))}\r\n❯ ${fill(cols)}`;
+  agent === "shell" ? d("PS D:\\ysl\\todo-api> ") + fill(cols - 18) :`${d("─".repeat(Math.max(cols, 1)))}\r\n❯ ${fill(cols)}`;
 
 export const terminalLines: Record<Exclude<AgentKind, "hermes">, string[]> = { opencode, shell };
 

@@ -166,7 +166,7 @@ export function useMockDesk(): {
 ```
 
 - [ ] **Step 1: 가짜 데이터 (`mock/sessions.ts`)** — 다음 세션을 만든다.
-  - repo `D:\ysl\st-alpha`
+  - repo `D:\ysl\todo-api`
     - hermes 승인대기. pending text는 "rm -rf build/ 실행 허용?"
     - hermes 실행중. tool "terminal", toolDetail "npm test", steps 3, turnStart는 4분 전
       - 서브에이전트 2개: leaf "로그 분석" 1분, leaf "테스트 실패 원인 찾기" 30초
