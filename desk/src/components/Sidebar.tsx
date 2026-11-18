@@ -3,7 +3,7 @@ import { ArrowUpDown, Check, ChevronDown, ChevronRight, PanelLeftClose, Plus, Se
 import type { Group, Pane, Session } from "../lib/types";
 import { MY_TURN, SESSION_SORTS, displayState, groupSessions, groupSummary, matchSession, moveInOrder, type SessionSort } from "../lib/groups";
 import SessionRow from "./SessionRow";
-import { clampSidebarWidth, SIDEBAR_DEFAULT, MAX_ORDER, loadArchived, loadCollapsed, loadSessionOrder, loadSessionSort, saveArchived, saveCollapsed, saveSessionOrder, saveSessionSort } from "../lib/uiSettings";
+import { clampSidebarWidth, SIDEBAR_DEFAULT, MAX_ORDER, loadArchived, loadCollapsed, loadDismissed, saveDismissed, loadSessionOrder, loadSessionSort, saveArchived, saveCollapsed, saveSessionOrder, saveSessionSort } from "../lib/uiSettings";
 import { useScrollReveal } from "../lib/useScrollReveal";
 import { useRowDrag } from "../lib/useRowDrag";
 
@@ -22,14 +22,22 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
   // An archived session stays hidden until it gets an open pane again (resumed).
   const [archived, setArchived] = useState<Set<string>>(() => new Set(loadArchived()));
   const toggleArchive = (id: string) => setArchived((o) => { const n = new Set(o); if (!n.delete(id)) n.add(id); saveArchived([...n]); return n; });
+  // X on a row: the row leaves the live list for Recent (nothing is archived). Cleared again once the session has a pane.
+  const [dismissed, setDismissed] = useState<Set<string>>(() => new Set(loadDismissed()));
+  const dismiss = (id: string) => setDismissed((o) => { if (o.has(id)) return o; const n = new Set([...o, id]); saveDismissed([...n]); return n; });
+  useEffect(() => {
+    const back = sessions.filter((s) => s.paneId && dismissed.has(s.sessionId));
+    if (!back.length) return;
+    setDismissed((o) => { const n = new Set(o); back.forEach((s) => n.delete(s.sessionId)); saveDismissed([...n]); return n; });
+  }, [sessions, dismissed]);
   const shown = useMemo(() => sessions.filter((s) => !hiddenIn(archived, s)), [sessions, archived]);
   const bodyRef = useRef<HTMLDivElement>(null);
   const [sort, setSort] = useState<SessionSort>(loadSessionSort);
   const [order, setOrder] = useState<string[]>(loadSessionOrder);
-  const allGroups = useMemo(() => groupSessions(shown, now, sort, order), [shown, now, sort, order]);
+  const allGroups = useMemo(() => groupSessions(shown, now, sort, order, dismissed), [shown, now, sort, order, dismissed]);
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
-  const groups = useMemo(() => (q ? groupSessions(shown.filter((s) => matchSession(s, q)), now, sort, order) : allGroups), [q, shown, now, allGroups, sort, order]);
+  const groups = useMemo(() => (q ? groupSessions(shown.filter((s) => matchSession(s, q)), now, sort, order, dismissed) : allGroups), [q, shown, now, allGroups, sort, order, dismissed]);
   const chooseSort = (s: SessionSort) => { setSort(s); saveSessionSort(s); };
   // Reordering switches to manual; the saved order is the whole visible order so nothing jumps.
   const reorder = (gkey: string, id: string, to: number) => {
@@ -102,8 +110,8 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
         },
       } : undefined}
       onClick={() => { if (!suppressClick.current) onFocus(s.sessionId); }} onApprove={(a) => onApprove(s.sessionId, a)} onStop={() => onStop(s.sessionId)}
-      onClose={s.paneId ? () => onClosePane(s.paneId!) : undefined}
-      onArchive={s.paneId ? undefined : () => toggleArchive(s.sessionId)} archived={hiddenIn(archived, s)} />
+      onHide={g ? () => { if (s.paneId) onClosePane(s.paneId); dismiss(s.sessionId); } : undefined}
+      onArchive={() => { if (s.paneId) onClosePane(s.paneId); toggleArchive(s.sessionId); }} archived={hiddenIn(archived, s)} />
   );
   const toggle = (k: string) => setOpen((o) => { const n = new Set(o); if (!n.delete(k)) n.add(k); return n; });
   return (

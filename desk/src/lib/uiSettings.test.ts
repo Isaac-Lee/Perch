@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { clampSidebarWidth, loadNewPane, loadPaneLayout, savePaneLayout, loadSessionOrder, loadSessionSort, pushRecent, saveSessionOrder, saveSessionSort } from "./uiSettings";
+import { clampSidebarWidth, loadNewPane, loadPaneLayout, savePaneLayout, loadDismissed, saveDismissed, loadSessionOrder, loadSessionSort, pushRecent, saveSessionOrder, saveSessionSort } from "./uiSettings";
 
 test("pushRecent moves to front, dedupes, caps at 8", () => {
   expect(pushRecent(["a", "b", "c"], "c")).toEqual(["c", "a", "b"]);
@@ -42,6 +42,20 @@ test("session sort/order load validates stored values", () => {
   expect(loadSessionOrder()).toEqual(["a", "b"]);
   saveSessionOrder(Array.from({ length: 500 }, (_, i) => `s${i}`));
   expect(loadSessionOrder()).toHaveLength(300);
+  vi.unstubAllGlobals();
+});
+
+test("dismissed sessions load validates and caps, keeping the newest", () => {
+  const store: Record<string, string> = {};
+  vi.stubGlobal("localStorage", { getItem: (k: string) => store[k] ?? null, setItem: (k: string, v: string) => { store[k] = v; } });
+  expect(loadDismissed()).toEqual([]);
+  store["perch.dismissedSessions"] = JSON.stringify(["a", 1, "b"]);
+  expect(loadDismissed()).toEqual(["a", "b"]);
+  store["perch.dismissedSessions"] = "{}";
+  expect(loadDismissed()).toEqual([]);
+  saveDismissed(Array.from({ length: 400 }, (_, i) => `s${i}`));
+  expect(loadDismissed()).toHaveLength(300);
+  expect(loadDismissed().at(-1)).toBe("s399");
   vi.unstubAllGlobals();
 });
 

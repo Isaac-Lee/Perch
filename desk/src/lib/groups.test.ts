@@ -131,6 +131,15 @@ test("recent: closed or >24h goes to recent, >7d dropped, paneId always stays", 
   expect(g.recent).toEqual(expect.arrayContaining([closed, old]));
 });
 
+test("dismissed pane-less session goes to recent, one with a pane stays live", () => {
+  const a = mk({ repoRoot: "D:/x/d" }), b = mk({ repoRoot: "D:/x/d" }), c = mk({ repoRoot: "D:/x/d", paneId: "p1" });
+  const [g] = groupSessions([a, b, c], NOW, "status", [], new Set([a.sessionId, c.sessionId]));
+  expect(g.sessions).toEqual(expect.arrayContaining([b, c]));
+  expect(g.sessions).toHaveLength(2);
+  expect(g.recent).toEqual([a]);
+  expect(groupSessions([a], NOW)[0].sessions).toEqual([a]);
+});
+
 test("branch does not affect grouping", () => {
   const g = groupSessions([mk({ repoRoot: "D:\\x\\solo", branch: "main" }), mk({ repoRoot: "D:\\x\\solo", branch: "feature/login" })], NOW);
   expect(g).toHaveLength(1);

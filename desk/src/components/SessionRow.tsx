@@ -1,4 +1,4 @@
-import { ArchiveRestore, Circle, CircleCheck, CircleDot, Square, X } from "lucide-react";
+import { Archive, ArchiveRestore, Circle, CircleCheck, CircleDot, Square, X } from "lucide-react";
 import type { AgentKind, Session, Todo } from "../lib/types";
 import { displayState, sessionTitle, shownSeconds } from "../lib/groups";
 import { fmtElapsed, stateLabel } from "../lib/format";
@@ -11,9 +11,9 @@ const TODO_ICON: Record<Todo["status"], typeof Circle> = { done: CircleCheck, in
 
 export interface RowDrag { dragging: boolean; onPointerDown: (e: React.PointerEvent<HTMLElement>) => void; onMove: (dir: -1 | 1) => void }
 
-export default function SessionRow({ s, now, focused, onClick, onApprove, onStop, onArchive, onClose, archived, drag }: {
+export default function SessionRow({ s, now, focused, onClick, onApprove, onStop, onArchive, onHide, archived, drag }: {
   s: Session; now: number; focused: boolean; onClick: () => void; onApprove: (allow: boolean) => void; onStop: () => void;
-  onArchive?: () => void; onClose?: () => void; archived?: boolean; drag?: RowDrag;
+  onArchive?: () => void; onHide?: () => void; archived?: boolean; drag?: RowDrag;
 }) {
   const st = displayState(s, now);
   const tone = TONE[st];
@@ -34,11 +34,11 @@ export default function SessionRow({ s, now, focused, onClick, onApprove, onStop
         {st !== "plain" && st !== "ready" && <span className={`row-state ${tone}`}>{stateLabel(st)}</span>}
         <span className="row-time">{shown !== null && fmtElapsed(shown)}</span>
         {working && <button className="row-stop" aria-label="Stop" title="진행 중인 작업을 멈춥니다." onClick={(e) => { e.stopPropagation(); onStop(); }}><Square size={14} strokeWidth={1.5} /></button>}
-        {onClose && <button className="row-stop" aria-label="Close" title={s.agent === "hermes" ? "칸을 닫습니다. 작업은 계속됩니다." : "칸을 닫습니다."} onClick={(e) => { e.stopPropagation(); onClose(); }}><X size={14} strokeWidth={1.5} /></button>}
+        {onHide && <button className="row-stop" aria-label="Hide" title={s.paneId ? (s.agent === "hermes" ? "칸을 닫고 목록에서 내립니다. 작업은 계속됩니다." : "칸을 닫고 목록에서 내립니다.") : "목록에서 내립니다. Recent에서 다시 볼 수 있습니다."} onClick={(e) => { e.stopPropagation(); onHide(); }}><X size={14} strokeWidth={1.5} /></button>}
         {onArchive && (
-          <button className="row-stop" aria-label={archived ? "Unarchive" : "Archive"} title={archived ? "보관을 풀고 목록에 다시 보입니다." : "보관하고 목록에서 숨깁니다."}
+          <button className="row-stop" aria-label={archived ? "Unarchive" : "Archive"} title={archived ? "보관을 풀고 목록에 다시 보입니다." : s.paneId ? "칸을 닫고 보관합니다." : "보관합니다. Archived에서 되돌릴 수 있습니다."}
             onClick={(e) => { e.stopPropagation(); onArchive(); }}>
-            {archived ? <ArchiveRestore size={14} strokeWidth={1.5} /> : <X size={14} strokeWidth={1.5} />}
+            {archived ? <ArchiveRestore size={14} strokeWidth={1.5} /> : <Archive size={14} strokeWidth={1.5} />}
           </button>
         )}
       </div>

@@ -26,6 +26,9 @@ export const MAX_ORDER = 300;
 export const loadSessionOrder = (): string[] => { const v = read<unknown>("perch.sessionOrder", []); return Array.isArray(v) ? v.filter((x) => typeof x === "string").slice(0, MAX_ORDER) : []; };
 export const saveSessionOrder = (ids: string[]) => write("perch.sessionOrder", ids.slice(0, MAX_ORDER));
 
+export const loadDismissed = (): string[] => { const v = read<unknown>("perch.dismissedSessions", []); return Array.isArray(v) ? v.filter((x) => typeof x === "string").slice(-MAX_ORDER) : []; };
+export const saveDismissed = (ids: string[]) => write("perch.dismissedSessions", ids.slice(-MAX_ORDER));
+
 export const loadPaneLayout = (): string[][] => {
   const v = read<unknown>("perch.paneLayout", []);
   return Array.isArray(v) && v.every((c) => Array.isArray(c) && c.length > 0 && c.every((x) => typeof x === "string")) ? (v as string[][]) : [];

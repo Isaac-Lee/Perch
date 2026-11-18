@@ -77,7 +77,7 @@ export function moveInOrder(visibleIds: string[], id: string, toIndex: number): 
   return out;
 }
 
-export function groupSessions(sessions: Session[], now: number, sort: SessionSort = "status", order: string[] = []): Group[] {
+export function groupSessions(sessions: Session[], now: number, sort: SessionSort = "status", order: string[] = [], dismissed: ReadonlySet<string> = new Set()): Group[] {
   const map = new Map<string, Group>();
   for (const s of sessions) {
     const age = now - s.seen;
@@ -89,7 +89,7 @@ export function groupSessions(sessions: Session[], now: number, sort: SessionSor
       g = { key, path: root ?? "", label: root ? (parts(root).at(-1) ?? root) : COMMON_LABEL, isCommon: !root, sessions: [], recent: [] };
       map.set(key, g);
     }
-    const isRecent = !s.paneId && (s.state === "closed" || age > RECENT_SEC);
+    const isRecent = !s.paneId && (dismissed.has(s.sessionId) || s.state === "closed" || age > RECENT_SEC);
     (isRecent ? g.recent : g.sessions).push(s);
   }
   const groups = [...map.values()];
