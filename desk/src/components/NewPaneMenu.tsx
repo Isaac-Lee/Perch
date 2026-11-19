@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, Folder, FolderOpen, Plus, type LucideIcon } from "lucide-react";
+import { Check, ChevronDown, Folder, FolderOpen, Plus, X, type LucideIcon } from "lucide-react";
 import { paneIcon } from "../lib/paneIcon";
 import type { AgentKind, PaneView } from "../lib/types";
-import type { NewPaneDefaults } from "../lib/uiSettings";
+import { sameFolder, type NewPaneDefaults } from "../lib/uiSettings";
 import { attachScrollReveal } from "../lib/useScrollReveal";
 import { isTauri, pickFolder } from "../lib/backend";
 import { folderName } from "../mock/sessions";
@@ -14,9 +14,9 @@ const ENTRIES: Entry[] = [entry("hermes", "chat", "Hermes"), entry("hermes", "tu
 // view only matters for hermes; opencode/shell entries match on agent alone
 const isCur = (e: Entry, d: NewPaneDefaults) => e.agent === d.agent && (e.agent !== "hermes" || e.view === d.view);
 
-export default function NewPaneMenu({ defaults, folders, onAdd, onDefaults, onChooseFolder, variant = "bar" }: {
+export default function NewPaneMenu({ defaults, folders, onAdd, onDefaults, onChooseFolder, onRemoveFolder, variant = "bar" }: {
   variant?: "bar" | "side"; defaults: NewPaneDefaults; folders: string[];
-  onAdd: (agent: AgentKind, cwd: string, view: PaneView) => void; onDefaults: (v: NewPaneDefaults) => void; onChooseFolder: (cwd: string) => void;
+  onAdd: (agent: AgentKind, cwd: string, view: PaneView) => void; onDefaults: (v: NewPaneDefaults) => void; onChooseFolder: (cwd: string) => void; onRemoveFolder: (cwd: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [typing, setTyping] = useState(false);
@@ -27,7 +27,7 @@ export default function NewPaneMenu({ defaults, folders, onAdd, onDefaults, onCh
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, [open]);
-  const list = folders.includes(defaults.cwd) ? folders : [defaults.cwd, ...folders];
+  const list = folders.some((x) => sameFolder(x, defaults.cwd)) ? folders : [defaults.cwd, ...folders];
   const choose = async () => {
     const p = await pickFolder();
     if (p) onChooseFolder(p);
@@ -47,9 +47,16 @@ export default function NewPaneMenu({ defaults, folders, onAdd, onDefaults, onCh
         <div className="menu env-menu" ref={(el) => { if (el) attachScrollReveal(el); }}>
           <div className="menu-label">Folder</div>
           {list.map((f) => (
-            <button key={f} className="menu-item" role="menuitemradio" aria-checked={f === defaults.cwd} title={f} onClick={() => onDefaults({ ...defaults, cwd: f })}>
-              <Folder size={16} strokeWidth={1.5} /><span className="ellipsis">{folderName(f)}</span>{f === defaults.cwd && <Check className="check" size={16} strokeWidth={1.5} />}
-            </button>
+            <div key={f} className="menu-row">
+              <button className="menu-item" role="menuitemradio" aria-checked={sameFolder(f, defaults.cwd)} title={f} onClick={() => onDefaults({ ...defaults, cwd: f })}>
+                <Folder size={16} strokeWidth={1.5} /><span className="ellipsis">{folderName(f)}</span>{sameFolder(f, defaults.cwd) && <Check className="check" size={16} strokeWidth={1.5} />}
+              </button>
+              {!sameFolder(f, defaults.cwd) && (
+                <button className="menu-remove" aria-label="Remove from recent" title="Remove from recent" onClick={(e) => { e.stopPropagation(); onRemoveFolder(f); }}>
+                  <X size={14} strokeWidth={1.5} />
+                </button>
+              )}
+            </div>
           ))}
           {typing ? (
             <input className="field" placeholder="Folder path" aria-label="Folder path" autoFocus

@@ -8,7 +8,7 @@ const LONG_PROMPT =
 const LONG_ARG = "src/config/loaders/legacy/" + "very-long-directory-name/".repeat(8) + "settings.generated.ts";
 
 const DAY = 86400;
-const use = (model: string, input: number, output: number, cacheRead: number, cacheWrite: number, apiCalls: number, daysAgo: number, costUsd: number | null = null): Usage =>
+const makeUsage = (model: string, input: number, output: number, cacheRead: number, cacheWrite: number, apiCalls: number, daysAgo: number, costUsd: number | null = null): Usage =>
   ({ model, input, output, cacheRead, cacheWrite, reasoning: Math.round(output * 0.3), apiCalls, costUsd, startedAt: T0 - Math.round(daysAgo * DAY) });
 const Q8 = "qwen3:8b", QC = "qwen3-coder:32b", GO = "gpt-oss:20b";
 
@@ -32,23 +32,23 @@ const sessions0: Session[] = [
 ];
 
 const usages: Record<string, Usage> = {
-  s1: use(QC, 182_000, 9_400, 410_000, 36_000, 14, 0.05),
-  s2: use(QC, 420_000, 21_000, 1_150_000, 88_000, 31, 0.1),
-  s3: use(GO, 96_000, 7_300, 210_000, 19_000, 9, 0.06),
-  s4: use(Q8, 38_000, 2_800, 64_000, 6_500, 5, 0.2),
-  s5: use(Q8, 12_400, 1_100, 0, 0, 3, 0.01),
-  s6: use(GO, 8_900, 640, 22_000, 3_100, 2, 1.2),
-  s7: use(Q8, 5_300, 900, 0, 0, 2, 0.02),
-  s8: use(QC, 260_000, 14_000, 700_000, 52_000, 22, 1.5),
-  s9: use(Q8, 41_000, 6_200, 90_000, 9_000, 8, 2.1, 0.42),
+  s1: makeUsage(QC, 182_000, 9_400, 410_000, 36_000, 14, 0.05),
+  s2: makeUsage(QC, 420_000, 21_000, 1_150_000, 88_000, 31, 0.1),
+  s3: makeUsage(GO, 96_000, 7_300, 210_000, 19_000, 9, 0.06),
+  s4: makeUsage(Q8, 38_000, 2_800, 64_000, 6_500, 5, 0.2),
+  s5: makeUsage(Q8, 12_400, 1_100, 0, 0, 3, 0.01),
+  s6: makeUsage(GO, 8_900, 640, 22_000, 3_100, 2, 1.2),
+  s7: makeUsage(Q8, 5_300, 900, 0, 0, 2, 0.02),
+  s8: makeUsage(QC, 260_000, 14_000, 700_000, 52_000, 22, 1.5),
+  s9: makeUsage(Q8, 41_000, 6_200, 90_000, 9_000, 8, 2.1, 0.42),
 };
 const extras: Session[] = [
-  { ...base, agent: "hermes", sessionId: "x1", cwd: "D:\\ysl\\todo-api", repoRoot: "D:\\ysl\\todo-api", branch: "main", state: "closed", since: T0 - 3 * DAY, seen: T0 - 3 * DAY, title: "의존성 업데이트", prompt: "의존성 업데이트와 변경 로그 정리", usage: use(QC, 310_000, 18_000, 880_000, 70_000, 26, 3) },
-  { ...base, agent: "opencode", sessionId: "x2", cwd: "D:\\ysl\\devops-lecture", repoRoot: "D:\\ysl\\devops-lecture", branch: "main", state: "closed", since: T0 - 4.5 * DAY, seen: T0 - 4.5 * DAY, title: "슬라이드 코드 점검", prompt: "슬라이드 예제 코드 점검", usage: use(GO, 74_000, 5_100, 150_000, 12_000, 7, 4.5) },
-  { ...base, agent: "hermes", sessionId: "x3", cwd: "D:\\a\\app", repoRoot: "D:\\a\\app", branch: "main", state: "closed", since: T0 - 6 * DAY, seen: T0 - 6 * DAY, title: "가입 폼 검증", prompt: "회원가입 폼 검증 추가", usage: use(Q8, 52_000, 4_400, 120_000, 8_000, 9, 6) },
-  { ...base, agent: "hermes", sessionId: "x4", cwd: "C:\\Users\\user", repoRoot: null, branch: null, state: "closed", since: T0 - 9 * DAY, seen: T0 - 9 * DAY, title: "환경 변수 정리", prompt: "환경 변수 정리", usage: use(Q8, 21_000, 2_000, 0, 0, 4, 9) },
-  { ...base, agent: "hermes", sessionId: "x5", cwd: "D:\\b\\app", repoRoot: "D:\\b\\app", branch: "develop", state: "closed", since: T0 - 11 * DAY, seen: T0 - 11 * DAY, title: "빌드 캐시 조사", prompt: "빌드 캐시 문제 조사", usage: use(QC, 145_000, 8_200, 380_000, 30_000, 12, 11) },
-  { ...base, agent: "opencode", sessionId: "x6", cwd: "D:\\ysl\\todo-api", repoRoot: "D:\\ysl\\todo-api", branch: "main", state: "closed", since: T0 - 13 * DAY, seen: T0 - 13 * DAY, title: "프로젝트 구조 점검", prompt: "초기 프로젝트 구조 점검", usage: use(GO, 33_000, 2_500, 60_000, 5_000, 5, 13) },
+  { ...base, agent: "hermes", sessionId: "x1", cwd: "D:\\ysl\\todo-api", repoRoot: "D:\\ysl\\todo-api", branch: "main", state: "closed", since: T0 - 3 * DAY, seen: T0 - 3 * DAY, title: "의존성 업데이트", prompt: "의존성 업데이트와 변경 로그 정리", usage: makeUsage(QC, 310_000, 18_000, 880_000, 70_000, 26, 3) },
+  { ...base, agent: "opencode", sessionId: "x2", cwd: "D:\\ysl\\devops-lecture", repoRoot: "D:\\ysl\\devops-lecture", branch: "main", state: "closed", since: T0 - 4.5 * DAY, seen: T0 - 4.5 * DAY, title: "슬라이드 코드 점검", prompt: "슬라이드 예제 코드 점검", usage: makeUsage(GO, 74_000, 5_100, 150_000, 12_000, 7, 4.5) },
+  { ...base, agent: "hermes", sessionId: "x3", cwd: "D:\\a\\app", repoRoot: "D:\\a\\app", branch: "main", state: "closed", since: T0 - 6 * DAY, seen: T0 - 6 * DAY, title: "가입 폼 검증", prompt: "회원가입 폼 검증 추가", usage: makeUsage(Q8, 52_000, 4_400, 120_000, 8_000, 9, 6) },
+  { ...base, agent: "hermes", sessionId: "x4", cwd: "C:\\Users\\user", repoRoot: null, branch: null, state: "closed", since: T0 - 9 * DAY, seen: T0 - 9 * DAY, title: "환경 변수 정리", prompt: "환경 변수 정리", usage: makeUsage(Q8, 21_000, 2_000, 0, 0, 4, 9) },
+  { ...base, agent: "hermes", sessionId: "x5", cwd: "D:\\b\\app", repoRoot: "D:\\b\\app", branch: "develop", state: "closed", since: T0 - 11 * DAY, seen: T0 - 11 * DAY, title: "빌드 캐시 조사", prompt: "빌드 캐시 문제 조사", usage: makeUsage(QC, 145_000, 8_200, 380_000, 30_000, 12, 11) },
+  { ...base, agent: "opencode", sessionId: "x6", cwd: "D:\\ysl\\todo-api", repoRoot: "D:\\ysl\\todo-api", branch: "main", state: "closed", since: T0 - 13 * DAY, seen: T0 - 13 * DAY, title: "프로젝트 구조 점검", prompt: "초기 프로젝트 구조 점검", usage: makeUsage(GO, 33_000, 2_500, 60_000, 5_000, 5, 13) },
 ];
 
 // ~80 older closed sessions over the past year (deterministic LCG) so the 1y chart looks realistic; sidebar drops them (> 7 days).
@@ -64,7 +64,7 @@ const history: Session[] = Array.from({ length: 80 }, (_, i) => {
   const t = (n: number) => Math.round((n * scale) / 100) * 100;
   return { ...base, agent: rnd() < 0.3 ? "opencode" : "hermes", sessionId: `h${i + 1}`, cwd: root ?? "C:\\Users\\user", repoRoot: root, branch: root ? "main" : null, state: "closed",
     since: T0 - Math.round(daysAgo * DAY), seen: T0 - Math.round(daysAgo * DAY), title: `지난 작업 ${i + 1}`, prompt: `지난 작업 ${i + 1}`,
-    usage: use(model, t(120_000), t(8_000), t(300_000), t(25_000), 2 + Math.floor(rnd() * 30), daysAgo) };
+    usage: makeUsage(model, t(120_000), t(8_000), t(300_000), t(25_000), 2 + Math.floor(rnd() * 30), daysAgo) };
 });
 
 export const mockSessions: Session[] = [...sessions0.map((s) => ({ ...s, usage: usages[s.sessionId] ?? null })), ...extras, ...history];
