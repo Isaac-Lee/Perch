@@ -2,8 +2,9 @@ import { GitBranch, Square, X } from "lucide-react";
 import { ThinkingOrb } from "thinking-orbs";
 import { useIsLight } from "../lib/theme";
 import type { Pane, Session } from "../lib/types";
-import { displayState } from "../lib/groups";
+import { displayState, shownSeconds } from "../lib/groups";
 import { fmtElapsed } from "../lib/format";
+import { activityOf } from "../lib/orbState";
 import { paneIcon } from "../lib/paneIcon";
 import { agentName } from "./SessionRow";
 
@@ -20,12 +21,12 @@ export default function PaneHeader({ pane, session, now, focused, onClose, onSto
       <span className="pane-title">{agentName(pane.agent)} · {pane.title}</span>
       {pane.branch && <span className="branch"><GitBranch size={13} strokeWidth={1.5} /><span className="ellipsis">{pane.branch}</span></span>}
       <span className="grow" />
-      {st === "thinking" && session && (
+      {(st === "running" || st === "thinking" || st === "tool") && session && (() => { const a = activityOf(st, session.tool); return (
         <span className="think">
-          <ThinkingOrb state="working" size={20} theme={light ? "light" : "dark"} />
-          <span>Thinking {fmtElapsed(now - session.since)}</span>
+          <ThinkingOrb state={a.orb} size={20} theme={light ? "light" : "dark"} />
+          <span title={session.toolDetail || undefined}>{a.label} {fmtElapsed(shownSeconds(session, now) ?? 0)}</span>
         </span>
-      )}
+      ); })()}
       {(st === "running" || st === "thinking" || st === "tool") && (
         <button className="stop-btn" aria-label="Stop" title="진행 중인 작업을 멈춥니다." onClick={(e) => { e.stopPropagation(); onStop(); }}><Square size={14} strokeWidth={1.5} />Stop</button>
       )}
