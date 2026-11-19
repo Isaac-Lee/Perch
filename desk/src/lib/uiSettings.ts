@@ -47,10 +47,15 @@ export const loadNewPane = (firstFolder: string): NewPaneDefaults => {
   const view: PaneView = v && v.view === "tui" ? "tui" : "chat";
   return { agent, view, cwd: v && typeof v.cwd === "string" && v.cwd.trim() ? v.cwd : firstFolder };
 };
-export const pushRecent = (list: string[], f: string): string[] => [f, ...list.filter((x) => x !== f)].slice(0, 8);
+// Windows paths: case-insensitive, / == \, trailing separator ignored (root like C:\ kept)
+const folderKey = (p: string) => { const s = p.replace(/\//g, "\\"); return (s.length > 3 ? s.replace(/\\+$/, "") : s).toLowerCase(); };
+export const sameFolder = (a: string, b: string) => folderKey(a) === folderKey(b);
+const dedupe = (l: string[]) => l.filter((x, i) => l.findIndex((y) => sameFolder(x, y)) === i);
+export const pushRecent = (list: string[], f: string): string[] => [f, ...list.filter((x) => !sameFolder(x, f))].slice(0, 8);
+export const removeRecent = (list: string[], f: string): string[] => list.filter((x) => !sameFolder(x, f));
 export const loadRecentFolders = (seed: string[]): string[] => {
   const v = read<unknown>("perch.recentFolders", null);
-  return Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === "string") ? v : seed;
+  return Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === "string") ? dedupe(v) : seed;
 };
 export const saveRecentFolders = (list: string[]) => write("perch.recentFolders", list);
 export const saveNewPane =(v: NewPaneDefaults) => write("perch.newPane", v);

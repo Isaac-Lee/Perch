@@ -13,7 +13,7 @@ import UsageView from "./components/UsageView";
 import SettingsMenu from "./components/SettingsMenu";
 import ShortcutHelp from "./components/ShortcutHelp";
 import { matchDigit, matchShortcut } from "./lib/shortcuts";
-import { loadNewPane, loadRecentFolders, loadSidebarWidth, loadTheme, saveTheme, pushRecent, saveNewPane, saveRecentFolders, saveSidebarWidth } from "./lib/uiSettings";
+import { loadNewPane, loadRecentFolders, loadSidebarWidth, loadTheme, saveTheme, pushRecent, removeRecent, saveNewPane, saveRecentFolders, saveSidebarWidth } from "./lib/uiSettings";
 import type { AgentKind, PaneView } from "./lib/types";
 import { recentFolders } from "./mock/sessions";
 import { TermCtx, loadTerm, saveTerm } from "./lib/termSettings";
@@ -102,13 +102,13 @@ export default function App() {
         <button className={`icon-btn${usage ? " on" : ""}`} aria-label="Token usage" aria-pressed={usage} title="Token usage" onClick={() => setUsage((u) => !u)}><ChartNoAxesColumn size={16} strokeWidth={1.5} /></button>
         <ShortcutHelp open={help} onOpenChange={setHelp} />
         <SettingsMenu theme={theme} onTheme={setTheme} value={term} onChange={setTerm} pane={newPane} onPane={setNewPane} folders={folders} />
-        <NewPaneMenu variant="bar" defaults={newPane} folders={folders} onAdd={open} onDefaults={setNewPane} onChooseFolder={chooseFolder} />
+        <NewPaneMenu variant="bar" defaults={newPane} folders={folders} onAdd={open} onDefaults={setNewPane} onChooseFolder={chooseFolder} onRemoveFolder={(f) => setFolders((l) => removeRecent(l, f))} />
       </header>
       <div className="main">
         {!collapsed && (
           <Sidebar sessions={d.sessions} panes={d.panes} now={d.now} focusedPaneId={d.focusedPaneId}
             onFocus={d.focusSession} onApprove={d.approve} onStop={d.stop} onClosePane={d.closePane} width={width} onResize={setWidth} onCollapse={() => setCollapsed(true)} onUsage={() => setUsage(true)} onNew={(cwd) => open(newPane.agent, cwd, newPane.view)}
-            newSession={<NewPaneMenu variant="side" defaults={newPane} folders={folders} onAdd={open} onDefaults={setNewPane} onChooseFolder={chooseFolder} />} />
+            newSession={<NewPaneMenu variant="side" defaults={newPane} folders={folders} onAdd={open} onDefaults={setNewPane} onChooseFolder={chooseFolder} onRemoveFolder={(f) => setFolders((l) => removeRecent(l, f))} />} />
         )}
         <div className="stage" ref={stageRef} style={{ display: usage ? "none" : "flex" }}>
         <PaneGrid panes={d.panes} layout={layout} onMove={movePaneTo} sessions={d.sessions} now={d.now} focusedPaneId={d.focusedPaneId}

@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { clampSidebarWidth, loadNewPane, loadPaneLayout, savePaneLayout, loadTheme, saveTheme, loadDismissed, saveDismissed, loadSessionOrder, loadSessionSort, pushRecent, saveSessionOrder, saveSessionSort } from "./uiSettings";
+import { clampSidebarWidth, loadNewPane, loadPaneLayout, savePaneLayout, loadTheme, saveTheme, loadDismissed, saveDismissed, loadSessionOrder, loadSessionSort, pushRecent, removeRecent, loadRecentFolders, saveSessionOrder, saveSessionSort } from "./uiSettings";
 
 test("pushRecent moves to front, dedupes, caps at 8", () => {
   expect(pushRecent(["a", "b", "c"], "c")).toEqual(["c", "a", "b"]);
@@ -89,5 +89,15 @@ test("loadNewPane view: tui only when saved exactly as tui", () => {
   expect(loadNewPane("/f").view).toBe("tui");
   store["perch.newPane"] = JSON.stringify({ agent: "hermes", view: "x" });
   expect(loadNewPane("/f").view).toBe("chat");
+  vi.unstubAllGlobals();
+});
+
+test("recent folders dedupe spelling variants, remove, and clean on load", () => {
+  expect(pushRecent(["D:\\a\\b", "x"], "d:/a/b/")).toEqual(["d:/a/b/", "x"]);
+  expect(removeRecent(["D:\\a\\b", "x"], "d:/a/b")).toEqual(["x"]);
+  const store: Record<string, string> = {};
+  vi.stubGlobal("localStorage", { getItem: (k: string) => store[k] ?? null, setItem: (k: string, v: string) => { store[k] = v; } });
+  store["perch.recentFolders"] = JSON.stringify(["D:\\a\\b", "d:/a/b/", "C:\\", "c:/"]);
+  expect(loadRecentFolders([])).toEqual(["D:\\a\\b", "C:\\"]);
   vi.unstubAllGlobals();
 });

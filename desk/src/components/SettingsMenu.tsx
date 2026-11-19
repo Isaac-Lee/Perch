@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Minus, Plus, Settings } from "lucide-react";
 import type { AgentKind } from "../lib/types";
-import { THEMES, type NewPaneDefaults, type ThemeId } from "../lib/uiSettings";
+import { THEMES, sameFolder, type NewPaneDefaults, type ThemeId } from "../lib/uiSettings";
 import { isTauri, hermesStatus, hermesConnect, hermesDisconnect, hermesGatewayStop, type HermesStatus } from "../lib/backend";
 import { FONT_CHOICES, clampSize, type TermSettings } from "../lib/termSettings";
 
@@ -28,7 +28,7 @@ export default function SettingsMenu({ theme, onTheme, value, onChange, pane, on
     return () => document.removeEventListener("mousedown", h);
   }, [open]);
   const preset = FONT_CHOICES.includes(value.fontFamily);
-  const folderListed = folders.includes(pane.cwd);
+  const folderListed = folders.some((x) => sameFolder(x, pane.cwd));
   const [customFont, setCustomFont] = useState(!preset);
   const [customFolder, setCustomFolder] = useState(!folderListed);
   const size = (n: number) => onChange({ ...value, fontSize: clampSize(n) });
