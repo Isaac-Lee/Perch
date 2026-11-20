@@ -3,6 +3,7 @@ import { ArrowUpDown, Check, ChevronDown, ChevronRight, PanelLeftClose, Plus, Se
 import type { Group, Pane, Session } from "../lib/types";
 import { SESSION_SORTS, displayState, groupByStatus, nestBackground, groupSessions, groupSummary, isUnread, matchSession, moveInOrder, splitNeedsYou, waitingOnYou, type GroupBy, type SessionSort } from "../lib/groups";
 import SessionRow from "./SessionRow";
+import { openGraph } from "../lib/paneGraph";
 import { clampSidebarWidth, SIDEBAR_DEFAULT, MAX_ORDER, loadArchived, loadCollapsed, loadDismissed, saveDismissed, loadReadAt, saveReadAt, markRead, loadSessionOrder, loadSessionSort, loadGroupBy, saveGroupBy, saveArchived, saveCollapsed, saveSessionOrder, saveSessionSort } from "../lib/uiSettings";
 import { useScrollReveal } from "../lib/useScrollReveal";
 import { useRowDrag } from "../lib/useRowDrag";
@@ -129,6 +130,7 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
           reorder(g.key, s.sessionId, to);
         },
       } : undefined}
+      onGraph={s.paneId ? () => { openGraph(s.paneId!); onFocus(s.sessionId); } : undefined}
       onClick={() => { if (!suppressClick.current) { onFocus(s.sessionId); markSeen(s.sessionId); } }} onApprove={(a) => onApprove(s.sessionId, a)} onStop={() => onStop(s.sessionId)}
       onHide={g || folder ? () => { if (s.paneId) onClosePane(s.paneId); dismiss(s.sessionId); } : undefined}
       onArchive={() => { if (s.paneId) onClosePane(s.paneId); toggleArchive(s.sessionId); }} archived={hiddenIn(archived, s)} />

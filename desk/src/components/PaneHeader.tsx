@@ -1,4 +1,4 @@
-import { GitBranch, Square, X } from "lucide-react";
+import { GitBranch, Network, Square, X } from "lucide-react";
 import { ThinkingOrb } from "thinking-orbs";
 import { useIsLight } from "../lib/theme";
 import type { Pane, Session } from "../lib/types";
@@ -8,7 +8,7 @@ import { activityOf } from "../lib/orbState";
 import { paneIcon } from "../lib/paneIcon";
 import { agentName } from "./SessionRow";
 
-export default function PaneHeader({ pane, session, now, focused, onClose, onStop, dragging, onDragStart }: { pane: Pane; session?: Session; now: number; focused: boolean; onClose: () => void; onStop: () => void; dragging?: boolean; onDragStart?: (e: React.PointerEvent<HTMLElement>) => void }) {
+export default function PaneHeader({ pane, session, now, focused, onClose, onStop, dragging, onDragStart, graph }: { pane: Pane; session?: Session; now: number; focused: boolean; onClose: () => void; onStop: () => void; dragging?: boolean; onDragStart?: (e: React.PointerEvent<HTMLElement>) => void; /** subagent graph toggle; undefined hides the button */ graph?: { open: boolean; running: number; onToggle: () => void } }) {
   const light = useIsLight();
   const st = session ? displayState(session, now) : null;
   const waiting = st === "approval" || st === "question" || st === "reply";
@@ -27,6 +27,7 @@ export default function PaneHeader({ pane, session, now, focused, onClose, onSto
           <span title={session.toolDetail || undefined}>{a.label} {fmtElapsed(shownSeconds(session, now) ?? 0)}</span>
         </span>
       ); })()}
+      {graph && <button className={`stop-btn${graph.open ? " on" : ""}`} aria-label="Subagents" aria-pressed={graph.open} title="서브에이전트·백그라운드 작업 보기" onClick={(e) => { e.stopPropagation(); graph.onToggle(); }}><Network size={14} strokeWidth={1.5} />{graph.running > 0 && graph.running}</button>}
       {(st === "running" || st === "thinking" || st === "tool") && (
         <button className="stop-btn" aria-label="Stop" title="진행 중인 작업을 멈춥니다." onClick={(e) => { e.stopPropagation(); onStop(); }}><Square size={14} strokeWidth={1.5} />Stop</button>
       )}
