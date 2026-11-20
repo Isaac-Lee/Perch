@@ -10,7 +10,7 @@ Perch는 여러 코딩 에이전트(Hermes, OpenCode)를 분할 터미널로 띄
 
 | 위치 | 내용 | 상태 |
 |---|---|---|
-| `desk/src/` | 화면 (React 19 + TypeScript). 브라우저에서는 가짜 데이터, Tauri 창에서는 실제 백엔드 | 테스트 66개 통과 |
+| `desk/src/` | 화면 (React 19 + TypeScript). 브라우저에서는 가짜 데이터, Tauri 창에서는 실제 백엔드 | 테스트 142개 통과 |
 | `desk/src-tauri/src/` | Rust 백엔드: `pty.rs`(터미널), `desk.rs`(칸·창), `sessions.rs`(상태 수집, state.db 보강), `hermes.rs`(실행 파일 찾기, 연결) | 테스트 39개 통과 (1개는 무시) |
 | `desk/src-tauri/src/gateway.rs` | Hermes gateway 중계. `hermes gateway attach`가 준 ws:// 주소에 loopback TcpStream으로 직접 WebSocket을 말하고 JSON 줄을 채팅 칸과 주고받는다 (gateway가 Origin 헤더를 거부해서 웹뷰가 직접 못 붙는다) | 테스트 포함 |
 | `desk/src/components/Chat*.tsx` | 채팅 보기. `ChatView`(전체), `ChatMessage`(마크다운 답변·도구 줄), `ChatPrompt`(승인·질문 버튼), `ChatComposer`(입력 상자: `+` 이미지, 모델 칩과 메뉴, 엔터 아이콘) | `chatSession`, `composer` 테스트 |
@@ -94,6 +94,11 @@ npm run tauri build   # 릴리스 exe와 설치 파일
 - 토큰 단위는 앞에 붙는 `Ŧ`다 (`Ŧ 637.4k`). `₸`는 실제 통화 기호라 쓰지 않는다.
 - 설정 메뉴는 "라벨 왼쪽, 컨트롤 오른쪽" 2열 행이다. 직접 입력칸은 `Custom…`을 골랐을 때만 나온다.
 - 메모리 기준은 500MB(작업 집합 합계)로 올렸다. 줄이는 일은 미뤘다.
+
+**2026-11-20에 추가된 화면 결정**
+- 읽음/안 읽음: Done·Reply needed 세션은 그 상태가 된 뒤(`since`) 사용자가 그 세션 칸에 포커스를 두거나 패널 행을 누르기 전까지 안 읽음이다. 행에 강조색 점과 굵기 500 제목, 같은 상태 안에서 위로 정렬, 접힌 묶음 제목에 수. 읽은 시각은 `perch.readAt`(세션별 초, 300개 상한). 판정은 `groups.ts` `isUnread`.
+- Needs you: `waitingOnYou`(승인·질문·Reply needed) 세션은 검색창 아래 `Needs you` 묶음에만 보이고 폴더 묶음에서는 빠진다. approval → question → reply, 같은 상태는 오래 기다린 순. 정렬 기준과 무관하게 맨 위, 비면 안 그림, 접기·끌기 없음, 행에 폴더 이름. 예전 "내 차례 묶음을 앞으로" 정렬은 없앴다 (`splitNeedsYou`).
+- 채팅 입력창 히스토리: 위/아래 화살표로 이 채팅의 이전 요청을 불러온다 (resume한 기록 포함, 연속 중복 합침, 이미지만 보낸 것 제외). 위는 첫 줄, 아래는 마지막 줄에서만, 맨 아래에서 쓰던 초안 복원. 슬래시 메뉴가 열렸거나 IME 조합 중이거나 수정키가 눌리면 동작하지 않는다. TUI 칸은 Hermes 자체 히스토리를 쓴다.
 
 ## 5. 반드시 지킬 규칙
 
