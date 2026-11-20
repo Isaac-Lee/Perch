@@ -6,6 +6,7 @@ import ChatComposer from "./ChatComposer";
 import ChatPrompt from "./ChatPrompt";
 import ChatMessage from "./ChatMessage";
 import ChatLive from "./ChatLive";
+import { setLiveSubagents } from "../lib/liveSubagents";
 
 export default function ChatView({ paneId, cwd, sessionId, focused }: { paneId: string; cwd: string; sessionId: string | null; focused: boolean }) {
   // Session id at first render only (equal to the pane id means none yet); a later paneSetSession must not reconnect.
@@ -35,13 +36,18 @@ export default function ChatView({ paneId, cwd, sessionId, focused }: { paneId: 
     return () => { dead = true; offs.forEach((o) => o()); };
   }, [paneId]);
   useEffect(() => { toBottom(); }, [state.sessionId]); // resumed history opens at the bottom
+  // Running children go to the sidebar row, keyed by pane id; cleared on unmount.
+  useEffect(() => {
+    setLiveSubagents(paneId, Object.values(state.subagents).filter((a) => a.status === "starting" || a.status === "running").map((a) => ({ id: a.id, role: "", goal: a.goal, start: (a.startAt ?? Date.now()) / 1000, tool: a.tool || undefined })));
+  }, [paneId, state.subagents]);
+  useEffect(() => () => setLiveSubagents(paneId, []), [paneId]);
   const down = state.conn === "error" || state.conn === "closed";
   return (
     <div className="chat">
       <div className="chat-scroll" ref={scrollRef} onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight <= 40; }}>
         <div className="chat-col">
           {state.items.length === 0 && state.conn === "ready" && <div className="chat-empty">메시지를 입력해 대화를 시작하세요</div>}
-          {groupItems(state.items).map((i) => <ChatMessage key={i.id} item={i} />)}
+          {groupItems(state.items).map((i) => <ChatMessage key={i.id} item={i} subagents={state.subagents} />)}
           {state.running && <ChatLive state={state} />}
           {state.prompts.map((p) => <ChatPrompt key={p.promptId} prompt={p} onApproval={(c) => answerApproval(p.promptId, c)} onClarify={(a) => answerClarify(p.promptId, a)} />)}
           {down && retrying && <div className="chat-status">다시 연결하는 중…</div>}

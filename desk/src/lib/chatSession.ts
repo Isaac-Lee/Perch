@@ -11,6 +11,7 @@ export type ChatItem =
   | {
     kind: "tool"; id: string; name: string; context: string; status: "running" | "done" | "error"; durationS?: number; result?: string;
     summary?: string; preview?: string; args?: Record<string, unknown>; resultText?: string; diff?: string; labels?: string[]; progress?: string;
+    /** delegate_task only: `subagent_id`s of the children it spawned (see ChatState.subagents) */ subagentIds?: string[];
   }
   | { kind: "error"; id: string; text: string }
   | { kind: "system"; id: string; text: string };
@@ -20,10 +21,17 @@ export interface ChatPrompt {
   /** clarify batch with several questions: shown as text, answered with one free-text reply */
   questions?: string[];
 }
+/** One child of a delegate_task call, fed by subagent.* frames (they keep coming after the parent turn ended). */
+export interface SubagentLive {
+  id: string; delegationId?: string; index: number; count: number; goal: string; model: string; status: "starting" | "running" | "done" | "failed";
+  tool: string; toolPreview: string; toolCount: number; /** `at` of the first frame seen (ms epoch), null when the dispatcher passed none */ startAt: number | null;
+  durationSec?: number; summary?: string; tokens?: { in: number; out: number }; outputTail?: { tool: string; preview: string; isError: boolean }[];
+}
 export interface ChatState { conn: "connecting" | "ready" | "closed" | "error"; error?: string; sessionId: string | null; executionGeneration: number; revision: number; running: boolean; items: ChatItem[]; prompts: ChatPrompt[]; model: string | null; effort: string | null; /** ms epoch the current turn began; set from timestamps the dispatcher passes in (the reducer stays pure) */ turnStart: number | null; /** Hermes status line (thinking.delta) */ status: string; /** tool named by tool.generating, before its tool.start */ generating: string;
   /** `at` of a local prompt that has not seen message.start yet (the optimistic window); null otherwise */ sentAt: number | null;
-  /** the user cleared a stuck indicator by hand: the next real frame turns it back on */ cleared: boolean }
-export const initialChat: ChatState = { conn: "connecting", sessionId: null, executionGeneration: 0, revision: 0, running: false, items: [], prompts: [], model: null, effort: null, turnStart: null, status: "", generating: "", sentAt: null, cleared: false };
+  /** the user cleared a stuck indicator by hand: the next real frame turns it back on */ cleared: boolean;
+  /** delegate_task children by subagent_id. Not in session.resume snapshots: after a resume/reconnect only children seen live exist. */ subagents: Record<string, SubagentLive> }
+export const initialChat: ChatState = { conn: "connecting", sessionId: null, executionGeneration: 0, revision: 0, running: false, items: [], prompts: [], model: null, effort: null, turnStart: null, status: "", generating: "", sentAt: null, cleared: false, subagents: {} };
 export type ChatAction =
   | { t: "conn"; conn: ChatState["conn"]; error?: string }
   | { t: "snapshot"; snap: any; at?: number }
@@ -120,6 +128,7 @@ export function chatReducer(s: ChatState, a: ChatAction): ChatState {
       ...(a.at != null && !s.running ? { running: true, turnStart: a.at, sentAt: a.at, cleared: false } : {}),
     };
     case "event": {
+      if (a.ev.type.startsWith("subagent.")) return subagentEvent(s, a.ev, a.at);
       const n = onEvent(typeof a.ev.execution_generation === "number" ? { ...s, executionGeneration: a.ev.execution_generation } : s, a.ev, a.at);
       if (a.ev.type === "message.start") return { ...n, turnStart: s.turnStart ?? a.at ?? null, sentAt: null, cleared: false };
       if (a.ev.type === "message.complete" || a.ev.type === "error") return { ...n, turnStart: null, sentAt: null, cleared: false };
@@ -128,6 +137,41 @@ export function chatReducer(s: ChatState, a: ChatAction): ChatState {
       return n;
     }
   }
+}
+
+/** subagent.* frames touch only `subagents` and the delegate_task item's `subagentIds`: never running, turn clock or item order. */
+function subagentEvent(s: ChatState, ev: GatewayEvent, at?: number): ChatState {
+  const p = ev.payload ?? {};
+  const id = str(p.subagent_id);
+  if (!id) return s;
+  const num = (v: unknown, d = 0) => (typeof v === "number" ? v : d);
+  const known = s.subagents[id];
+  const cur: SubagentLive = known ?? {
+    id, index: num(p.task_index), count: num(p.task_count, 1), goal: "", model: "", status: "starting", tool: "", toolPreview: "", toolCount: 0, startAt: at ?? null,
+  };
+  const over = cur.status === "done" || cur.status === "failed";
+  const n: SubagentLive = {
+    ...cur, goal: str(p.goal) || cur.goal, model: str(p.model) || cur.model, toolCount: Math.max(cur.toolCount, num(p.tool_count)),
+    ...(str(p.delegation_id) ? { delegationId: p.delegation_id } : {}),
+    ...(ev.type === "subagent.spawn_requested" || over ? {} : { status: "running" as const }),
+  };
+  if (ev.type === "subagent.tool") { n.tool = str(p.tool_name); n.toolPreview = str(p.tool_preview) || str(p.text); }
+  if (ev.type === "subagent.complete") {
+    n.status = str(p.status) === "completed" ? "done" : "failed";
+    n.tool = ""; n.toolPreview = "";
+    if (typeof p.duration_seconds === "number") n.durationSec = p.duration_seconds;
+    if (str(p.summary)) n.summary = p.summary;
+    n.tokens = { in: num(p.input_tokens), out: num(p.output_tokens) };
+    n.outputTail = (Array.isArray(p.output_tail) ? p.output_tail : []).map((o: any) => ({ tool: str(o?.tool), preview: str(o?.preview), isError: o?.is_error === true }));
+  }
+  let items = s.items;
+  if (!known && !items.some((i) => i.kind === "tool" && i.subagentIds?.includes(id))) {
+    let at2 = -1;
+    for (let k = items.length - 1; k >= 0; k--) { const i = items[k]; if (i.kind === "tool" && i.name === "delegate_task") { at2 = k; break; } }
+    const host = items[at2];
+    if (host?.kind === "tool" && (host.subagentIds?.length ?? 0) < n.count) items = items.map((i, k) => (k === at2 ? { ...host, subagentIds: [...(host.subagentIds ?? []), id] } : i));
+  }
+  return { ...s, items, subagents: { ...s.subagents, [id]: n } };
 }
 
 /** Local end of a turn: indicators off, streaming items settled. */
@@ -228,7 +272,8 @@ export function groupItems(items: ChatItem[]): (ChatItem | ToolGroup)[] {
   const out: (ChatItem | ToolGroup)[] = [];
   let run: ToolItem[] = [];
   const flush = () => { if (run.length > 1) out.push({ kind: "tools", id: run[0].id, items: run }); else out.push(...run); run = []; };
-  for (const i of items) { if (i.kind === "tool") run.push(i); else { flush(); out.push(i); } }
+  // delegate_task stays outside a group so its children are always visible
+  for (const i of items) { if (i.kind === "tool" && i.name !== "delegate_task") run.push(i); else { flush(); out.push(i); } }
   flush();
   return out;
 }

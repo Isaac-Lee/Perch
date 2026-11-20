@@ -6,6 +6,7 @@ import SessionRow from "./SessionRow";
 import { clampSidebarWidth, SIDEBAR_DEFAULT, MAX_ORDER, loadArchived, loadCollapsed, loadDismissed, saveDismissed, loadReadAt, saveReadAt, markRead, loadSessionOrder, loadSessionSort, saveArchived, saveCollapsed, saveSessionOrder, saveSessionSort } from "../lib/uiSettings";
 import { useScrollReveal } from "../lib/useScrollReveal";
 import { useRowDrag } from "../lib/useRowDrag";
+import { useLiveSubagents } from "../lib/liveSubagents";
 
 const SORT_LABEL: Record<SessionSort, string> = { status: "Status", recent: "Recent activity", name: "Name", manual: "Manual order" };
 import { fmtTok, summarize } from "../lib/usage";
@@ -30,7 +31,9 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
     if (!back.length) return;
     setDismissed((o) => { const n = new Set(o); back.forEach((s) => n.delete(s.sessionId)); saveDismissed([...n]); return n; });
   }, [sessions, dismissed]);
-  const shown = useMemo(() => sessions.filter((s) => !hiddenIn(archived, s)), [sessions, archived]);
+  // Chat panes report their children over gateway frames, not the state file: fill empty rows from that live store.
+  const liveSubs = useLiveSubagents();
+  const shown = useMemo(() => sessions.filter((s) => !hiddenIn(archived, s)).map((s) => (!s.subagents.length && s.paneId && liveSubs.has(s.paneId) ? { ...s, subagents: liveSubs.get(s.paneId)! } : s)), [sessions, archived, liveSubs]);
   const bodyRef = useRef<HTMLDivElement>(null);
   const [sort, setSort] = useState<SessionSort>(loadSessionSort);
   const [order, setOrder] = useState<string[]>(loadSessionOrder);

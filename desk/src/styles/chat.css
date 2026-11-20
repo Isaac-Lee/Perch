@@ -104,3 +104,12 @@
   .chat-box { border-radius: 16px; corner-shape: squircle; }
   .chat-icon-btn, .chat-model { border-radius: 8px; corner-shape: squircle; }
 }
+.chat-subs { padding-left: 14px; margin-top: 2px; }
+.chat-subs-head { padding: 2px 8px; color: var(--text-3); font-size: 12px; }
+.chat-sub-row { display: flex; align-items: center; gap: 6px; }
+.chat-sub-row .chat-chev { margin-right: 0; flex: none; }
+.chat-sub-dot { width: 6px; height: 6px; }
+.chat-sub-ok { flex: none; color: var(--ok); }
+.chat-sub-goal { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.chat-sub-cur { flex: 0 1 40%; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text-3); }
+.chat-sub-meta { flex: none; font-variant-numeric: tabular-nums; }

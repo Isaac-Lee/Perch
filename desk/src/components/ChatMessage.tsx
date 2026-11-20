@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { openUrl } from "../lib/backend";
-import { fmtSec, type ChatItem, type ToolGroup, type ToolItem } from "../lib/chatSession";
+import { fmtSec, type ChatItem, type SubagentLive, type ToolGroup, type ToolItem } from "../lib/chatSession";
 import { highlight } from "../lib/highlight";
 import { Markdown } from "../lib/markdown";
+import SubagentBlock from "./SubagentBlock";
 import { kvRows, resultCount, resultView, thoughtTitle, toolTitle } from "../lib/toolView";
 
 const STATUS = { running: "실행 중", done: "", error: "✕ 오류" } as const;
@@ -24,7 +25,7 @@ function ToolDetails({ t }: { t: ToolItem }) {
   );
 }
 
-export default function ChatMessage({ item }: { item: ChatItem | ToolGroup }) {
+export default function ChatMessage({ item, subagents }: { item: ChatItem | ToolGroup; subagents?: Record<string, SubagentLive> }) {
   const [open, setOpen] = useState(false);
   switch (item.kind) {
     case "user":
@@ -56,6 +57,7 @@ export default function ChatMessage({ item }: { item: ChatItem | ToolGroup }) {
             <ChevronRight className={"chat-chev" + (open ? " open" : "")} size={12} strokeWidth={1.75} />{parts.join(" · ")}
           </button>
           {open && <ToolDetails t={item} />}
+          {item.subagentIds?.length && subagents ? <SubagentBlock ids={item.subagentIds} subagents={subagents} /> : null}
         </div>
       );
     }
