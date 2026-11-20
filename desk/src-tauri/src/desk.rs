@@ -55,6 +55,9 @@ fn relink_entries(entries: &mut [Entry], sessions: &[SessionInfo], first_seen: &
     // 0) direct: the state file names the pane (any agent); the pane's agent must match and it must still be free
     for s in sessions {
         let Some(p) = &s.pane else { continue };
+        if s.session_id.starts_with("bg_") {
+            continue; // a background run is never the pane's own session
+        }
         if entries.iter().any(|e| e.info.session_id.as_deref() == Some(&s.session_id)) {
             continue;
         }
@@ -76,7 +79,7 @@ fn relink_entries(entries: &mut [Entry], sessions: &[SessionInfo], first_seen: &
     }
     let taken: HashSet<&str> = entries.iter().filter_map(|e| e.info.session_id.as_deref()).collect();
     let mut free: Vec<(u64, String)> = sessions.iter()
-        .filter(|s| !taken.contains(s.session_id.as_str()))
+        .filter(|s| !taken.contains(s.session_id.as_str()) && !s.session_id.starts_with("bg_"))
         .filter_map(|s| first_seen.get(&s.session_id).filter(|&&t| t > 0).map(|&t| (t, s.session_id.clone())))
         .collect();
     free.sort();
@@ -525,6 +528,16 @@ mod tests {
         assert_eq!(es[1].info.session_id, None);
         let mut es = vec![entry("p7", "hermes", 1, None)];
         assert!(!relink_entries(&mut es, &[s], &fs), "agent mismatch");
+        assert_eq!(es[0].info.session_id, None);
+    }
+
+    #[test]
+    fn relink_never_links_background() {
+        let mut s = sess("bg_ab12cd");
+        s.pane = Some("p1".into());
+        let fs: HashMap<String, u64> = [("bg_ab12cd".to_string(), 5000)].into();
+        let mut es = vec![entry("p1", "hermes", 1000, None)];
+        assert!(!relink_entries(&mut es, &[s], &fs));
         assert_eq!(es[0].info.session_id, None);
     }
 

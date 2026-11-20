@@ -67,6 +67,8 @@ pub struct SessionInfo {
     pub todos: Vec<Todo>,
     pub seen: u64,
     pub pane_id: Option<String>,
+    /// For a `bg_` background run: the session that started it (see `bg_parent`)
+    pub parent_id: Option<String>,
     /// `pane` from the state file (the adapter saw PERCH_PANE); internal, not part of the contract
     #[serde(skip)]
     pub pane: Option<String>,
@@ -142,6 +144,7 @@ pub(crate) fn parse_state(v: &Value) -> Option<SessionInfo> {
         todos,
         seen: n("seen"),
         pane_id: None,
+        parent_id: None,
         pane: v["pane"].as_str().filter(|s| !s.is_empty()).map(String::from),
         title: None,
         cwd: String::new(),
@@ -281,8 +284,26 @@ impl Poller {
     }
 }
 
+/// Hermes passes no parent link for `/background` runs (`bg_*` session ids), but the run inherits the pane's PERCH_PANE.
+/// Parent = the session now linked to that pane, else the non-bg session that named the pane and was seen last.
+pub fn bg_parent(bg: &SessionInfo, all: &[SessionInfo], panes: &[PaneInfo]) -> Option<String> {
+    if !bg.session_id.starts_with("bg_") {
+        return None;
+    }
+    let p = bg.pane.as_deref()?;
+    if let Some(id) = panes.iter().find(|x| x.id == p).and_then(|x| x.session_id.as_deref()).filter(|id| !id.starts_with("bg_")) {
+        return Some(id.to_string());
+    }
+    all.iter().filter(|s| !s.session_id.starts_with("bg_") && s.pane.as_deref() == Some(p))
+        .max_by_key(|s| s.seen).map(|s| s.session_id.clone())
+}
+
 /// Fills `pane_id` and, where state.db gave nothing, the pane's cwd / repo / branch.
 pub fn decorate(mut base: Vec<SessionInfo>, panes: &[PaneInfo]) -> Vec<SessionInfo> {
+    let parents: Vec<Option<String>> = base.iter().map(|s| bg_parent(s, &base, panes)).collect();
+    for (s, p) in base.iter_mut().zip(parents) {
+        s.parent_id = p;
+    }
     for s in &mut base {
         if let Some(p) = panes.iter().find(|p| p.session_id.as_deref() == Some(&s.session_id)) {
             s.pane_id = Some(p.id.clone());
@@ -438,7 +459,7 @@ pub fn usage_history_from(db: &Path) -> Vec<SessionInfo> {
         out.push(SessionInfo {
             agent: "hermes".into(), session_id: id, state: "closed".into(), since: usage.started_at, turn_start: None, last_turn: None, steps: 0,
             tool: String::new(), tool_detail: String::new(), prompt: String::new(), pending: None, asks: false, ask: String::new(), subagents: vec![], todos: vec![],
-            seen: usage.started_at, pane_id: None, pane: None, title, cwd, repo_root, branch, usage: Some(usage),
+            seen: usage.started_at, pane_id: None, parent_id: None, pane: None, title, cwd, repo_root, branch, usage: Some(usage),
         });
     }
     out
@@ -581,6 +602,40 @@ mod tests {
         assert!(query_db(&db, "x").is_none());
         fs::write(t.path().join("junk.db"), "not a database at all").unwrap();
         assert!(query_db(&t.path().join("junk.db"), "x").is_none());
+    }
+
+    #[test]
+    fn bg_parent_rules() {
+        let mk = |id: &str, pane: Option<&str>, seen: u64, since: u64| {
+            let mut s = sess_for_test(id);
+            s.pane = pane.map(String::from);
+            s.seen = seen;
+            s.since = since;
+            s
+        };
+        let pane = |id: &str, sid: Option<&str>| PaneInfo {
+            id: id.into(), agent: "hermes".into(), cwd: String::new(), repo_root: None, branch: None, window: "main".into(),
+            created_at: 0, session_id: sid.map(String::from), view: "tui".into(),
+        };
+        let bg = mk("bg_a1b2c3", Some("p1"), 100, 100);
+        let all = vec![mk("old", Some("p1"), 50, 1), mk("new", Some("p1"), 90, 1), mk("late", Some("p1"), 200, 1),
+            mk("other", Some("p2"), 99, 1), bg.clone()];
+        // pane link wins
+        assert_eq!(bg_parent(&bg, &all, &[pane("p1", Some("linked"))]).as_deref(), Some("linked"));
+        // else the latest-seen session of that pane
+        assert_eq!(bg_parent(&bg, &all, &[pane("p1", None)]).as_deref(), Some("late"));
+        // a bg id linked to the pane is not a parent
+        assert_eq!(bg_parent(&bg, &all, &[pane("p1", Some("bg_zz"))]).as_deref(), Some("late"));
+        // no pane field / non-bg / nothing matches
+        assert_eq!(bg_parent(&mk("bg_x", None, 1, 1), &all, &[]), None);
+        assert_eq!(bg_parent(&all[1], &all, &[]), None);
+        assert_eq!(bg_parent(&mk("bg_y", Some("p9"), 1, 1), &all, &[]), None);
+        let d = decorate(all, &[pane("p1", None)]);
+        assert_eq!(d.iter().find(|s| s.session_id == "bg_a1b2c3").unwrap().parent_id.as_deref(), Some("late"));
+    }
+
+    fn sess_for_test(id: &str) -> SessionInfo {
+        parse_state(&serde_json::json!({ "sessionId": id })).unwrap()
     }
 
     #[test]
