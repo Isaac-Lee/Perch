@@ -10,7 +10,7 @@ Perch는 여러 코딩 에이전트(Hermes, OpenCode)를 분할 터미널로 띄
 
 | 위치 | 내용 | 상태 |
 |---|---|---|
-| `desk/src/` | 화면 (React 19 + TypeScript). 브라우저에서는 가짜 데이터, Tauri 창에서는 실제 백엔드 | 테스트 142개 통과 |
+| `desk/src/` | 화면 (React 19 + TypeScript). 브라우저에서는 가짜 데이터, Tauri 창에서는 실제 백엔드 | 테스트 149개 통과 |
 | `desk/src-tauri/src/` | Rust 백엔드: `pty.rs`(터미널), `desk.rs`(칸·창), `sessions.rs`(상태 수집, state.db 보강), `hermes.rs`(실행 파일 찾기, 연결) | 테스트 39개 통과 (1개는 무시) |
 | `desk/src-tauri/src/gateway.rs` | Hermes gateway 중계. `hermes gateway attach`가 준 ws:// 주소에 loopback TcpStream으로 직접 WebSocket을 말하고 JSON 줄을 채팅 칸과 주고받는다 (gateway가 Origin 헤더를 거부해서 웹뷰가 직접 못 붙는다) | 테스트 포함 |
 | `desk/src/components/Chat*.tsx` | 채팅 보기. `ChatView`(전체), `ChatMessage`(마크다운 답변·도구 줄), `ChatPrompt`(승인·질문 버튼), `ChatComposer`(입력 상자: `+` 이미지, 모델 칩과 메뉴, 엔터 아이콘) | `chatSession`, `composer` 테스트 |
@@ -99,6 +99,8 @@ npm run tauri build   # 릴리스 exe와 설치 파일
 - 읽음/안 읽음: Done·Reply needed 세션은 그 상태가 된 뒤(`since`) 사용자가 그 세션 칸에 포커스를 두거나 패널 행을 누르기 전까지 안 읽음이다. 행에 강조색 점과 굵기 500 제목, 같은 상태 안에서 위로 정렬, 접힌 묶음 제목에 수. 읽은 시각은 `perch.readAt`(세션별 초, 300개 상한). 판정은 `groups.ts` `isUnread`.
 - Needs you: `waitingOnYou`(승인·질문·Reply needed) 세션은 검색창 아래 `Needs you` 묶음에만 보이고 폴더 묶음에서는 빠진다. approval → question → reply, 같은 상태는 오래 기다린 순. 정렬 기준과 무관하게 맨 위, 비면 안 그림, 접기·끌기 없음, 행에 폴더 이름. 예전 "내 차례 묶음을 앞으로" 정렬은 없앴다 (`splitNeedsYou`).
 - 채팅 입력창 히스토리: 위/아래 화살표로 이 채팅의 이전 요청을 불러온다 (resume한 기록 포함, 연속 중복 합침, 이미지만 보낸 것 제외). 위는 첫 줄, 아래는 마지막 줄에서만, 맨 아래에서 쓰던 초안 복원. 슬래시 메뉴가 열렸거나 IME 조합 중이거나 수정키가 눌리면 동작하지 않는다. TUI 칸은 Hermes 자체 히스토리를 쓴다.
+- 서브에이전트: 채팅 보기에서 `delegate_task` 줄 아래에 자식 목록(목표, 지금 도구, 도구 수, 경과/걸린 시간, 펼치면 요약과 마지막 출력). 출처는 게이트웨이 `subagent.*` 프레임(`__fixtures__/delegate.jsonl`, 실제 녹화). 비동기라 부모 턴이 끝난 뒤에도 갱신되고 부모의 running에는 영향을 주지 않는다. 진행 중인 자식은 패널 행에도 보인다(`liveSubagents.ts`, 칸 id 기준). 훅 상태 파일의 `subagents`는 비동기 위임에서 채워지지 않는다(확인함). resume한 기록에는 자식이 없다.
+- 상태별 보기: 정렬 메뉴의 Group by에서 Folder/Status. Status는 Needs you, Working, Unread, Done, Idle, 맨 아래 Recent 하나. 이때 정렬은 고정(`perch.sessionGroupBy`, `groupByStatus`).
 
 ## 5. 반드시 지킬 규칙
 
@@ -154,6 +156,7 @@ npm run tauri build   # 릴리스 exe와 설치 파일
 - 한 줄 상태 표시, 생각 줄, 도구 상세, 슬래시 팝업은 실제 앱에서 충분히 확인하지 못했다.
 - Hermes가 턴을 끝내지 않고 멈춘 경우: 사용자 PC에서 "Thinking"이 계속 남는 보고가 있었으나 재현하지 못했다. Perch는 게이트웨이의 `session.info.running`을 따르고, 45초 동안 프레임이 없으면 `session.resume`으로 확인한다. Stop 뒤 3초 안에 끝나지 않으면 "Hermes가 이 턴을 아직 끝내지 않았습니다"라고 알리고, Stop을 한 번 더 누르면 Perch의 표시만 정리한다(Hermes 쪽 턴은 계속될 수 있고, 다음 프레임이 오면 표시가 다시 켜진다). 원인 확인용 증거: Hermes `agent.log`의 "tui prompt accepted" 줄과 짝이 되는 "tui turn finished" 줄이 있는지 본다. 짝이 없으면 Hermes 쪽에서 멈춘 것이다.
 - 훅 목록은 앱 시작 때 오래된 것이 있으면 자동으로 갱신한다(다른 hooks가 config.yaml에 있으면 실패하고, 설정 창에 Update 버튼이 나온다). 실행 중인 gateway는 새 세션을 만들거나 resume할 때 config.yaml을 다시 읽는다.
+- resume한 대화에는 서브에이전트 목록이 없다 (게이트웨이 snapshot에 정보가 없다).
 
 **4단계: OpenCode 연결 — 하지 않기로 했다 (사용자 결정, 2026-11-18).** OpenCode는 칸에서 실행만 되고 상태 표시는 없다. 나중에 다시 하게 되면 `docs/ADAPTERS.md`를 따른다.
 
