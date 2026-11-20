@@ -122,9 +122,20 @@ export function groupSessions(sessions: Session[], now: number, sort: SessionSor
     g.sessions.sort(cmp[sort]);
     g.recent.sort((a, b) => b.seen - a.seen);
   }
-  const mine = (g: Group) => g.sessions.some((s) => waitingOnYou(s, now));
-  // common group last; groups with a my-turn session first
-  return groups.sort((a, b) => Number(a.isCommon) - Number(b.isCommon) || Number(mine(b)) - Number(mine(a)));
+  return groups.sort((a, b) => Number(a.isCommon) - Number(b.isCommon)); // common group last
+}
+
+/** Pulls live sessions waiting on the user out of their folders into one list (approval, question, reply; longest wait first). */
+export function splitNeedsYou(groups: Group[], now: number): { needs: { s: Session; label: string }[]; groups: Group[] } {
+  const needs: { s: Session; label: string }[] = [];
+  const rest: Group[] = [];
+  for (const g of groups) {
+    const keep = g.sessions.filter((s) => !waitingOnYou(s, now));
+    for (const s of g.sessions) if (!keep.includes(s)) needs.push({ s, label: g.label });
+    if (keep.length || g.recent.length) rest.push({ ...g, sessions: keep });
+  }
+  needs.sort((a, b) => rank(a.s, now) - rank(b.s, now) || a.s.since - b.s.since);
+  return { needs, groups: rest };
 }
 
 /** q must already be trimmed and lowercased. */

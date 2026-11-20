@@ -27,7 +27,8 @@ body.row-dragging, body.row-dragging * { cursor: grabbing !important; user-selec
 .row:hover { background: var(--hover-soft); }
 .row.focused { background: var(--surface-2); border-top-color: var(--line); border-bottom-color: var(--line); border-left-color: var(--accent); }
 .row-top > * { flex: none; }
-.row-top > .row-branch { flex: 0 1 auto; }
+.row-top > .row-folder { color: var(--text-3); font-size: 12px; flex: 0 1 auto; }
+.row-top > .row-branch { flex: 0 100 auto; }
 .row-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .row-agent { font-weight: 500; }
 .row-state { font-size: 12px; white-space: nowrap; }

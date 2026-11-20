@@ -11,9 +11,9 @@ const TODO_ICON: Record<Todo["status"], typeof Circle> = { done: CircleCheck, in
 
 export interface RowDrag { dragging: boolean; onPointerDown: (e: React.PointerEvent<HTMLElement>) => void; onMove: (dir: -1 | 1) => void }
 
-export default function SessionRow({ s, now, focused, onClick, onApprove, onStop, onArchive, onHide, archived, drag, unread }: {
+export default function SessionRow({ s, now, focused, onClick, onApprove, onStop, onArchive, onHide, archived, drag, unread, folder }: {
   s: Session; now: number; focused: boolean; onClick: () => void; onApprove: (allow: boolean) => void; onStop: () => void;
-  onArchive?: () => void; onHide?: () => void; archived?: boolean; drag?: RowDrag; unread?: boolean;
+  onArchive?: () => void; onHide?: () => void; archived?: boolean; drag?: RowDrag; unread?: boolean; folder?: string;
 }) {
   const st = displayState(s, now);
   const tone = TONE[st];
@@ -30,6 +30,7 @@ export default function SessionRow({ s, now, focused, onClick, onApprove, onStop
       <div className="row-top">
         <span className={`dot ${tone}${working ? " blink" : ""}`} />
         <span className="row-agent">{agentName(s.agent)}</span>
+        {folder && <span className="row-folder ellipsis">{folder}</span>}
         {s.branch && <span className="row-branch ellipsis">{s.branch}</span>}
         {st !== "plain" && st !== "ready" && <span className={`row-state ${tone}`}>{stateLabel(st)}</span>}
         <span className="row-time">{shown !== null && fmtElapsed(shown)}</span>

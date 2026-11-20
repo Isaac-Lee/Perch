@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUpDown, Check, ChevronDown, ChevronRight, PanelLeftClose, Plus, Search, X } from "lucide-react";
 import type { Group, Pane, Session } from "../lib/types";
-import { SESSION_SORTS, displayState, groupSessions, groupSummary, isUnread, matchSession, moveInOrder, waitingOnYou, type SessionSort } from "../lib/groups";
+import { SESSION_SORTS, displayState, groupSessions, groupSummary, isUnread, matchSession, moveInOrder, splitNeedsYou, waitingOnYou, type SessionSort } from "../lib/groups";
 import SessionRow from "./SessionRow";
 import { clampSidebarWidth, SIDEBAR_DEFAULT, MAX_ORDER, loadArchived, loadCollapsed, loadDismissed, saveDismissed, loadReadAt, saveReadAt, markRead, loadSessionOrder, loadSessionSort, saveArchived, saveCollapsed, saveSessionOrder, saveSessionSort } from "../lib/uiSettings";
 import { useScrollReveal } from "../lib/useScrollReveal";
@@ -37,16 +37,18 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
   const [readAt, setReadAt] = useState<Record<string, number>>(loadReadAt);
   const markSeen = (id: string) => setReadAt((m) => { const n = markRead(m, id, now); saveReadAt(n); return n; });
   const allGroups = useMemo(() => groupSessions(shown, now, sort, order, dismissed, readAt), [shown, now, sort, order, dismissed, readAt]);
+  const allSplit = useMemo(() => splitNeedsYou(allGroups, now), [allGroups, now]);
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
-  const groups = useMemo(() => (q ? groupSessions(shown.filter((s) => matchSession(s, q)), now, sort, order, dismissed, readAt) : allGroups), [q, shown, now, allGroups, sort, order, dismissed, readAt]);
+  const split = useMemo(() => (q ? splitNeedsYou(groupSessions(shown.filter((s) => matchSession(s, q)), now, sort, order, dismissed, readAt), now) : allSplit), [q, shown, now, allSplit, sort, order, dismissed, readAt]);
+  const groups = split.groups;
   const chooseSort = (s: SessionSort) => { setSort(s); saveSessionSort(s); };
   // Reordering switches to manual; the saved order is the whole visible order so nothing jumps.
   const reorder = (gkey: string, id: string, to: number) => {
-    const g = allGroups.find((x) => x.key === gkey);
+    const g = allSplit.groups.find((x) => x.key === gkey);
     if (!g) return;
     const moved = moveInOrder(g.sessions.map((s) => s.sessionId), id, to);
-    const vis = allGroups.flatMap((x) => (x.key === gkey ? moved : x.sessions.map((s) => s.sessionId)));
+    const vis = allSplit.groups.flatMap((x) => (x.key === gkey ? moved : x.sessions.map((s) => s.sessionId)));
     const seen = new Set(vis);
     const next = [...vis, ...order.filter((i) => !seen.has(i))].slice(0, MAX_ORDER);
     setOrder(next); saveSessionOrder(next); chooseSort("manual");
@@ -104,8 +106,8 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
   const todayTok = useMemo(() => summarize(sessions, "today", now).total.total, [sessions, now]);
   const isFolded = (k: string) => !q && folded.has(k);
   const isOpen = (k: string) => !!q || open.has(k);
-  const row = (s: Session, g?: Group) => (
-    <SessionRow key={s.sessionId} s={s} now={now} unread={isUnread(s, readAt, now)} focused={s.sessionId === focusedSession}
+  const row = (s: Session, g?: Group, folder?: string) => (
+    <SessionRow key={s.sessionId} s={s} now={now} unread={isUnread(s, readAt, now)} folder={folder} focused={s.sessionId === focusedSession}
       drag={g && !q ? {
         dragging: rowDrag?.id === s.sessionId,
         onPointerDown: (e) => onPointerDown(e, s.sessionId),
@@ -117,7 +119,7 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
         },
       } : undefined}
       onClick={() => { if (!suppressClick.current) { onFocus(s.sessionId); markSeen(s.sessionId); } }} onApprove={(a) => onApprove(s.sessionId, a)} onStop={() => onStop(s.sessionId)}
-      onHide={g ? () => { if (s.paneId) onClosePane(s.paneId); dismiss(s.sessionId); } : undefined}
+      onHide={g || folder ? () => { if (s.paneId) onClosePane(s.paneId); dismiss(s.sessionId); } : undefined}
       onArchive={() => { if (s.paneId) onClosePane(s.paneId); toggleArchive(s.sessionId); }} archived={hiddenIn(archived, s)} />
   );
   const toggle = (k: string) => setOpen((o) => { const n = new Set(o); if (!n.delete(k)) n.add(k); return n; });
@@ -157,7 +159,13 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
       </div>
       <div className="side-body" ref={bodyRef}>
         <div>
-        {q && groups.length === 0 && archivedList.length === 0 && <div className="side-empty">일치하는 세션이 없습니다.</div>}
+        {q && groups.length === 0 && split.needs.length === 0 && archivedList.length === 0 && <div className="side-empty">일치하는 세션이 없습니다.</div>}
+        {split.needs.length > 0 && (
+          <div className="group needs-you">
+            <div className="group-title"><span className="ellipsis">Needs you</span><span className="count">{split.needs.length}</span></div>
+            {split.needs.map(({ s, label }) => row(s, undefined, label))}
+          </div>
+        )}
         {groups.map((g) => (
           <div key={g.key} className="group" data-gkey={g.key}>
             <div className="group-head">
