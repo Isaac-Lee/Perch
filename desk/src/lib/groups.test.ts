@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { COMMON_LABEL, displayState, groupSessions, groupSummary, matchSession, moveInOrder, shownSeconds } from "./groups";
+import { COMMON_LABEL, displayState, groupSessions, groupSummary, isUnread, splitNeedsYou, matchSession, moveInOrder, shownSeconds } from "./groups";
 import type { Session } from "./types";
 
 const NOW = 1_000_000;
@@ -41,7 +41,7 @@ test("one folder spelled differently (slashes, drive case, trailing separator) i
   expect(g[0].sessions).toHaveLength(3);
 });
 
-test("groups with my-turn sessions come first; inner order by state then since", () => {
+test("inner order by state then since", () => {
   const busy = mk({ repoRoot: "D:\\r\\busy", state: "running" });
   const a = mk({ repoRoot: "D:\\r\\wait", state: "idle", prompt: "x", since: NOW - 50 });
   const b = mk({ repoRoot: "D:\\r\\wait", state: "approval", since: NOW - 40 });
@@ -52,9 +52,7 @@ test("groups with my-turn sessions come first; inner order by state then since",
   const g1 = mk({ repoRoot: "D:\\r\\wait", state: "idle", prompt: "x", since: NOW - 90 });
   const rd = mk({ repoRoot: "D:\\r\\wait", state: "idle", since: NOW - 10 });
   const g = groupSessions([busy, a, b, c, d, e, f, g1, rd], NOW);
-  expect(g[0].label).toBe("wait");
-  expect(g[0].sessions).toEqual([b, c, g1, a, d, rd, e, f]);
-  expect(g[1].label).toBe("busy");
+  expect(g.find((x) => x.label === "wait")!.sessions).toEqual([b, c, g1, a, d, rd, e, f]);
 });
 
 const R = "D:\\r\\sort";
@@ -110,12 +108,12 @@ test("displayState: working state with no event for 10+ minutes is stale", () =>
 
 test("done and ready are not counted as mine", () => {
   const [g] = groupSessions([mk({ prompt: "x" }), mk()], NOW);
-  expect(groupSummary(g, NOW)).toEqual({ mine: 0, working: 0 });
+  expect(groupSummary(g, NOW)).toEqual({ mine: 0, working: 0, unread: 1 });
 });
 
 test("plain sessions are neither mine nor working in groupSummary", () => {
   const [g] = groupSessions([mk({ state: "plain" })], NOW);
-  expect(groupSummary(g, NOW)).toEqual({ mine: 0, working: 0 });
+  expect(groupSummary(g, NOW)).toEqual({ mine: 0, working: 0, unread: 0 });
 });
 
 test("recent: closed or >24h goes to recent, >7d dropped, paneId always stays", () => {
@@ -182,8 +180,67 @@ test("reply: idle session whose last reply asks a question", () => {
   const g = groupSessions([d, t, r, q], NOW);
   expect(g[0].sessions).toEqual([q, r, d, t]);
   // counts as waiting on the user
-  expect(groupSummary(g[0], NOW)).toEqual({ mine: 2, working: 1 });
-  // and pulls its group to the top
-  const other = groupSessions([mk({ repoRoot: "D:/r/z", state: "running" }), mk({ repoRoot: "D:/r/a", state: "idle", prompt: "x", asks: true })], NOW);
-  expect(other[0].label).toBe("a");
+  expect(groupSummary(g[0], NOW)).toEqual({ mine: 2, working: 1, unread: 2 });
+});
+
+test("isUnread: done/reply until read, again after a state change, never for other states", () => {
+  const s = mk({ state: "idle", prompt: "x", since: NOW - 100 });
+  expect(isUnread(s, {}, NOW)).toBe(true);
+  expect(isUnread(s, { [s.sessionId]: NOW - 100 }, NOW)).toBe(false);
+  expect(isUnread(s, { [s.sessionId]: NOW - 101 }, NOW)).toBe(true);
+  expect(isUnread({ ...s, since: NOW - 5 }, { [s.sessionId]: NOW - 50 }, NOW)).toBe(true);
+  expect(isUnread(mk({ state: "idle", prompt: "x", asks: true }), {}, NOW)).toBe(true);
+  for (const state of ["approval", "question", "running", "thinking", "tool", "closed"] as const) expect(isUnread(mk({ state }), {}, NOW)).toBe(false);
+  expect(isUnread(mk({ state: "idle" }), {}, NOW)).toBe(false);
+});
+
+test("status sort puts an unread done above a read done; groupSummary counts unread", () => {
+  const R2 = "D:\\r\\unread";
+  const seenOne = mk({ repoRoot: R2, state: "idle", prompt: "x", since: NOW - 300 });
+  const fresh = mk({ repoRoot: R2, state: "idle", prompt: "y", since: NOW - 50 });
+  const readAt = { [seenOne.sessionId]: NOW - 10 };
+  expect(groupSessions([seenOne, fresh], NOW)[0].sessions).toEqual([seenOne, fresh]);
+  const g = groupSessions([seenOne, fresh], NOW, "status", [], new Set(), readAt);
+  expect(g[0].sessions).toEqual([fresh, seenOne]);
+  expect(groupSummary(g[0], NOW, readAt).unread).toBe(1);
+  expect(groupSummary(g[0], NOW).unread).toBe(2);
+});
+
+test("splitNeedsYou: members leave their folder, ordered approval, question, reply, then longest wait", () => {
+  const rep = mk({ repoRoot: "D:/r/a", state: "idle", prompt: "x", asks: true, since: NOW - 900 });
+  const q1 = mk({ repoRoot: "D:/r/b", state: "question", since: NOW - 50 });
+  const q2 = mk({ repoRoot: "D:/r/a", state: "question", since: NOW - 500 });
+  const ap = mk({ repoRoot: "D:/r/b", state: "approval", since: NOW - 10 });
+  const work = mk({ repoRoot: "D:/r/a", state: "tool" });
+  const done = mk({ repoRoot: "D:/r/a", state: "idle", prompt: "x" });
+  for (const sort of ["status", "recent", "name", "manual"] as const) {
+    const { needs, groups } = splitNeedsYou(groupSessions([rep, q1, q2, ap, work, done], NOW, sort), NOW);
+    expect(needs.map((n) => n.s)).toEqual([ap, q2, q1, rep]);
+    expect(needs.map((n) => n.label)).toEqual(["b", "a", "b", "a"]);
+    const all = groups.flatMap((g) => g.sessions);
+    expect(all).toHaveLength(2);
+    expect(all).toEqual(expect.arrayContaining([work, done]));
+  }
+});
+
+test("splitNeedsYou: no members gives empty needs; group dropped only when fully empty", () => {
+  const { needs, groups } = splitNeedsYou(groupSessions([mk({ repoRoot: "D:/r/a", state: "tool" })], NOW), NOW);
+  expect(needs).toEqual([]);
+  expect(groups).toHaveLength(1);
+  const ap = mk({ repoRoot: "D:/r/only", state: "approval" });
+  const old = mk({ repoRoot: "D:/r/keep", state: "approval" });
+  const rec = mk({ repoRoot: "D:/r/keep", state: "closed", seen: NOW - 200_000 });
+  const r = splitNeedsYou(groupSessions([ap, old, rec], NOW), NOW);
+  expect(r.needs).toHaveLength(2);
+  expect(r.groups.map((g) => g.label)).toEqual(["keep"]);
+  expect(r.groups[0].sessions).toEqual([]);
+  expect(r.groups[0].recent).toEqual([rec]);
+});
+
+test("splitNeedsYou works on a filtered subset and labels the common group", () => {
+  const ap = mk({ state: "approval" });
+  const other = mk({ repoRoot: "D:/r/a", state: "question" });
+  const { needs } = splitNeedsYou(groupSessions([ap], NOW), NOW);
+  expect(needs).toEqual([{ s: ap, label: COMMON_LABEL }]);
+  expect(other.state).toBe("question");
 });

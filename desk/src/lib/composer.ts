@@ -50,3 +50,30 @@ export function parseModelArg(arg: string): { model: string; provider: string } 
 }
 
 export const EFFORT_LEVELS = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
+
+/** User prompt texts, newest first; image-only sends skipped, consecutive duplicates collapsed. */
+export function promptHistory(items: readonly { kind: string; text?: string }[]): string[] {
+  const out: string[] = [];
+  for (let i = items.length - 1; i >= 0; i--) {
+    const t = items[i].kind === "user" ? items[i].text : undefined;
+    if (t && t.trim() && out[out.length - 1] !== t) out.push(t);
+  }
+  return out;
+}
+
+/** Up/Down prompt history. Null = not handled (textarea default). index -1 = not browsing; `saved` is the draft from before browsing. */
+export function historyStep(i: {
+  key: string; shiftKey: boolean; ctrlKey: boolean; altKey: boolean; metaKey: boolean; isComposing: boolean; keyCode: number; menuOpen: boolean;
+  text: string; selectionStart: number; selectionEnd: number; history: string[]; index: number; saved: string;
+}): { index: number; text: string; saved: string } | null {
+  if (i.shiftKey || i.ctrlKey || i.altKey || i.metaKey || i.isComposing || i.keyCode === 229 || i.menuOpen) return null;
+  if (i.key === "ArrowUp") {
+    if (i.text.slice(0, i.selectionStart).includes("\n") || i.index + 1 >= i.history.length) return null;
+    return { index: i.index + 1, text: i.history[i.index + 1], saved: i.index === -1 ? i.text : i.saved };
+  }
+  if (i.key === "ArrowDown") {
+    if (i.index === -1 || i.text.slice(i.selectionEnd).includes("\n")) return null;
+    return i.index === 0 ? { index: -1, text: i.saved, saved: i.saved } : { index: i.index - 1, text: i.history[i.index - 1], saved: i.saved };
+  }
+  return null;
+}
