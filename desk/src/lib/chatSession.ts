@@ -28,11 +28,14 @@ export interface SubagentLive {
   tool: string; toolPreview: string; toolCount: number; /** `at` of the first frame seen (ms epoch), null when the dispatcher passed none */ startAt: number | null;
   durationSec?: number; summary?: string; tokens?: { in: number; out: number }; outputTail?: { tool: string; preview: string; isError: boolean }[];
 }
+/** A prompt the gateway holds behind the running turn; it becomes a user bubble only once it starts or is steered in. */
+export interface QueuedMsg { id: string /* submission_id */; admissionId?: string; text: string; images?: string[]; steering: boolean; canSteer: boolean; /** appeared in a gateway pending list */ seen: boolean }
 export interface ChatState { conn: "connecting" | "ready" | "closed" | "error"; error?: string; sessionId: string | null; executionGeneration: number; revision: number; running: boolean; items: ChatItem[]; prompts: ChatPrompt[]; model: string | null; effort: string | null; /** ms epoch the current turn began; set from timestamps the dispatcher passes in (the reducer stays pure) */ turnStart: number | null; /** Hermes status line (thinking.delta) */ status: string; /** tool named by tool.generating, before its tool.start */ generating: string;
+  /** prompts waiting behind the running turn (not in `items` yet) */ queued: QueuedMsg[];
   /** `at` of a local prompt that has not seen message.start yet (the optimistic window); null otherwise */ sentAt: number | null;
   /** the user cleared a stuck indicator by hand: the next real frame turns it back on */ cleared: boolean;
   /** delegate_task children by subagent_id. Not in session.resume snapshots: after a resume/reconnect only children seen live exist. */ subagents: Record<string, SubagentLive> }
-export const initialChat: ChatState = { conn: "connecting", sessionId: null, executionGeneration: 0, revision: 0, running: false, items: [], prompts: [], model: null, effort: null, turnStart: null, status: "", generating: "", sentAt: null, cleared: false, subagents: {} };
+export const initialChat: ChatState = { conn: "connecting", sessionId: null, executionGeneration: 0, revision: 0, running: false, items: [], prompts: [], queued: [], model: null, effort: null, turnStart: null, status: "", generating: "", sentAt: null, cleared: false, subagents: {} };
 export type ChatAction =
   | { t: "conn"; conn: ChatState["conn"]; error?: string }
   | { t: "snapshot"; snap: any; at?: number }
@@ -45,6 +48,10 @@ export type ChatAction =
   /** Stop pressed twice on a turn Hermes will not end: drop Perch's indicators only */
   | { t: "clear" }
   | { t: "promptDone"; promptId: string }
+  | { t: "queued"; id: string; text: string; images?: string[] }
+  | { t: "receipt"; id: string; admissionId?: string; status?: string }
+  | { t: "unqueue"; id: string }
+  | { t: "steering"; id: string; on: boolean }
   | { t: "userSent"; id: string; text: string; images?: string[]; /** set for a real prompt (not a slash command): starts the turn clock at once */ at?: number }
   | { t: "event"; ev: GatewayEvent; at?: number };
 
@@ -106,6 +113,29 @@ export function toPrompt(p: any, kind: string): ChatPrompt | null {
   return question ? { ...out, question, multiSelect: p.multi_select === true } : null;
 }
 
+/** CanonicalPendingAdmission rows that still wait: queued, or being handed to the running turn (steering). */
+const waitingRows = (pending: unknown): any[] => (Array.isArray(pending) ? pending : []).filter((r) => isObj(r) && (r.status === "queued" || r.steering === true));
+const toQueued = (r: any): QueuedMsg => ({ id: str(r.input_id) || str(r.admission_id), admissionId: str(r.admission_id) || undefined, text: str(r.text), steering: !!r.steering, canSteer: r.controls == null ? true : Array.isArray(r.controls) && r.controls.includes("steer"), seen: true });
+/** Waiting rows of a gateway `pending` list as queue entries (input_id is the submission_id we sent). */
+export const pendingToQueued = (pending: unknown): QueuedMsg[] => waitingRows(pending).map(toQueued);
+/** Moves entries out of the queue and into the transcript as user bubbles. */
+function leave(s: ChatState, gone: QueuedMsg[]): ChatState {
+  if (!gone.length) return s;
+  const items = [...settle(s.items)];
+  for (const q of gone) items.push({ kind: "user", id: `u${items.length}`, text: q.text, images: q.images });
+  return { ...s, queued: s.queued.filter((q) => !gone.includes(q)), items };
+}
+/** session.info `pending` is the full queue: match local entries, bubble the ones that left it, adopt foreign rows. */
+function reconcileQueue(s: ChatState, pending: unknown): ChatState {
+  const rows = waitingRows(pending), used = new Set<any>(), gone: QueuedMsg[] = [];
+  const kept = s.queued.flatMap((q) => {
+    const row = rows.find((r) => !used.has(r) && (str(r.input_id) === q.id || (!!q.admissionId && str(r.admission_id) === q.admissionId)));
+    if (row) { used.add(row); return [{ ...q, ...toQueued(row), id: q.id, text: q.text, images: q.images }]; }
+    if (q.seen || q.admissionId) { gone.push(q); return []; }
+    return [q]; // optimistic: the receipt is still on its way
+  });
+  return leave({ ...s, queued: [...kept, ...rows.filter((r) => !used.has(r)).map(toQueued)] }, gone);
+}
 const addPrompt = (s: ChatState, pr: ChatPrompt | null): ChatState =>
   !pr || s.prompts.some((x) => x.promptId === pr.promptId) ? s : { ...s, prompts: [...s.prompts, pr] };
 const dropPrompt = (s: ChatState, id: string): ChatState =>
@@ -118,7 +148,7 @@ export function chatReducer(s: ChatState, a: ChatAction): ChatState {
       ...s, conn: "ready", error: undefined, sessionId: a.snap.session_id ?? null,
       executionGeneration: typeof a.snap.execution_generation === "number" ? a.snap.execution_generation : s.executionGeneration,
       revision: typeof a.snap.revision === "number" ? a.snap.revision : 0,
-      sentAt: null, cleared: false, running: !!a.snap.running, turnStart: a.snap.running ? s.turnStart ?? a.at ?? null : null, model: a.snap.info?.model || s.model, effort: str(a.snap.info?.reasoning_effort) || s.effort, items: transcriptToItems(a.snap.messages ?? []), prompts: (Array.isArray(a.snap.prompts) ? a.snap.prompts : []).map((p: any) => toPrompt(p, p?.kind)).filter((p: ChatPrompt | null): p is ChatPrompt => !!p),
+      sentAt: null, cleared: false, running: !!a.snap.running, turnStart: a.snap.running ? s.turnStart ?? a.at ?? null : null, model: a.snap.info?.model || s.model, effort: str(a.snap.info?.reasoning_effort) || s.effort, items: transcriptToItems(a.snap.messages ?? []), prompts: (Array.isArray(a.snap.prompts) ? a.snap.prompts : []).map((p: any) => toPrompt(p, p?.kind)).filter((p: ChatPrompt | null): p is ChatPrompt => !!p), queued: pendingToQueued(a.snap.pending),
     };
     case "modelChanged": return { ...s, revision: a.revision, executionGeneration: a.executionGeneration, model: a.model };
     case "effortChanged": return { ...s, revision: a.revision, executionGeneration: a.executionGeneration, effort: a.effort };
@@ -128,6 +158,14 @@ export function chatReducer(s: ChatState, a: ChatAction): ChatState {
       : { ...s, items: [...s.items, { kind: "background", id: `bg-${a.taskId}`, taskId: a.taskId, text: a.text, status: "running", startedAt: a.at }] };
     case "clear": return { ...endTurn(s), cleared: true };
     case "promptDone": return dropPrompt(s, a.promptId);
+    case "queued": return { ...s, queued: [...s.queued, { id: a.id, text: a.text, images: a.images, steering: false, canSteer: true, seen: false }] };
+    case "unqueue": return s.queued.some((q) => q.id === a.id) ? { ...s, queued: s.queued.filter((q) => q.id !== a.id) } : s;
+    case "steering": return { ...s, queued: s.queued.map((q) => (q.id === a.id ? { ...q, steering: a.on } : q)) };
+    case "receipt": {
+      const q = s.queued.find((x) => x.id === a.id);
+      if (!q) return s;
+      return a.status !== "queued" ? leave(s, [q]) : { ...s, queued: s.queued.map((x) => (x === q ? { ...q, admissionId: a.admissionId ?? q.admissionId } : x)) };
+    }
     case "userSent": return {
       ...s, items: [...settle(s.items), { kind: "user", id: a.id, text: a.text, images: a.images }],
       ...(a.at != null && !s.running ? { running: true, turnStart: a.at, sentAt: a.at, cleared: false } : {}),
@@ -265,7 +303,8 @@ function onEvent(s: ChatState, ev: GatewayEvent, at?: number): ChatState {
     }
     case "session.info": {
       const model = str(p.model), effort = str(p.reasoning_effort);
-      const n = model || effort ? { ...s, model: model || s.model, effort: effort || s.effort } : s;
+      let n = model || effort ? { ...s, model: model || s.model, effort: effort || s.effort } : s;
+      if (Array.isArray(p.pending)) n = reconcileQueue(n, p.pending);
       return typeof p.running === "boolean" ? applyRunning(n, p.running, at) : n;
     }
     // keeps later session.mutate calls from going stale
@@ -470,10 +509,13 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
     rpcRef.current.request(method, { session_id: stateRef.current.sessionId, execution_generation: pr.executionGeneration, prompt_id: promptId, ...field }).then(done, done);
   };
 
-  const submit = (sid: string, text: string, attachments?: { path: string; mime: string }[]) =>
-    rpcRef.current?.request("prompt.submit", { session_id: sid, text, submission_id: crypto.randomUUID(), ...(attachments?.length ? { attachments } : {}) }).then(
-      (r) => { const f = submitFailure(r); if (f) dispatch({ t: "event", ev: { type: "error", payload: { message: f } } }); },
-      (e) => dispatch({ t: "event", ev: { type: "error", payload: { message: e instanceof Error ? e.message : String(e) } } }));
+  /** `qid` set = queued behind a running turn: the entry is dropped again when the gateway refuses it. */
+  const submit = (sid: string, text: string, attachments?: { path: string; mime: string }[], qid?: string) => {
+    const fail = (message: string) => { if (qid) dispatch({ t: "unqueue", id: qid }); dispatch({ t: "event", ev: { type: "error", payload: { message } } }); };
+    return rpcRef.current?.request<{ admission_id?: string; status?: string }>("prompt.submit", { session_id: sid, text, submission_id: qid ?? crypto.randomUUID(), ...(attachments?.length ? { attachments } : {}) }).then(
+      (r) => { const f = submitFailure(r); if (f) fail(f); else if (qid) dispatch({ t: "receipt", id: qid, admissionId: r?.admission_id, status: r?.status }); },
+      (e) => fail(e instanceof Error ? e.message : String(e)));
+  };
   const say = (text: string) => dispatch({ t: "system", text });
   // slash.exec first; command.dispatch handles skill/send/alias names it does not know. An alias is followed once.
   async function runSlash(sid: string, text: string, aliased = false): Promise<void> {
@@ -542,9 +584,27 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
       const sid = stateRef.current.sessionId;
       if (!sid || !canSend(stateRef.current)) return;
       const slash = !attachments?.length && isSlashCommand(text);
-      dispatch({ t: "userSent", id: `u${stateRef.current.items.length}`, text, images: attachments?.map((a) => a.path), ...(slash ? {} : { at: Date.now() }) });
+      const images = attachments?.map((a) => a.path);
+      if (!slash && stateRef.current.running) { // behind the running turn: shown in the queue dock, not as a bubble
+        const id = crypto.randomUUID();
+        dispatch({ t: "queued", id, text, images });
+        submit(sid, text, attachments, id);
+        return;
+      }
+      dispatch({ t: "userSent", id: `u${stateRef.current.items.length}`, text, images, ...(slash ? {} : { at: Date.now() }) });
       if (slash) runSlash(sid, text).catch((e) => say(e instanceof Error ? e.message : String(e)));
       else submit(sid, text, attachments);
+    },
+    /** 지금 보내기: hands a queued prompt to the running turn. session.info then reports it as steering and later drops it. */
+    sendNow(id: string) {
+      const rpc = rpcRef.current, sid = stateRef.current.sessionId, q = stateRef.current.queued.find((x) => x.id === id);
+      if (!rpc || !sid || !q?.admissionId || !q.canSteer || q.steering) return;
+      dispatch({ t: "steering", id, on: true });
+      rpc.request("prompt.steer_queued", { session_id: sid, admission_id: q.admissionId }).catch((e) => {
+        dispatch({ t: "steering", id, on: false });
+        const m = e instanceof Error ? e.message : String(e);
+        say(m === "session_idle" ? "작업이 이미 끝나 곧 순서대로 실행됩니다" : m === "admission_started" ? "이미 실행이 시작됐습니다" : `지금 보내지 못했습니다: ${m}`);
+      });
     },
     async completeSlash(text: string): Promise<{ items: { text: string; display?: string; meta?: string; kind?: string | null }[]; replaceFrom: number }> {
       const rpc = rpcRef.current, sid = stateRef.current.sessionId;
