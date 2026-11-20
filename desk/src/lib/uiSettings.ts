@@ -29,6 +29,17 @@ export const saveSessionOrder = (ids: string[]) => write("perch.sessionOrder", i
 export const loadDismissed = (): string[] => { const v = read<unknown>("perch.dismissedSessions", []); return Array.isArray(v) ? v.filter((x) => typeof x === "string").slice(-MAX_ORDER) : []; };
 export const saveDismissed = (ids: string[]) => write("perch.dismissedSessions", ids.slice(-MAX_ORDER));
 
+const capNewest = (m: Record<string, number>): Record<string, number> =>
+  Object.fromEntries(Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, MAX_ORDER));
+/** sessionId -> unix seconds when the user last saw its result. */
+export const loadReadAt = (): Record<string, number> => {
+  const v = read<unknown>("perch.readAt", {});
+  if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+  return capNewest(Object.fromEntries(Object.entries(v).filter((e): e is [string, number] => typeof e[1] === "number" && Number.isFinite(e[1]))));
+};
+export const saveReadAt = (m: Record<string, number>) => write("perch.readAt", capNewest(m));
+export const markRead = (m: Record<string, number>, id: string, t: number): Record<string, number> => capNewest({ ...m, [id]: t });
+
 export const THEMES = [["dark", "Dark"], ["midnight", "Midnight"], ["black", "Black"], ["light", "Light"]] as const;
 export type ThemeId = (typeof THEMES)[number][0];
 export const loadTheme = (): ThemeId => { const v = read<unknown>("perch.theme", "dark"); return THEMES.some(([id]) => id === v) ? (v as ThemeId) : "dark"; };

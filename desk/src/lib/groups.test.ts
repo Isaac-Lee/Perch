@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { COMMON_LABEL, displayState, groupSessions, groupSummary, matchSession, moveInOrder, shownSeconds } from "./groups";
+import { COMMON_LABEL, displayState, groupSessions, groupSummary, isUnread, matchSession, moveInOrder, shownSeconds } from "./groups";
 import type { Session } from "./types";
 
 const NOW = 1_000_000;
@@ -110,12 +110,12 @@ test("displayState: working state with no event for 10+ minutes is stale", () =>
 
 test("done and ready are not counted as mine", () => {
   const [g] = groupSessions([mk({ prompt: "x" }), mk()], NOW);
-  expect(groupSummary(g, NOW)).toEqual({ mine: 0, working: 0 });
+  expect(groupSummary(g, NOW)).toEqual({ mine: 0, working: 0, unread: 1 });
 });
 
 test("plain sessions are neither mine nor working in groupSummary", () => {
   const [g] = groupSessions([mk({ state: "plain" })], NOW);
-  expect(groupSummary(g, NOW)).toEqual({ mine: 0, working: 0 });
+  expect(groupSummary(g, NOW)).toEqual({ mine: 0, working: 0, unread: 0 });
 });
 
 test("recent: closed or >24h goes to recent, >7d dropped, paneId always stays", () => {
@@ -182,8 +182,31 @@ test("reply: idle session whose last reply asks a question", () => {
   const g = groupSessions([d, t, r, q], NOW);
   expect(g[0].sessions).toEqual([q, r, d, t]);
   // counts as waiting on the user
-  expect(groupSummary(g[0], NOW)).toEqual({ mine: 2, working: 1 });
+  expect(groupSummary(g[0], NOW)).toEqual({ mine: 2, working: 1, unread: 2 });
   // and pulls its group to the top
   const other = groupSessions([mk({ repoRoot: "D:/r/z", state: "running" }), mk({ repoRoot: "D:/r/a", state: "idle", prompt: "x", asks: true })], NOW);
   expect(other[0].label).toBe("a");
+});
+
+test("isUnread: done/reply until read, again after a state change, never for other states", () => {
+  const s = mk({ state: "idle", prompt: "x", since: NOW - 100 });
+  expect(isUnread(s, {}, NOW)).toBe(true);
+  expect(isUnread(s, { [s.sessionId]: NOW - 100 }, NOW)).toBe(false);
+  expect(isUnread(s, { [s.sessionId]: NOW - 101 }, NOW)).toBe(true);
+  expect(isUnread({ ...s, since: NOW - 5 }, { [s.sessionId]: NOW - 50 }, NOW)).toBe(true);
+  expect(isUnread(mk({ state: "idle", prompt: "x", asks: true }), {}, NOW)).toBe(true);
+  for (const state of ["approval", "question", "running", "thinking", "tool", "closed"] as const) expect(isUnread(mk({ state }), {}, NOW)).toBe(false);
+  expect(isUnread(mk({ state: "idle" }), {}, NOW)).toBe(false);
+});
+
+test("status sort puts an unread done above a read done; groupSummary counts unread", () => {
+  const R2 = "D:\\r\\unread";
+  const seenOne = mk({ repoRoot: R2, state: "idle", prompt: "x", since: NOW - 300 });
+  const fresh = mk({ repoRoot: R2, state: "idle", prompt: "y", since: NOW - 50 });
+  const readAt = { [seenOne.sessionId]: NOW - 10 };
+  expect(groupSessions([seenOne, fresh], NOW)[0].sessions).toEqual([seenOne, fresh]);
+  const g = groupSessions([seenOne, fresh], NOW, "status", [], new Set(), readAt);
+  expect(g[0].sessions).toEqual([fresh, seenOne]);
+  expect(groupSummary(g[0], NOW, readAt).unread).toBe(1);
+  expect(groupSummary(g[0], NOW).unread).toBe(2);
 });

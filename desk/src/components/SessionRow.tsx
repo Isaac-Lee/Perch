@@ -11,16 +11,16 @@ const TODO_ICON: Record<Todo["status"], typeof Circle> = { done: CircleCheck, in
 
 export interface RowDrag { dragging: boolean; onPointerDown: (e: React.PointerEvent<HTMLElement>) => void; onMove: (dir: -1 | 1) => void }
 
-export default function SessionRow({ s, now, focused, onClick, onApprove, onStop, onArchive, onHide, archived, drag }: {
+export default function SessionRow({ s, now, focused, onClick, onApprove, onStop, onArchive, onHide, archived, drag, unread }: {
   s: Session; now: number; focused: boolean; onClick: () => void; onApprove: (allow: boolean) => void; onStop: () => void;
-  onArchive?: () => void; onHide?: () => void; archived?: boolean; drag?: RowDrag;
+  onArchive?: () => void; onHide?: () => void; archived?: boolean; drag?: RowDrag; unread?: boolean;
 }) {
   const st = displayState(s, now);
   const tone = TONE[st];
   const shown = shownSeconds(s, now);
   const working = st === "running" || st === "thinking" || st === "tool";
   return (
-    <div className={`row${focused ? " focused" : ""}${drag?.dragging ? " dragging" : ""}`} role="button" tabIndex={0} onClick={onClick}
+    <div className={`row${focused ? " focused" : ""}${drag?.dragging ? " dragging" : ""}${unread ? " unread" : ""}`} role="button" tabIndex={0} onClick={onClick}
       data-sid={drag ? s.sessionId : undefined} onPointerDown={drag?.onPointerDown}
       onKeyDown={(e) => {
         if (e.target !== e.currentTarget) return;
@@ -42,7 +42,7 @@ export default function SessionRow({ s, now, focused, onClick, onApprove, onStop
           </button>
         )}
       </div>
-      <div className="row-line"><span className="row-prompt ellipsis" title={s.prompt}>{sessionTitle(s)}</span>{s.subagents.length > 0 && <span className="row-sub">{s.subagents.length === 1 ? "1 agent" : `${s.subagents.length} agents`}</span>}{s.usage && <span className="row-tok" title="Tokens">{fmtTok(totalTokens(s.usage))}</span>}</div>
+      <div className="row-line">{unread && <span className="dot unread" role="img" aria-label="Unread" title="아직 보지 않은 결과가 있습니다." />}<span className="row-prompt ellipsis" title={s.prompt}>{sessionTitle(s)}</span>{s.subagents.length > 0 && <span className="row-sub">{s.subagents.length === 1 ? "1 agent" : `${s.subagents.length} agents`}</span>}{s.usage && <span className="row-tok" title="Tokens">{fmtTok(totalTokens(s.usage))}</span>}</div>
       {s.pending && <div className="row-pending ellipsis">{s.pending.text}</div>}
       {!s.pending && st === "reply" && s.ask && <div className="row-pending ellipsis" title={s.ask}>{s.ask}</div>}
       {s.state === "approval" && (

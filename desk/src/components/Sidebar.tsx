@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUpDown, Check, ChevronDown, ChevronRight, PanelLeftClose, Plus, Search, X } from "lucide-react";
 import type { Group, Pane, Session } from "../lib/types";
-import { SESSION_SORTS, displayState, groupSessions, groupSummary, matchSession, moveInOrder, waitingOnYou, type SessionSort } from "../lib/groups";
+import { SESSION_SORTS, displayState, groupSessions, groupSummary, isUnread, matchSession, moveInOrder, waitingOnYou, type SessionSort } from "../lib/groups";
 import SessionRow from "./SessionRow";
-import { clampSidebarWidth, SIDEBAR_DEFAULT, MAX_ORDER, loadArchived, loadCollapsed, loadDismissed, saveDismissed, loadSessionOrder, loadSessionSort, saveArchived, saveCollapsed, saveSessionOrder, saveSessionSort } from "../lib/uiSettings";
+import { clampSidebarWidth, SIDEBAR_DEFAULT, MAX_ORDER, loadArchived, loadCollapsed, loadDismissed, saveDismissed, loadReadAt, saveReadAt, markRead, loadSessionOrder, loadSessionSort, saveArchived, saveCollapsed, saveSessionOrder, saveSessionSort } from "../lib/uiSettings";
 import { useScrollReveal } from "../lib/useScrollReveal";
 import { useRowDrag } from "../lib/useRowDrag";
 
@@ -34,10 +34,12 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
   const bodyRef = useRef<HTMLDivElement>(null);
   const [sort, setSort] = useState<SessionSort>(loadSessionSort);
   const [order, setOrder] = useState<string[]>(loadSessionOrder);
-  const allGroups = useMemo(() => groupSessions(shown, now, sort, order, dismissed), [shown, now, sort, order, dismissed]);
+  const [readAt, setReadAt] = useState<Record<string, number>>(loadReadAt);
+  const markSeen = (id: string) => setReadAt((m) => { const n = markRead(m, id, now); saveReadAt(n); return n; });
+  const allGroups = useMemo(() => groupSessions(shown, now, sort, order, dismissed, readAt), [shown, now, sort, order, dismissed, readAt]);
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
-  const groups = useMemo(() => (q ? groupSessions(shown.filter((s) => matchSession(s, q)), now, sort, order, dismissed) : allGroups), [q, shown, now, allGroups, sort, order, dismissed]);
+  const groups = useMemo(() => (q ? groupSessions(shown.filter((s) => matchSession(s, q)), now, sort, order, dismissed, readAt) : allGroups), [q, shown, now, allGroups, sort, order, dismissed, readAt]);
   const chooseSort = (s: SessionSort) => { setSort(s); saveSessionSort(s); };
   // Reordering switches to manual; the saved order is the whole visible order so nothing jumps.
   const reorder = (gkey: string, id: string, to: number) => {
@@ -91,6 +93,11 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
     return () => { el.removeEventListener("scroll", calc); ro.disconnect(); };
   }, []);
   const focusedSession = panes.find((p) => p.id === focusedPaneId)?.sessionId;
+  useEffect(() => { // a result is read once its pane has focus
+    const s = focusedSession ? sessions.find((x) => x.sessionId === focusedSession) : undefined;
+    if (s && isUnread(s, readAt, now)) markSeen(s.sessionId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusedSession, now, sessions]);
   const live = allGroups.flatMap((g) => g.sessions);
   const working = live.filter((s) => ["running", "thinking", "tool"].includes(displayState(s, now))).length;
   const mine = live.filter((s) => waitingOnYou(s, now)).length;
@@ -98,7 +105,7 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
   const isFolded = (k: string) => !q && folded.has(k);
   const isOpen = (k: string) => !!q || open.has(k);
   const row = (s: Session, g?: Group) => (
-    <SessionRow key={s.sessionId} s={s} now={now} focused={s.sessionId === focusedSession}
+    <SessionRow key={s.sessionId} s={s} now={now} unread={isUnread(s, readAt, now)} focused={s.sessionId === focusedSession}
       drag={g && !q ? {
         dragging: rowDrag?.id === s.sessionId,
         onPointerDown: (e) => onPointerDown(e, s.sessionId),
@@ -109,7 +116,7 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
           reorder(g.key, s.sessionId, to);
         },
       } : undefined}
-      onClick={() => { if (!suppressClick.current) onFocus(s.sessionId); }} onApprove={(a) => onApprove(s.sessionId, a)} onStop={() => onStop(s.sessionId)}
+      onClick={() => { if (!suppressClick.current) { onFocus(s.sessionId); markSeen(s.sessionId); } }} onApprove={(a) => onApprove(s.sessionId, a)} onStop={() => onStop(s.sessionId)}
       onHide={g ? () => { if (s.paneId) onClosePane(s.paneId); dismiss(s.sessionId); } : undefined}
       onArchive={() => { if (s.paneId) onClosePane(s.paneId); toggleArchive(s.sessionId); }} archived={hiddenIn(archived, s)} />
   );
@@ -158,11 +165,12 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
               {isFolded(g.key) ? <ChevronRight size={16} strokeWidth={1.5} /> : <ChevronDown size={16} strokeWidth={1.5} />}
               <span className="ellipsis">{g.label}</span><span className="count">{g.sessions.length}</span>
               {isFolded(g.key) && (() => {
-                const { mine, working } = groupSummary(g, now);
+                const { mine, working, unread } = groupSummary(g, now, readAt);
                 return (
                   <span className="group-sum">
                     {mine > 0 && <span className="sum-item warn"><span className="dot warn" />{mine}</span>}
                     {working > 0 && <span className="sum-item ok"><span className="dot ok" />{working}</span>}
+                    {unread > 0 && <span className="sum-item unread" title="읽지 않은 세션"><span className="dot unread" />{unread}</span>}
                   </span>
                 );
               })()}

@@ -29,6 +29,12 @@ export function shownSeconds(s: Session, now: number): number | null {
   }
 }
 
+/** A finished result (done/reply) the user has not looked at since the session entered that state. */
+export const isUnread = (s: Session, readAt: Readonly<Record<string, number>>, now: number): boolean => {
+  const d = displayState(s, now);
+  return (d === "done" || d === "reply") && (readAt[s.sessionId] ?? 0) < s.since;
+};
+
 function rank(s: Session, now: number): number {
   switch (displayState(s, now)) {
     case "approval": return 0;
@@ -82,7 +88,7 @@ export function moveInOrder(visibleIds: string[], id: string, toIndex: number): 
   return out;
 }
 
-export function groupSessions(sessions: Session[], now: number, sort: SessionSort = "status", order: string[] = [], dismissed: ReadonlySet<string> = new Set()): Group[] {
+export function groupSessions(sessions: Session[], now: number, sort: SessionSort = "status", order: string[] = [], dismissed: ReadonlySet<string> = new Set(), readAt: Readonly<Record<string, number>> = {}): Group[] {
   const map = new Map<string, Group>();
   for (const s of sessions) {
     const age = now - s.seen;
@@ -102,7 +108,7 @@ export function groupSessions(sessions: Session[], now: number, sort: SessionSor
   const labels = projectLabels(groups.filter((g) => !g.isCommon).map((g) => g.path));
   for (const g of groups) if (!g.isCommon) g.label = labels.get(g.path)!;
 
-  const bySort = (a: Session, b: Session) => rank(a, now) - rank(b, now) || a.since - b.since;
+  const bySort = (a: Session, b: Session) => rank(a, now) - rank(b, now) || Number(isUnread(b, readAt, now)) - Number(isUnread(a, readAt, now)) || a.since - b.since;
   const pos = new Map(order.map((id, i) => [id, i] as const));
   const title = (s: Session) => sessionTitle(s);
   const cmp: Record<SessionSort, (a: Session, b: Session) => number> = {
@@ -130,11 +136,12 @@ export function matchSession(s: Session, q: string): boolean {
 }
 
 /** Counts shown on a collapsed group title so waiting/working sessions are not missed. */
-export function groupSummary(g: Group, now: number): { mine: number; working: number } {
-  let mine = 0, working = 0;
+export function groupSummary(g: Group, now: number, readAt: Readonly<Record<string, number>> = {}): { mine: number; working: number; unread: number } {
+  let mine = 0, working = 0, unread = 0;
   for (const s of g.sessions) {
+    if (isUnread(s, readAt, now)) unread++;
     if (waitingOnYou(s, now)) mine++;
     else if (["running", "thinking", "tool"].includes(displayState(s, now))) working++;
   }
-  return { mine, working };
+  return { mine, working, unread };
 }
