@@ -89,11 +89,11 @@ describe("layoutGraph horizontal", () => {
     }
     list.forEach((n) => expect(at(n.id).y).toBe(PAD + n.level * (72 + ROW_GAP)));
   });
-  it("edges drop from parent bottom (x+16) onto child top (x+16)", () => {
+  it("edges drop from parent bottom-center onto child top (x+16)", () => {
     expect(l.edges).toHaveLength(list.length - 1);
     for (const e of l.edges) {
       const c = at(e.id), p = at(list.find((x) => x.id === e.id)!.parentId!), t = trace(e.d);
-      expect(t.first).toEqual([p.x + 16, p.y + p.h]);
+      expect(t.first).toEqual([p.x + p.w / 2, p.y + p.h]);
       expect(t.end).toEqual([c.x + 16, c.y]);
     }
   });

@@ -22,7 +22,7 @@ function Card({ n, now, Icon, light, rootAct, kids }: { n: GNode; kids: number; 
   const a = n.sub, b = n.bg, st: St = (a?.status ?? b?.status) as St;
   const secs = a ? a.durationSec ?? (a.startAt != null ? (now - a.startAt) / 1000 : null) : b!.durationS ?? (b!.startedAt != null ? (now - b!.startedAt) / 1000 : null);
   const time = secs != null ? fmtElapsed(secs) : "";
-  const l2 = st === "starting" ? "Starting" : st === "running" ? (a ? [a.tool, a.toolPreview].filter(Boolean).join(" ") : "") || "Working" : [kids > 0 && `${kids} agent${kids > 1 ? "s" : ""}`, a && a.toolCount > 0 && `${a.toolCount} tools`, time].filter(Boolean).join(" · ") || (st === "failed" ? "Failed" : "Done");
+  const l2 = st === "starting" ? "Starting" : st === "running" ? (a ? [a.tool, a.toolPreview].filter(Boolean).join(" ") : "") || "Working" : [kids > 0 && `${kids} agent${kids > 1 ? "s" : ""}`, a && a.toolCount > 0 && `${a.toolCount} tool${a.toolCount > 1 ? "s" : ""}`, time].filter(Boolean).join(" · ") || (st === "failed" ? "Failed" : "Done");
   const tool = a ? a.tool : b!.tool ?? "";
   const model = a ? a.model : "Background";
   return (
@@ -66,28 +66,28 @@ export default function SubagentGraph({ pane, rootLabel, title, data, dock, onDo
   const startDrag = (e: React.PointerEvent) => {
     const body = el.current?.parentElement;
     if (e.button !== 0 || !body || (e.target as HTMLElement).closest("button")) return;
-    e.preventDefault();
-    const sx = e.clientX, sy = e.clientY;
+    const sx = e.clientX, sy = e.clientY, head = e.currentTarget as HTMLElement, pid = e.pointerId;
     let on = false, to: "right" | "bottom" | null = null;
     const move = (m: PointerEvent) => {
       if (!on && Math.hypot(m.clientX - sx, m.clientY - sy) < 5) return;
-      if (!on) document.body.classList.add("pane-dragging");
+      if (!on) { document.body.classList.add("pane-dragging"); try { head.setPointerCapture(pid); } catch { /* pointer already gone */ } }
       on = true;
       const r = body.getBoundingClientRect(), fx = (m.clientX - r.left) / r.width, fy = (m.clientY - r.top) / r.height;
       to = fy < 0 || fy > 1 || fx < 0 || fx > 1 ? null : fy > 0.6 ? "bottom" : fx > 0.6 && r.width >= 560 ? "right" : null;
       setDrop(to === "bottom" ? { to, box: { left: r.left, top: r.top + r.height / 2, width: r.width, height: r.height / 2 } } : to === "right" ? { to, box: { left: r.right - 360, top: r.top, width: 360, height: r.height } } : null);
     };
-    const up = () => {
-      window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
+    const stop = () => {
+      window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", stop);
       document.body.classList.remove("pane-dragging"); setDrop(null);
-      if (on && to) onDock(to);
+      try { head.releasePointerCapture(pid); } catch { /* not captured */ }
     };
-    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+    const up = () => { stop(); if (on && to) onDock(to); };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up); window.addEventListener("pointercancel", stop);
   };
   const aid = `sg-arrow-${pane.id}`;
   return (
     <aside ref={el} className={`sg ${dock}`} aria-label="Subagents" tabIndex={-1} onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}>
-      <div className="sg-head" onPointerDown={startDrag}><span className="ellipsis">{data.subagents.length || !data.background.length ? "Subagents" : "Background"}{head && ` · ${head}`}</span><span className="grow" /><button className="icon-btn" aria-label="Close" onPointerDown={(e) => { if (e.button !== 0) return; e.stopPropagation(); onClose(); }} onMouseDown={(e) => e.preventDefault()} onClick={(e) => { e.stopPropagation(); if (e.detail === 0) onClose(); }}><X size={16} strokeWidth={1.5} /></button></div>
+      <div className="sg-head" onPointerDown={startDrag} onMouseDown={(e) => { if (!(e.target as Element).closest("button")) e.preventDefault(); }}><span className="ellipsis">{data.subagents.length || !data.background.length ? "Subagents" : "Background"}{head && ` · ${head}`}</span><span className="grow" /><button className="icon-btn" aria-label="Close" onMouseDown={(e) => { if (e.button !== 0) return; e.preventDefault(); e.stopPropagation(); onClose(); }} onClick={(e) => { e.stopPropagation(); if (e.detail === 0) onClose(); }}><X size={16} strokeWidth={1.5} /></button></div>
       <div className="sg-scroll" ref={box}>
         {w > 0 && (
           <div className="sg-canvas" style={{ width: lay.width, height: lay.height }}>

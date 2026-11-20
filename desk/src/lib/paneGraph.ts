@@ -132,7 +132,7 @@ function layoutSideways(list: { id: string; parentId?: string; level: number; ga
     if (!p) return [];
     const ps = parents.get(n.level)!, lim = ROW_GAP / 2 - 6;
     const my = c.y - ROW_GAP / 2 + Math.max(-lim, Math.min(lim, (ps.indexOf(n.parentId!) - (ps.length - 1) / 2) * 8));
-    return [{ id: n.id, d: round([[p.x + 16, p.y + p.h], [p.x + 16, my], [c.x + 16, my], [c.x + 16, c.y]]) }];
+    return [{ id: n.id, d: round([[p.x + p.w / 2, p.y + p.h], [p.x + p.w / 2, my], [c.x + 16, my], [c.x + 16, c.y]]) }];
   });
   return { nodes, edges, width: Math.max(width, right + PAD), height: bottom + PAD };
 }
