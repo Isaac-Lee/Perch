@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import turn from "./__fixtures__/turn.jsonl?raw";
 import background from "./__fixtures__/background.jsonl?raw";
 import delegate from "./__fixtures__/delegate.jsonl?raw";
-import { STUCK_MSG, WATCHDOG_MS, activityLabel, canSend, submitFailure, watchdogDue, chatReducer, fmtSec, groupItems, staleRetry, initialChat, shouldAutoReconnect, toDirective, toModelProviders, transcriptToItems, type ChatAction } from "./chatSession";
+import { STUCK_MSG, pendingToQueued, WATCHDOG_MS, activityLabel, canSend, submitFailure, watchdogDue, chatReducer, fmtSec, groupItems, staleRetry, initialChat, shouldAutoReconnect, toDirective, toModelProviders, transcriptToItems, type ChatAction } from "./chatSession";
 
 const ev = (type: string, payload: object = {}): ChatAction => ({ t: "event", ev: { type, payload } });
 
@@ -551,5 +551,55 @@ describe("background", () => {
     const f = chatReducer(s, ev("background.complete", { task_id: "bg_000001", text: "error: boom" }));
     expect(f.items[0]).toMatchObject({ status: "failed", result: "error: boom" });
     expect(f.running).toBe(false);
+  });
+});
+
+describe("queued messages", () => {
+  const row = (p: object = {}) => ({ admission_id: "a1", input_id: "q1", text: "hi", status: "queued", ...p });
+  const info = (pending: object[]) => ev("session.info", { pending });
+  const queued = (s = initialChat, id = "q1") => chatReducer(s, { t: "queued", id, text: "hi" });
+  const users = (s: typeof initialChat) => s.items.filter((i) => i.kind === "user");
+
+  it("queues without a bubble, then becomes a bubble once it leaves the gateway queue", () => {
+    let s = chatReducer(queued(), { t: "receipt", id: "q1", admissionId: "a1", status: "queued" });
+    expect(s.queued[0]).toMatchObject({ admissionId: "a1", seen: false });
+    expect(users(s)).toHaveLength(0);
+    s = chatReducer(s, info([row()]));
+    expect(s.queued[0]).toMatchObject({ seen: true, steering: false, canSteer: true });
+    s = chatReducer(s, info([]));
+    expect(s.queued).toEqual([]);
+    expect(users(s)).toMatchObject([{ text: "hi" }]);
+  });
+  it("keeps an optimistic entry whose receipt is pending when pending lacks it", () => {
+    expect(chatReducer(queued(), info([])).queued).toHaveLength(1);
+  });
+  it("a receipt that is not queued (gateway was idle) turns into a bubble at once", () => {
+    const s = chatReducer(queued(), { t: "receipt", id: "q1", admissionId: "a1", status: "started" });
+    expect(s.queued).toEqual([]);
+    expect(users(s)).toMatchObject([{ text: "hi" }]);
+  });
+  it("unqueue drops without a bubble", () => {
+    const s = chatReducer(queued(), { t: "unqueue", id: "q1" });
+    expect(s.queued).toEqual([]);
+    expect(s.items).toEqual([]);
+  });
+  it("adopts waiting rows from elsewhere and ignores started ones", () => {
+    const s = chatReducer(initialChat, info([row({ input_id: "x", admission_id: "ax", text: "other" }), row({ input_id: "y", status: "started" })]));
+    expect(s.queued).toMatchObject([{ id: "x", admissionId: "ax", text: "other", seen: true }]);
+  });
+  it("steering and controls come from the pending row", () => {
+    let s = chatReducer(queued(), info([row({ status: "started", steering: true, controls: ["replace"] })]));
+    expect(s.queued[0]).toMatchObject({ steering: true, canSteer: false });
+    s = chatReducer(s, { t: "steering", id: "q1", on: false });
+    expect(s.queued[0].steering).toBe(false);
+  });
+  it("a snapshot replaces the queue with its waiting rows", () => {
+    const s = chatReducer(queued(), { t: "snapshot", snap: { session_id: "s", messages: [], pending: [row({ input_id: "z" }), row({ input_id: "w", status: "done" })] } });
+    expect(s.queued.map((q) => q.id)).toEqual(["z"]);
+    expect(chatReducer(queued(), { t: "snapshot", snap: { session_id: "s", pending: "bad" } }).queued).toEqual([]);
+    expect(pendingToQueued(undefined)).toEqual([]);
+  });
+  it("clear leaves the queue alone", () => {
+    expect(chatReducer(queued(), { t: "clear" }).queued).toHaveLength(1);
   });
 });
