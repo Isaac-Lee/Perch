@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import turn from "./__fixtures__/turn.jsonl?raw";
+import delegate from "./__fixtures__/delegate.jsonl?raw";
 import { STUCK_MSG, WATCHDOG_MS, activityLabel, canSend, submitFailure, watchdogDue, chatReducer, fmtSec, groupItems, staleRetry, initialChat, shouldAutoReconnect, toDirective, toModelProviders, transcriptToItems, type ChatAction } from "./chatSession";
 
 const ev = (type: string, payload: object = {}): ChatAction => ({ t: "event", ev: { type, payload } });
@@ -461,3 +462,58 @@ describe("gateway running flag", () => {
   });
 });
 
+
+describe("subagents", () => {
+  const sub = (type: string, p: object = {}) => ev(type, { subagent_id: "sa-0", task_count: 2, task_index: 0, goal: "g", ...p });
+
+  it("replays the delegate_task fixture", () => {
+    let s = initialChat, turn1Done = false;
+    for (const l of delegate.split("\n").filter(Boolean)) {
+      const { dir, line } = JSON.parse(l);
+      if (dir !== "in") continue;
+      const m = JSON.parse(line);
+      if (m.method !== "event") continue;
+      const before = s;
+      s = chatReducer(s, { t: "event", ev: m.params });
+      if (m.params.type.startsWith("subagent.")) {
+        expect(s.running).toBe(before.running);
+        expect(s.turnStart).toBe(before.turnStart);
+        if (turn1Done && !before.running) expect(s.running).toBe(false); // late child frames never revive the turn
+      }
+      if (m.params.type === "message.complete") turn1Done = true;
+    }
+    const subs = Object.values(s.subagents);
+    expect(subs).toHaveLength(2);
+    for (const a of subs) { expect(a.status).toBe("done"); expect(a.summary).toBeTruthy(); expect(a.durationSec).toBeGreaterThan(0); expect(a.delegationId).toBeTruthy(); }
+    const host = s.items.find((i) => i.kind === "tool" && i.name === "delegate_task");
+    expect(host?.kind === "tool" && host.subagentIds?.slice().sort()).toEqual(subs.map((a) => a.id).sort());
+    expect(s.running).toBe(false);
+  });
+
+  it("late frames after message.complete leave running false", () => {
+    let s = chatReducer(initialChat, ev("message.start"));
+    s = chatReducer(s, ev("message.complete", { text: "x" }));
+    for (const a of [sub("subagent.thinking"), sub("subagent.tool", { tool_name: "terminal", tool_preview: "ls" }), sub("subagent.progress")]) s = chatReducer(s, a);
+    expect(s.running).toBe(false);
+    expect(s.subagents["sa-0"]).toMatchObject({ status: "running", tool: "terminal", toolPreview: "ls" });
+  });
+
+  it("non-completed status is failed; unknown child first seen at subagent.tool", () => {
+    let s = chatReducer(initialChat, sub("subagent.tool", { tool_name: "t", tool_count: 3 }));
+    expect(s.subagents["sa-0"]).toMatchObject({ status: "running", toolCount: 3, goal: "g" });
+    s = chatReducer(s, sub("subagent.complete", { status: "interrupted", output_tail: [{ tool: "t", preview: "p", is_error: true }] }));
+    expect(s.subagents["sa-0"]).toMatchObject({ status: "failed", outputTail: [{ tool: "t", preview: "p", isError: true }] });
+    s = chatReducer(s, sub("subagent.progress")); // a late frame does not reopen it
+    expect(s.subagents["sa-0"].status).toBe("failed");
+  });
+
+  it("links children to the latest delegate_task that is not full; delegate_task is never grouped", () => {
+    let s = chatReducer(initialChat, ev("tool.start", { tool_id: "a", name: "terminal" }));
+    s = chatReducer(s, ev("tool.start", { tool_id: "d", name: "delegate_task" }));
+    s = chatReducer(s, sub("subagent.spawn_requested", { subagent_id: "x", task_count: 1 }));
+    s = chatReducer(s, sub("subagent.spawn_requested", { subagent_id: "y", task_count: 1 })); // host is full: unlinked
+    const d = s.items[1];
+    expect(d.kind === "tool" && d.subagentIds).toEqual(["x"]);
+    expect(groupItems(s.items).map((i) => i.kind)).toEqual(["tool", "tool"]);
+  });
+});

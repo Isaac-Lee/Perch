@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { clampSidebarWidth, loadNewPane, loadPaneLayout, savePaneLayout, loadTheme, saveTheme, loadDismissed, saveDismissed, loadSessionOrder, loadSessionSort, pushRecent, removeRecent, loadRecentFolders, saveSessionOrder, saveSessionSort, loadReadAt, saveReadAt, markRead, MAX_ORDER } from "./uiSettings";
+import { clampSidebarWidth, loadNewPane, loadPaneLayout, savePaneLayout, loadTheme, saveTheme, loadDismissed, saveDismissed, loadSessionOrder, loadSessionSort, pushRecent, removeRecent, loadRecentFolders, saveSessionOrder, saveSessionSort, loadGroupBy, saveGroupBy, loadReadAt, saveReadAt, markRead, MAX_ORDER } from "./uiSettings";
 
 test("pushRecent moves to front, dedupes, caps at 8", () => {
   expect(pushRecent(["a", "b", "c"], "c")).toEqual(["c", "a", "b"]);
@@ -117,5 +117,15 @@ test("readAt round-trips, rejects broken values, caps keeping the newest", () =>
   expect(m[`s${MAX_ORDER + 49}`]).toBe(MAX_ORDER + 49);
   expect(m.s0).toBeUndefined();
   expect(markRead({ a: 1 }, "b", 2)).toEqual({ a: 1, b: 2 });
+  vi.unstubAllGlobals();
+});
+
+test("group-by load validates, defaults to folder", () => {
+  const store: Record<string, string> = {};
+  vi.stubGlobal("localStorage", { getItem: (k: string) => store[k] ?? null, setItem: (k: string, v: string) => { store[k] = v; } });
+  expect(loadGroupBy()).toBe("folder");
+  saveGroupBy("status");
+  expect(loadGroupBy()).toBe("status");
+  for (const bad of ['"bogus"', "3", "{not json", "null"]) { store["perch.sessionGroupBy"] = bad; expect(loadGroupBy()).toBe("folder"); }
   vi.unstubAllGlobals();
 });

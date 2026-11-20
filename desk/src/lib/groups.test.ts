@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { COMMON_LABEL, displayState, groupSessions, groupSummary, isUnread, splitNeedsYou, matchSession, moveInOrder, shownSeconds } from "./groups";
+import { COMMON_LABEL, displayState, groupSessions, groupSummary, groupByStatus, isUnread, splitNeedsYou, matchSession, moveInOrder, shownSeconds } from "./groups";
 import type { Session } from "./types";
 
 const NOW = 1_000_000;
@@ -243,4 +243,35 @@ test("splitNeedsYou works on a filtered subset and labels the common group", () 
   const { needs } = splitNeedsYou(groupSessions([ap], NOW), NOW);
   expect(needs).toEqual([{ s: ap, label: COMMON_LABEL }]);
   expect(other.state).toBe("question");
+});
+
+test("groupByStatus: sections, order, empty ones omitted, no overlap with Needs you", () => {
+  const w1 = mk({ repoRoot: "D:/r/a", state: "tool", turnStart: NOW - 500 });
+  const w2 = mk({ repoRoot: "D:/r/b", state: "running", turnStart: NOW - 100 });
+  const st = mk({ repoRoot: "D:/r/a", state: "thinking", seen: NOW - 700, turnStart: NOW - 900 });
+  const u1 = mk({ repoRoot: "D:/r/a", state: "idle", prompt: "x", since: NOW - 300 });
+  const u2 = mk({ repoRoot: "D:/r/b", state: "idle", prompt: "x", since: NOW - 30 });
+  const rd = mk({ repoRoot: "D:/r/b", state: "idle", prompt: "x", since: NOW - 60 });
+  const id1 = mk({ repoRoot: "D:/r/a", state: "idle", seen: NOW - 50 });
+  const id2 = mk({ repoRoot: "D:/r/b", state: "idle", seen: NOW - 5 });
+  const ap = mk({ repoRoot: "D:/r/a", state: "approval" });
+  const rep = mk({ repoRoot: "D:/r/b", state: "idle", prompt: "x", asks: true });
+  const old = mk({ repoRoot: "D:/r/a", state: "closed", seen: NOW - 200_000 });
+  const readAt = { [rd.sessionId]: NOW };
+  const all = [w1, w2, st, u1, u2, rd, id1, id2, ap, rep, old];
+  const { needs, groups } = splitNeedsYou(groupSessions(all, NOW), NOW);
+  const r = groupByStatus(groups, NOW, readAt);
+  expect(r.sections.map((x) => x.key)).toEqual(["working", "unread", "done", "idle"]);
+  const ids = (k: string) => r.sections.find((x) => x.key === k)!.items.map((i) => i.s);
+  expect(ids("working")).toEqual([st, w1, w2]);
+  expect(ids("unread")).toEqual([u2, u1]);
+  expect(ids("done")).toEqual([rd]);
+  expect(ids("idle")).toEqual([id2, id1]);
+  expect(r.sections[1].items[0].label).toBe("b");
+  expect(r.recent.map((i) => i.s)).toEqual([old]);
+  const listed = r.sections.flatMap((x) => x.items.map((i) => i.s));
+  expect(listed).toHaveLength(8);
+  expect(listed.some((s) => needs.some((n) => n.s === s))).toBe(false);
+  expect(needs.map((n) => n.s)).toEqual([ap, rep]);
+  expect(groupByStatus(splitNeedsYou(groupSessions([w1], NOW), NOW).groups, NOW).sections.map((x) => x.key)).toEqual(["working"]);
 });

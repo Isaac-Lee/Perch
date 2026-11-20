@@ -29,6 +29,7 @@ const sessions0: Session[] = [
   { ...base, agent: "hermes", sessionId: "s8", cwd: "D:\\ysl\\todo-api", repoRoot: "D:\\ysl\\todo-api", branch: "main", state: "tool", since: T0 - 1500, seen: T0 - 900,
     tool: "terminal", toolDetail: "npm run lint", steps: 7, turnStart: T0 - 1500, title: "린트 오류 수정", prompt: "린트 오류를 모두 고쳐 주세요" },
   { ...base, agent: "hermes", sessionId: "s9", cwd: "D:\\ysl\\devops-lecture", repoRoot: "D:\\ysl\\devops-lecture", branch: "docs/readme", state: "closed", since: T0 - 7200, seen: T0 - 7200, title: "README 초안", prompt: "README 초안 작성" },
+  { ...base, agent: "hermes", sessionId: "s10", cwd: "D:\\ysl\\devops-lecture", repoRoot: "D:\\ysl\\devops-lecture", branch: "main", state: "idle", since: T0 - 3000, seen: T0 - 3000, prompt: "" },
 ];
 
 const usages: Record<string, Usage> = {
