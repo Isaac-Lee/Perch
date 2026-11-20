@@ -7,6 +7,7 @@ import { closeGraph, paneGraphData, runningCount, toggleGraph, useGraphOpen, use
 import PaneHeader from "./PaneHeader";
 import PaneFooter from "./PaneFooter";
 import TerminalView from "./TerminalView";
+import { loadGraphDock, saveGraphDock } from "../lib/uiSettings";
 import SubagentGraph from "./SubagentGraph";
 
 export default function Pane({ pane, session, now, focused, stopCount, onFocus, onClose, onStop, style, dragging, onDragStart, bgSessions, onFocusSession }: {
@@ -18,10 +19,12 @@ export default function Pane({ pane, session, now, focused, stopCount, onFocus, 
   const open = useGraphOpen().has(pane.id);
   const has = data.subagents.length + data.background.length > 0;
   const ref = useRef<HTMLElement>(null);
-  const [wide, setWide] = useState(false);
+  const [w, setW] = useState(0);
+  const [pref, setPref] = useState(loadGraphDock);
+  const dock = pref === "bottom" || w < 560 || (pref === null && w < 760) ? "bottom" : "right";
   useEffect(() => {
     const el = ref.current; if (!el) return;
-    const ro = new ResizeObserver(([e]) => setWide(e.contentRect.width >= 760)); ro.observe(el);
+    const ro = new ResizeObserver(([e]) => setW(e.contentRect.width)); ro.observe(el);
     return () => ro.disconnect();
   }, []);
   const st = session ? displayState(session, now) : null;
@@ -30,9 +33,9 @@ export default function Pane({ pane, session, now, focused, stopCount, onFocus, 
     <section ref={ref} className={`pane${focused ? " focused" : ""}`} style={style} data-pane-id={pane.id} onMouseDown={onFocus}>
       <PaneHeader pane={pane} session={session} now={now} focused={focused} onClose={onClose} onStop={onStop} dragging={dragging} onDragStart={onDragStart}
         graph={has ? { open, running: runningCount(data), onToggle: () => toggleGraph(pane.id) } : undefined} />
-      <div className={`pane-body${wide ? " wide" : ""}`}>
+      <div className={`pane-body${dock === "right" ? " wide" : ""}`}>
         <div className="pane-main"><TerminalView paneId={pane.id} focused={focused} agent={pane.agent} stopCount={stopCount} session={session} view={pane.view} cwd={pane.cwd} sessionId={pane.sessionId} /></div>
-        {open && has && <SubagentGraph pane={pane} title={session ? sessionTitle(session) || pane.title : pane.title} rootAct={act} rootLabel={(act ? act.label + (session!.toolDetail && session!.toolDetail.length <= 24 ? ` ${session!.toolDetail}` : "") : st && stateLabel(st)) || "Ready"} data={data} dock={wide ? "right" : "bottom"} onClose={() => closeGraph(pane.id)} onFocusSession={onFocusSession} />}
+        {open && has && <SubagentGraph pane={pane} title={session ? sessionTitle(session) || pane.title : pane.title} rootAct={act} rootLabel={(act ? act.label + (session!.toolDetail && session!.toolDetail.length <= 24 ? ` ${session!.toolDetail}` : "") : st && stateLabel(st)) || "Ready"} data={data} dock={dock} onDock={(d) => { setPref(d); saveGraphDock(d); }} onClose={() => closeGraph(pane.id)} onFocusSession={onFocusSession} />}
       </div>
       <PaneFooter session={session} now={now} />
     </section>

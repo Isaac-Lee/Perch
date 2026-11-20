@@ -31,7 +31,7 @@ function Child({ a, now }: { a: SubagentLive; now: number }) {
         {a.status === "done" ? <Check className="chat-sub-ok" size={12} strokeWidth={1.75} /> : <span className={`dot ${a.status === "failed" ? "warn" : "ok"} chat-sub-dot`} />}
         <span className={"chat-sub-goal" + (a.status === "failed" ? " chat-tool-failed" : "")}>{a.goal || a.id}</span>
         {cur && <span className="chat-sub-cur">{cur}</span>}
-        {a.toolCount > 0 && <span className="chat-sub-meta">{a.toolCount} tools</span>}
+        {a.toolCount > 0 && <span className="chat-sub-meta">{a.toolCount} tool{a.toolCount > 1 ? "s" : ""}</span>}
         {secs != null && <span className="chat-sub-meta">{fmtElapsed(secs)}</span>}
       </button>
       {open && <SubagentDetail a={a} />}

@@ -499,6 +499,16 @@ describe("subagents", () => {
     expect(s.subagents["sa-0"]).toMatchObject({ status: "running", tool: "terminal", toolPreview: "ls" });
   });
 
+  it("a nested child records parentId/depth and is not attached to delegate_task", () => {
+    let s = chatReducer(initialChat, ev("tool.start", { tool_id: "t1", name: "delegate_task" }));
+    s = chatReducer(s, sub("subagent.spawn_requested", { subagent_id: "top", task_count: 2 }));
+    s = chatReducer(s, sub("subagent.spawn_requested", { subagent_id: "kid", parent_id: "top", depth: 1, task_count: 2 }));
+    expect(s.subagents.kid).toMatchObject({ parentId: "top", depth: 1 });
+    expect(s.subagents.top).toMatchObject({ depth: 0 });
+    expect(s.subagents.top.parentId).toBeUndefined();
+    const d = s.items.find((i) => i.kind === "tool" && i.name === "delegate_task");
+    expect(d?.kind === "tool" && d.subagentIds).toEqual(["top"]);
+  });
   it("non-completed status is failed; unknown child first seen at subagent.tool", () => {
     let s = chatReducer(initialChat, sub("subagent.tool", { tool_name: "t", tool_count: 3 }));
     expect(s.subagents["sa-0"]).toMatchObject({ status: "running", toolCount: 3, goal: "g" });

@@ -24,7 +24,7 @@ export interface ChatPrompt {
 }
 /** One child of a delegate_task call, fed by subagent.* frames (they keep coming after the parent turn ended). */
 export interface SubagentLive {
-  id: string; delegationId?: string; index: number; count: number; goal: string; model: string; status: "starting" | "running" | "done" | "failed";
+  id: string; delegationId?: string; /** id of the parent SUBAGENT; absent for children of the session itself */ parentId?: string; /** 0 = direct child of the session */ depth: number; index: number; count: number; goal: string; model: string; status: "starting" | "running" | "done" | "failed";
   tool: string; toolPreview: string; toolCount: number; /** `at` of the first frame seen (ms epoch), null when the dispatcher passed none */ startAt: number | null;
   durationSec?: number; summary?: string; tokens?: { in: number; out: number }; outputTail?: { tool: string; preview: string; isError: boolean }[];
 }
@@ -201,12 +201,14 @@ function subagentEvent(s: ChatState, ev: GatewayEvent, at?: number): ChatState {
   const num = (v: unknown, d = 0) => (typeof v === "number" ? v : d);
   const known = s.subagents[id];
   const cur: SubagentLive = known ?? {
-    id, index: num(p.task_index), count: num(p.task_count, 1), goal: "", model: "", status: "starting", tool: "", toolPreview: "", toolCount: 0, startAt: at ?? null,
+    id, depth: 0, index: num(p.task_index), count: num(p.task_count, 1), goal: "", model: "", status: "starting", tool: "", toolPreview: "", toolCount: 0, startAt: at ?? null,
   };
   const over = cur.status === "done" || cur.status === "failed";
   const n: SubagentLive = {
     ...cur, goal: str(p.goal) || cur.goal, model: str(p.model) || cur.model, toolCount: Math.max(cur.toolCount, num(p.tool_count)),
     ...(str(p.delegation_id) ? { delegationId: p.delegation_id } : {}),
+    ...(!cur.parentId && str(p.parent_id) ? { parentId: p.parent_id } : {}),
+    depth: cur.depth || num(p.depth),
     ...(ev.type === "subagent.spawn_requested" || over ? {} : { status: "running" as const }),
   };
   if (ev.type === "subagent.tool") { n.tool = str(p.tool_name); n.toolPreview = str(p.tool_preview) || str(p.text); }
@@ -219,7 +221,7 @@ function subagentEvent(s: ChatState, ev: GatewayEvent, at?: number): ChatState {
     n.outputTail = (Array.isArray(p.output_tail) ? p.output_tail : []).map((o: any) => ({ tool: str(o?.tool), preview: str(o?.preview), isError: o?.is_error === true }));
   }
   let items = s.items;
-  if (!known && !items.some((i) => i.kind === "tool" && i.subagentIds?.includes(id))) {
+  if (!known && !n.parentId && n.depth === 0 && !items.some((i) => i.kind === "tool" && i.subagentIds?.includes(id))) {
     let at2 = -1;
     for (let k = items.length - 1; k >= 0; k--) { const i = items[k]; if (i.kind === "tool" && i.name === "delegate_task") { at2 = k; break; } }
     const host = items[at2];

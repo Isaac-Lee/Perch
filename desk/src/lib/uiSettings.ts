@@ -72,3 +72,7 @@ export const loadRecentFolders = (seed: string[]): string[] => {
 };
 export const saveRecentFolders = (list: string[]) => write("perch.recentFolders", list);
 export const saveNewPane =(v: NewPaneDefaults) => write("perch.newPane", v);
+
+/** User-chosen dock of the subagent graph; null = automatic by pane width. */
+export const loadGraphDock = (): "right" | "bottom" | null => { const v = read<unknown>("perch.graphDock", null); return v === "right" || v === "bottom" ? v : null; };
+export const saveGraphDock = (d: "right" | "bottom") => write("perch.graphDock", d);
