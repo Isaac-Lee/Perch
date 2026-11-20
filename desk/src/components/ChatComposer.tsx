@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Check, ChevronDown, CornerDownLeft, Plus, Square } from "lucide-react";
-import { applyCompletion, EFFORT_LEVELS, enterAction, modelLabel } from "../lib/composer";
+import { applyCompletion, EFFORT_LEVELS, enterAction, historyStep, modelLabel } from "../lib/composer";
 import { attachScrollReveal } from "../lib/useScrollReveal";
 
 type Attachment = { path: string; mime: string; url: string };
@@ -8,11 +8,13 @@ type Providers = { provider: string; providerName: string; models: string[] }[];
 type SlashItem = { text: string; display?: string; meta?: string; kind?: string | null };
 type SlashResult = { items: SlashItem[]; replaceFrom: number };
 
-export default function ChatComposer({ running, disabled, focused, model, effort, draft, onSend, onStop, onAttach, onListModels, onSetModel, onSetEffort, onCompleteSlash }: {
+export default function ChatComposer({ running, disabled, focused, model, effort, draft, history, onSend, onStop, onAttach, onListModels, onSetModel, onSetEffort, onCompleteSlash }: {
   model?: string;
   effort?: string;
   /** text handed back by a prefill directive; applied whenever `n` changes */
   draft?: { text: string; n: number };
+  /** earlier prompts, newest first */
+  history: string[];
   running: boolean;
   disabled: boolean;
   focused: boolean;
@@ -33,6 +35,8 @@ export default function ChatComposer({ running, disabled, focused, model, effort
   const [menu, setMenu] = useState<"closed" | "loading" | "ready" | "error" | "effort">("closed");
   const [slash, setSlash] = useState<(SlashResult & { typed: string }) | null>(null);
   const [sel, setSel] = useState(0);
+  const hist = useRef({ index: -1, saved: "" }); // Up/Down prompt browsing; index -1 = not browsing
+  const caretEnd = useRef(false);
   const reqN = useRef(0);
   const completeRef = useRef(onCompleteSlash);
   completeRef.current = onCompleteSlash; // callers pass a new function every render; the debounce must not restart on it
@@ -61,6 +65,10 @@ export default function ChatComposer({ running, disabled, focused, model, effort
     el.style.overflowY = el.scrollHeight > max ? "auto" : "hidden";
   }, []);
   useLayoutEffect(fit, [text, fit]);
+  useLayoutEffect(() => { // after a history step, caret to the end
+    const el = ref.current;
+    if (caretEnd.current && el) { caretEnd.current = false; el.setSelectionRange(el.value.length, el.value.length); }
+  }, [text]);
   // A width change re-wraps the text (also back to fewer lines); only width, so setting the height cannot loop the observer.
   useEffect(() => {
     const el = ref.current;
@@ -84,13 +92,13 @@ export default function ChatComposer({ running, disabled, focused, model, effort
     return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", esc); };
   }, [menu]);
   useEffect(() => { if ((running || disabled) && menu !== "closed") setMenu("closed"); }, [running, disabled, menu]);
-  useEffect(() => { if (draft?.n) { setText(draft.text); ref.current?.focus(); } }, [draft?.n]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (draft?.n) { hist.current = { index: -1, saved: "" }; setText(draft.text); ref.current?.focus(); } }, [draft?.n]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Slash popup: only for a single line starting with "/" and the caret at its end; debounced, stale answers dropped.
   useEffect(() => {
     const n = ++reqN.current;
     const el = ref.current;
-    if (disabled || !completeRef.current || !text.startsWith("/") || text.includes("\n") || el?.selectionStart !== text.length) { setSlash(null); return; }
+    if (disabled || !completeRef.current || !text.startsWith("/") || hist.current.index !== -1 || text.includes("\n") || el?.selectionStart !== text.length) { setSlash(null); return; }
     const t = setTimeout(() => {
       completeRef.current?.(text).then((r) => {
         if (n !== reqN.current) return;
@@ -135,7 +143,7 @@ export default function ChatComposer({ running, disabled, focused, model, effort
     if (disabled || empty) return;
     onSend(text.trim(), atts.map(({ path, mime }) => ({ path, mime })));
     atts.forEach((a) => URL.revokeObjectURL(a.url));
-    setText(""); setAtts([]); setErr(null); setSlash(null);
+    hist.current = { index: -1, saved: "" }; setText(""); setAtts([]); setErr(null); setSlash(null);
   };
   const remove = (a: Attachment) => { URL.revokeObjectURL(a.url); setAtts((l) => l.filter((x) => x !== a)); };
   const addFiles = (files: File[]) => files.forEach(async (f) => {
@@ -224,9 +232,15 @@ export default function ChatComposer({ running, disabled, focused, model, effort
             rows={1}
             value={text}
             placeholder=""
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => { hist.current.index = -1; setText(e.target.value); }}
             onPaste={onPaste}
             onKeyDown={(e) => {
+              const h = historyStep({
+                key: e.key, shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, altKey: e.altKey, metaKey: e.metaKey, isComposing: e.nativeEvent.isComposing, keyCode: e.keyCode,
+                menuOpen: !!(slash && slash.typed === text), text, selectionStart: e.currentTarget.selectionStart, selectionEnd: e.currentTarget.selectionEnd,
+                history, index: hist.current.index, saved: hist.current.saved,
+              });
+              if (h) { e.preventDefault(); hist.current = { index: h.index, saved: h.saved }; caretEnd.current = true; setSlash(null); setText(h.text); return; }
               if (slash && slash.typed === text && !e.nativeEvent.isComposing && e.keyCode !== 229) {
                 const n = slash.items.length, it = slash.items[sel];
                 if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); setSel((sel + (e.key === "ArrowDown" ? 1 : n - 1)) % n); return; }

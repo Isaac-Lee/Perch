@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyCompletion, BLOCKED_SLASH, enterAction, imageExt, isSlashCommand, modelLabel, parseModelArg, parseSlash, toBase64 } from "./composer";
+import { applyCompletion, BLOCKED_SLASH, enterAction, historyStep, promptHistory, imageExt, isSlashCommand, modelLabel, parseModelArg, parseSlash, toBase64 } from "./composer";
 
 describe("composer", () => {
   it("enter rules incl. Korean IME", () => {
@@ -53,5 +53,36 @@ describe("composer", () => {
     expect(parseModelArg("--global --session")).toBeNull();
     expect(parseModelArg("reset")).toBeNull();
     expect(parseModelArg("")).toBeNull();
+  });
+});
+
+describe("prompt history", () => {
+  const it0 = (kind: string, text?: string) => ({ kind, text });
+  it("promptHistory", () => {
+    expect(promptHistory([it0("user", "a"), it0("assistant", "x"), it0("user", "  "), it0("user", "b"), it0("user", "b"), it0("user", "a")])).toEqual(["a", "b", "a"]);
+  });
+  const base = { key: "ArrowUp", shiftKey: false, ctrlKey: false, altKey: false, metaKey: false, isComposing: false, keyCode: 38, menuOpen: false, text: "", selectionStart: 0, selectionEnd: 0, history: ["c", "b", "a"], index: -1, saved: "" };
+  it("walks up, down, restores draft, stops at oldest", () => {
+    let r = historyStep({ ...base, text: "draft", selectionStart: 5, selectionEnd: 5 })!;
+    expect(r).toEqual({ index: 0, text: "c", saved: "draft" });
+    r = historyStep({ ...base, ...r, selectionStart: 1, selectionEnd: 1 })!;
+    expect(r).toEqual({ index: 1, text: "b", saved: "draft" });
+    const down = { ...base, key: "ArrowDown" };
+    r = historyStep({ ...down, ...r, selectionStart: 1, selectionEnd: 1 })!;
+    expect(r.index).toBe(0);
+    r = historyStep({ ...down, ...r, selectionStart: 1, selectionEnd: 1 })!;
+    expect(r).toEqual({ index: -1, text: "draft", saved: "draft" });
+    expect(historyStep({ ...down, ...r })).toBeNull();
+    expect(historyStep({ ...base, index: 2, text: "a" })).toBeNull();
+  });
+  it("line conditions", () => {
+    expect(historyStep({ ...base, text: "x\ny", selectionStart: 3, selectionEnd: 3 })).toBeNull();
+    expect(historyStep({ ...base, text: "x\ny", selectionStart: 1, selectionEnd: 1 })).not.toBeNull();
+    expect(historyStep({ ...base, key: "ArrowDown", index: 0, saved: "s", text: "x\ny", selectionStart: 1, selectionEnd: 1 })).toBeNull();
+    expect(historyStep({ ...base, key: "ArrowDown", index: 0, saved: "s", text: "x\ny", selectionStart: 3, selectionEnd: 3 })).not.toBeNull();
+  });
+  it("ignored cases", () => {
+    for (const o of [{ isComposing: true }, { keyCode: 229 }, { shiftKey: true }, { ctrlKey: true }, { altKey: true }, { metaKey: true }, { menuOpen: true }, { key: "a" }])
+      expect(historyStep({ ...base, ...o })).toBeNull();
   });
 });
