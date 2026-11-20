@@ -38,8 +38,8 @@ function Card({ n, now, Icon, light, rootAct }: { n: GNode; now: number; Icon: L
 }
 
 /** Graph panel docked in a pane: root session -> delegate_task rows -> background tasks. 1 s tick only while something runs. */
-export default function SubagentGraph({ pane, rootLabel, title, data, dock, focused, onClose, onFocusSession, rootAct }: {
-  pane: Pane; rootAct?: Activity; rootLabel: string; title: string; data: PaneGraphData; dock: "right" | "bottom"; focused: boolean; onClose: () => void; onFocusSession: (id: string) => void;
+export default function SubagentGraph({ pane, rootLabel, title, data, dock, onClose, onFocusSession, rootAct }: {
+  pane: Pane; rootAct?: Activity; rootLabel: string; title: string; data: PaneGraphData; dock: "right" | "bottom"; onClose: () => void; onFocusSession: (id: string) => void;
 }) {
   const running = runningCount(data);
   const [now, setNow] = useState(() => Date.now());
@@ -52,12 +52,6 @@ export default function SubagentGraph({ pane, rootLabel, title, data, dock, focu
     const ro = new ResizeObserver(() => setW(el.clientWidth)); ro.observe(el); setW(el.clientWidth);
     return () => ro.disconnect();
   }, []);
-  useEffect(() => {
-    if (!focused) return;
-    const k = (e: KeyboardEvent) => { if (e.key === "Escape" && !e.defaultPrevented) onClose(); };
-    window.addEventListener("keydown", k);
-    return () => window.removeEventListener("keydown", k);
-  }, [focused, onClose]);
   const rows = useMemo(() => graphRows({ title, label: rootLabel }, data.subagents, data.background), [title, rootLabel, data]);
   const lay = useMemo(() => layoutGraph(rows, w), [rows, w]);
   const byId = new Map(rows.flat().map((n) => [n.id, n]));
@@ -68,7 +62,7 @@ export default function SubagentGraph({ pane, rootLabel, title, data, dock, focu
   const { Icon } = paneIcon(pane.agent, pane.view), light = useIsLight();
   const aid = `sg-arrow-${pane.id}`;
   return (
-    <aside className={`sg ${dock}`} aria-label="Subagents">
+    <aside className={`sg ${dock}`} aria-label="Subagents" tabIndex={-1} onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}>
       <div className="sg-head"><span className="ellipsis">{data.subagents.length || !data.background.length ? "Subagents" : "Background"}{head && ` · ${head}`}</span><span className="grow" /><button className="icon-btn" aria-label="Close" onClick={onClose}><X size={16} strokeWidth={1.5} /></button></div>
       <div className="sg-scroll" ref={box}>
         {w > 0 && (

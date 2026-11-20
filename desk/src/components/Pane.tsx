@@ -32,7 +32,7 @@ export default function Pane({ pane, session, now, focused, stopCount, onFocus, 
         graph={has ? { open, running: runningCount(data), onToggle: () => toggleGraph(pane.id) } : undefined} />
       <div className={`pane-body${wide ? " wide" : ""}`}>
         <div className="pane-main"><TerminalView paneId={pane.id} focused={focused} agent={pane.agent} stopCount={stopCount} session={session} view={pane.view} cwd={pane.cwd} sessionId={pane.sessionId} /></div>
-        {open && has && <SubagentGraph pane={pane} title={session ? sessionTitle(session) || pane.title : pane.title} rootAct={act} rootLabel={(act ? act.label + (session!.toolDetail && session!.toolDetail.length <= 24 ? ` ${session!.toolDetail}` : "") : st && stateLabel(st)) || "Ready"} data={data} dock={wide ? "right" : "bottom"} focused={focused} onClose={() => closeGraph(pane.id)} onFocusSession={onFocusSession} />}
+        {open && has && <SubagentGraph pane={pane} title={session ? sessionTitle(session) || pane.title : pane.title} rootAct={act} rootLabel={(act ? act.label + (session!.toolDetail && session!.toolDetail.length <= 24 ? ` ${session!.toolDetail}` : "") : st && stateLabel(st)) || "Ready"} data={data} dock={wide ? "right" : "bottom"} onClose={() => closeGraph(pane.id)} onFocusSession={onFocusSession} />}
       </div>
       <PaneFooter session={session} now={now} />
     </section>
