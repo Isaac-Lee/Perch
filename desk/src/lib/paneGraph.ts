@@ -124,10 +124,14 @@ function layoutSideways(list: { id: string; parentId?: string; level: number; ga
   const nodes: Laid["nodes"] = list.map((n) => ({ id: n.id, x: xs.get(n.id)!, y: PAD + n.level * (H + ROW_GAP), w: COL_W, h: n.level === 0 ? ROOT_H : H }));
   const right = Math.max(...nodes.map((n) => n.x + n.w)), bottom = Math.max(...nodes.map((n) => n.y + H));
   const at = new Map(nodes.map((n) => [n.id, n]));
+  // parents (in list order) sharing a child row get staggered horizontal segments so their edges stay distinguishable
+  const parents = new Map<number, string[]>();
+  for (const n of list) if (n.parentId && !parents.get(n.level)?.includes(n.parentId)) parents.set(n.level, [...(parents.get(n.level) ?? []), n.parentId]);
   const edges = list.flatMap((n) => {
     const c = at.get(n.id)!, p = n.parentId ? at.get(n.parentId) : undefined;
     if (!p) return [];
-    const my = c.y - ROW_GAP / 2;
+    const ps = parents.get(n.level)!, lim = ROW_GAP / 2 - 6;
+    const my = c.y - ROW_GAP / 2 + Math.max(-lim, Math.min(lim, (ps.indexOf(n.parentId!) - (ps.length - 1) / 2) * 8));
     return [{ id: n.id, d: round([[p.x + 16, p.y + p.h], [p.x + 16, my], [c.x + 16, my], [c.x + 16, c.y]]) }];
   });
   return { nodes, edges, width: Math.max(width, right + PAD), height: bottom + PAD };

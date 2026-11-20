@@ -97,6 +97,14 @@ describe("layoutGraph horizontal", () => {
       expect(t.end).toEqual([c.x + 16, c.y]);
     }
   });
+  it("staggers the horizontal segments of parents sharing a child row", () => {
+    const L = layoutGraph(graphRows(root, [sa("a", 0, "d1"), sa("b", 1, "d1"), kid("a1", "a", 1), kid("a2", "a", 1, 1), kid("b1", "b", 1)], []), 900, "horizontal");
+    const n = (id: string) => L.nodes.find((x) => x.id === id)!, ys = ["a2", "b1"].map((id) => ({ id, ...trace(L.edges.find((e) => e.id === id)!.d) }));
+    const seg = (d: string) => Number(d.match(/V(\d+(?:\.\d+)?)/)![1]);
+    const [ya, yb] = ["a2", "b1"].map((id) => seg(L.edges.find((e) => e.id === id)!.d));
+    expect(ya).not.toBe(yb);
+    for (const { id, end } of ys) expect(end).toEqual([n(id).x + 16, n(id).y]);
+  });
   it("sizes the canvas to its extents", () => {
     const r = at("t");
     expect(l.width).toBe(Math.max(400, r.x + r.w + PAD));

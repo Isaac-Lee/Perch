@@ -27,7 +27,7 @@ export default function PaneHeader({ pane, session, now, focused, onClose, onSto
           <span title={session.toolDetail || undefined}>{a.label} {fmtElapsed(shownSeconds(session, now) ?? 0)}</span>
         </span>
       ); })()}
-      {graph && <button className={`stop-btn${graph.open ? " on" : ""}`} aria-label="Subagents" aria-pressed={graph.open} title="서브에이전트·백그라운드 작업 보기" onClick={(e) => { e.stopPropagation(); graph.onToggle(); }}><Network size={14} strokeWidth={1.5} />{graph.running > 0 && graph.running}</button>}
+      {graph && <button className={`stop-btn${graph.open ? " on" : ""}`} aria-label="Subagents" aria-pressed={graph.open} title="서브에이전트·백그라운드 작업 보기" onPointerDown={(e) => { if (e.button !== 0) return; e.stopPropagation(); graph.onToggle(); }} onMouseDown={(e) => e.preventDefault()} onClick={(e) => { e.stopPropagation(); if (e.detail === 0) graph.onToggle(); }}><Network size={14} strokeWidth={1.5} />{graph.running > 0 && graph.running}</button>}
       {(st === "running" || st === "thinking" || st === "tool") && (
         <button className="stop-btn" aria-label="Stop" title="진행 중인 작업을 멈춥니다." onClick={(e) => { e.stopPropagation(); onStop(); }}><Square size={14} strokeWidth={1.5} />Stop</button>
       )}

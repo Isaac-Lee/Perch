@@ -87,7 +87,7 @@ export default function SubagentGraph({ pane, rootLabel, title, data, dock, onDo
   const aid = `sg-arrow-${pane.id}`;
   return (
     <aside ref={el} className={`sg ${dock}`} aria-label="Subagents" tabIndex={-1} onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}>
-      <div className="sg-head" onPointerDown={startDrag}><span className="ellipsis">{data.subagents.length || !data.background.length ? "Subagents" : "Background"}{head && ` · ${head}`}</span><span className="grow" /><button className="icon-btn" aria-label="Close" onClick={onClose}><X size={16} strokeWidth={1.5} /></button></div>
+      <div className="sg-head" onPointerDown={startDrag}><span className="ellipsis">{data.subagents.length || !data.background.length ? "Subagents" : "Background"}{head && ` · ${head}`}</span><span className="grow" /><button className="icon-btn" aria-label="Close" onPointerDown={(e) => { if (e.button !== 0) return; e.stopPropagation(); onClose(); }} onMouseDown={(e) => e.preventDefault()} onClick={(e) => { e.stopPropagation(); if (e.detail === 0) onClose(); }}><X size={16} strokeWidth={1.5} /></button></div>
       <div className="sg-scroll" ref={box}>
         {w > 0 && (
           <div className="sg-canvas" style={{ width: lay.width, height: lay.height }}>
