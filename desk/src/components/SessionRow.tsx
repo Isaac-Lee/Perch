@@ -1,6 +1,6 @@
 import { Archive, ArchiveRestore, Circle, CircleCheck, CircleDot, Square, X } from "lucide-react";
 import type { AgentKind, Session, Todo } from "../lib/types";
-import { displayState, sessionTitle, shownSeconds } from "../lib/groups";
+import { displayState, isBackgroundId, sessionTitle, shownSeconds } from "../lib/groups";
 import { fmtElapsed, stateLabel } from "../lib/format";
 import { fmtTok, totalTokens } from "../lib/usage";
 
@@ -11,9 +11,9 @@ const TODO_ICON: Record<Todo["status"], typeof Circle> = { done: CircleCheck, in
 
 export interface RowDrag { dragging: boolean; onPointerDown: (e: React.PointerEvent<HTMLElement>) => void; onMove: (dir: -1 | 1) => void }
 
-export default function SessionRow({ s, now, focused, onClick, onApprove, onStop, onArchive, onHide, archived, drag, unread, folder }: {
+export default function SessionRow({ s, now, focused, onClick, onApprove, onStop, onArchive, onHide, archived, drag, unread, folder, kids }: {
   s: Session; now: number; focused: boolean; onClick: () => void; onApprove: (allow: boolean) => void; onStop: () => void;
-  onArchive?: () => void; onHide?: () => void; archived?: boolean; drag?: RowDrag; unread?: boolean; folder?: string;
+  onArchive?: () => void; onHide?: () => void; archived?: boolean; drag?: RowDrag; unread?: boolean; folder?: string; /** background runs started from this session */ kids?: Session[];
 }) {
   const st = displayState(s, now);
   const tone = TONE[st];
@@ -43,7 +43,7 @@ export default function SessionRow({ s, now, focused, onClick, onApprove, onStop
           </button>
         )}
       </div>
-      <div className="row-line">{unread && <span className="dot unread" role="img" aria-label="Unread" title="아직 보지 않은 결과가 있습니다." />}<span className="row-prompt ellipsis" title={s.prompt}>{sessionTitle(s)}</span>{s.subagents.length > 0 && <span className="row-sub">{s.subagents.length === 1 ? "1 agent" : `${s.subagents.length} agents`}</span>}{s.usage && <span className="row-tok" title="Tokens">{fmtTok(totalTokens(s.usage))}</span>}</div>
+      <div className="row-line">{unread && <span className="dot unread" role="img" aria-label="Unread" title="아직 보지 않은 결과가 있습니다." />}<span className="row-prompt ellipsis" title={s.prompt}>{sessionTitle(s)}</span>{isBackgroundId(s.sessionId) && <span className="row-sub" title="다른 세션에서 실행한 백그라운드 작업입니다.">Background</span>}{s.subagents.length > 0 && <span className="row-sub">{s.subagents.length === 1 ? "1 agent" : `${s.subagents.length} agents`}</span>}{s.usage && <span className="row-tok" title="Tokens">{fmtTok(totalTokens(s.usage))}</span>}</div>
       {s.pending && <div className="row-pending ellipsis">{s.pending.text}</div>}
       {!s.pending && st === "reply" && s.ask && <div className="row-pending ellipsis" title={s.ask}>{s.ask}</div>}
       {s.state === "approval" && (
@@ -57,6 +57,14 @@ export default function SessionRow({ s, now, focused, onClick, onApprove, onStop
           <span className="tree">└</span><span className="ellipsis">{a.role} {a.goal}</span><span className="row-time">{fmtElapsed(now - a.start)}</span>
         </div>
       ))}
+      {kids?.map((c) => {
+        const cs = displayState(c, now), t = shownSeconds(c, now), label = stateLabel(cs);
+        return (
+          <div key={c.sessionId} className="row-line">
+            <span className="tree">└</span><span className="ellipsis" title={c.prompt}>Background · {sessionTitle(c)}{label && ` · ${label}`}</span><span className="row-time">{t !== null && fmtElapsed(t)}</span>
+          </div>
+        );
+      })}
       {s.todos.map((t, i) => {
         const Icon = TODO_ICON[t.status];
         return (

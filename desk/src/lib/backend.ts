@@ -21,7 +21,7 @@ export type SessionInfo = {
   asks?: boolean; ask?: string;
   subagents: { id: string; role: string; goal: string; start: number; tool?: string }[];
   todos: { text: string; status: string }[]; seen: number;
-  paneId: string | null; title: string | null; cwd: string; repoRoot: string | null; branch: string | null;
+  paneId: string | null; parentId?: string | null; title: string | null; cwd: string; repoRoot: string | null; branch: string | null;
   usage: { model: string; input: number; output: number; cacheRead: number; cacheWrite: number; reasoning: number; apiCalls: number; costUsd: number | null; startedAt: number } | null;
 };
 export type HermesStatus = { home: string; exe: string | null; connected: boolean; hookPath: string; outdated: boolean; autoUpdated: boolean };

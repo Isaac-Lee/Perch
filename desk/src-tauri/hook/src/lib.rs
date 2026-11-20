@@ -250,7 +250,7 @@ fn write(file: &Path, v: &Value) -> Option<()> {
     Some(())
 }
 
-fn update(dir: &Path, id: &str, event: &Value, now: u64) -> Option<()> {
+fn update(dir: &Path, id: &str, event: &Value, now: u64, pane: Option<&str>) -> Option<()> {
     let file = session_file(dir, id);
     let _l = lock(&file);
     match apply(read(&file), event, now) {
@@ -260,6 +260,9 @@ fn update(dir: &Path, id: &str, event: &Value, now: u64) -> Option<()> {
         Some(mut v) => {
             if v["sessionId"] == "" {
                 v["sessionId"] = json!(id);
+            }
+            if let Some(p) = pane {
+                v["pane"] = json!(p);
             }
             write(&file, &v)?;
         }
@@ -290,6 +293,13 @@ pub fn force_idle(dir: &Path, id: &str, now: u64) -> bool {
 
 /// Process one hook payload against the state folder. Errors are swallowed by callers.
 pub fn run(input: &str, home: &Path, now: u64) -> Option<()> {
+    let pane = std::env::var("PERCH_PANE").ok();
+    run_pane(input, home, now, pane.as_deref())
+}
+
+/// `pane` is Perch's PERCH_PANE; written to the state file only when it passes `safe_id`.
+pub fn run_pane(input: &str, home: &Path, now: u64, pane: Option<&str>) -> Option<()> {
+    let pane = pane.filter(|p| safe_id(p));
     let ev: Value = serde_json::from_str(input).ok()?;
     let name = ev["hook_event_name"].as_str()?;
     let sid = ev["session_id"].as_str().unwrap_or("");
@@ -309,7 +319,7 @@ pub fn run(input: &str, home: &Path, now: u64) -> Option<()> {
             } else {
                 let _ = fs::remove_file(kids.join(child));
             }
-            update(&dir, parent, &ev, now)
+            update(&dir, parent, &ev, now, None)
         }
         "on_session_delete" => {
             let mut ids: Vec<&str> = ev["extra"]["deleted_ids"].as_array()
@@ -332,11 +342,11 @@ pub fn run(input: &str, home: &Path, now: u64) -> Option<()> {
                     let mut m = Map::new();
                     m.insert("hook_event_name".into(), json!("subagent_tool"));
                     m.insert("extra".into(), json!({"child_session_id": sid, "tool": ev["tool_name"]}));
-                    update(&dir, parent, &Value::Object(m), now);
+                    update(&dir, parent, &Value::Object(m), now, None);
                 }
                 return Some(());
             }
-            update(&dir, sid, &ev, now)
+            update(&dir, sid, &ev, now, pane)
         }
     }
 }

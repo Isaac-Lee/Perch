@@ -11,6 +11,7 @@ export interface Session {
   /** the last reply ended with a question (heuristic); `ask` is its one-line preview */
   asks?: boolean; ask?: string;
   subagents: Subagent[]; todos: Todo[]; seen: number; paneId: string | null; usage: Usage | null;
+  /** `bg_*` background run: the session that started it (backend match by PERCH_PANE) */ parentId?: string | null;
 }
 export type PaneView = "chat" | "tui";
 export interface Pane { id: string; agent: AgentKind; cwd: string; sessionId: string | null; title: string; branch: string | null; view?: PaneView } // optional: mock panes (src/mock) never set it

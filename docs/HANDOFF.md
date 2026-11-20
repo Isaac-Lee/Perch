@@ -10,7 +10,7 @@ Perch는 여러 코딩 에이전트(Hermes, OpenCode)를 분할 터미널로 띄
 
 | 위치 | 내용 | 상태 |
 |---|---|---|
-| `desk/src/` | 화면 (React 19 + TypeScript). 브라우저에서는 가짜 데이터, Tauri 창에서는 실제 백엔드 | 테스트 149개 통과 |
+| `desk/src/` | 화면 (React 19 + TypeScript). 브라우저에서는 가짜 데이터, Tauri 창에서는 실제 백엔드 | 테스트 154개 통과 |
 | `desk/src-tauri/src/` | Rust 백엔드: `pty.rs`(터미널), `desk.rs`(칸·창), `sessions.rs`(상태 수집, state.db 보강), `hermes.rs`(실행 파일 찾기, 연결) | 테스트 39개 통과 (1개는 무시) |
 | `desk/src-tauri/src/gateway.rs` | Hermes gateway 중계. `hermes gateway attach`가 준 ws:// 주소에 loopback TcpStream으로 직접 WebSocket을 말하고 JSON 줄을 채팅 칸과 주고받는다 (gateway가 Origin 헤더를 거부해서 웹뷰가 직접 못 붙는다) | 테스트 포함 |
 | `desk/src/components/Chat*.tsx` | 채팅 보기. `ChatView`(전체), `ChatMessage`(마크다운 답변·도구 줄), `ChatPrompt`(승인·질문 버튼), `ChatComposer`(입력 상자: `+` 이미지, 모델 칩과 메뉴, 엔터 아이콘) | `chatSession`, `composer` 테스트 |
@@ -101,6 +101,7 @@ npm run tauri build   # 릴리스 exe와 설치 파일
 - 채팅 입력창 히스토리: 위/아래 화살표로 이 채팅의 이전 요청을 불러온다 (resume한 기록 포함, 연속 중복 합침, 이미지만 보낸 것 제외). 위는 첫 줄, 아래는 마지막 줄에서만, 맨 아래에서 쓰던 초안 복원. 슬래시 메뉴가 열렸거나 IME 조합 중이거나 수정키가 눌리면 동작하지 않는다. TUI 칸은 Hermes 자체 히스토리를 쓴다.
 - 서브에이전트: 채팅 보기에서 `delegate_task` 줄 아래에 자식 목록(목표, 지금 도구, 도구 수, 경과/걸린 시간, 펼치면 요약과 마지막 출력). 출처는 게이트웨이 `subagent.*` 프레임(`__fixtures__/delegate.jsonl`, 실제 녹화). 비동기라 부모 턴이 끝난 뒤에도 갱신되고 부모의 running에는 영향을 주지 않는다. 진행 중인 자식은 패널 행에도 보인다(`liveSubagents.ts`, 칸 id 기준). 훅 상태 파일의 `subagents`는 비동기 위임에서 채워지지 않는다(확인함). resume한 기록에는 자식이 없다.
 - 상태별 보기: 정렬 메뉴의 Group by에서 Folder/Status. Status는 Needs you, Working, Unread, Done, Idle, 맨 아래 Recent 하나. 이때 정렬은 고정(`perch.sessionGroupBy`, `groupByStatus`).
+- 백그라운드 작업: Hermes `/background`는 부모 링크 없는 별도 `bg_` 세션을 만든다(state.db parent_session_id도 비어 있음, 확인함). perch-hook이 상태 파일에 `PERCH_PANE`을 `pane`으로 남기고, 백엔드가 그 칸의 세션을 `parentId`로 준다. 채팅 보기는 `prompt.background` 응답의 task_id로 잇는다. 패널에서는 부모 행 아래 `└ Background ·` 줄, 부모를 모르면 `Background` 태그. 채팅 `/background`, `/bg`는 `prompt.background`로 보낸다.
 
 ## 5. 반드시 지킬 규칙
 
@@ -108,6 +109,7 @@ npm run tauri build   # 릴리스 exe와 설치 파일
 - **에이전트 훅은 어떤 경우에도 에이전트 작업을 막으면 안 된다.**
   - 훅 명령은 실행 파일(`.exe`, macOS는 컴파일된 바이너리)로만 등록한다. `python x.py` 형태는 금지다. 파일이 없으면 python이 exit 2를 내고, Hermes는 `pre_tool_call`의 exit 2를 도구 차단으로 처리한다.
   - 항상 exit 0으로 끝내고, stdout에는 아무것도 쓰지 않는다. `fail_closed`는 쓰지 않는다.
+  - perch-hook은 `PERCH_PANE`을 읽어 상태 파일에 칸 id를 쓴다(값이 안전할 때만, 실패해도 무시).
   - Hermes 소스(`agent/shell_hooks.py`)에서 확인한 동작: 훅 실행 실패와 시간 초과는 통과(fail open)이고, exit 2만 차단이다.
 - **실행 중 네트워크 접속 금지.** 자동 업데이트, 텔레메트리, CDN 폰트를 쓰지 않는다. 대상 PC가 오프라인이다.
 - **디자인은 unslop 규칙을 따른다.**

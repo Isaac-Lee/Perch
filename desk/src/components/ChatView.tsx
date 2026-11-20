@@ -7,6 +7,7 @@ import ChatPrompt from "./ChatPrompt";
 import ChatMessage from "./ChatMessage";
 import ChatLive from "./ChatLive";
 import { setLiveSubagents } from "../lib/liveSubagents";
+import { setBackgroundTasks } from "../lib/liveBackground";
 
 export default function ChatView({ paneId, cwd, sessionId, focused }: { paneId: string; cwd: string; sessionId: string | null; focused: boolean }) {
   // Session id at first render only (equal to the pane id means none yet); a later paneSetSession must not reconnect.
@@ -41,6 +42,10 @@ export default function ChatView({ paneId, cwd, sessionId, focused }: { paneId: 
     setLiveSubagents(paneId, Object.values(state.subagents).filter((a) => a.status === "starting" || a.status === "running").map((a) => ({ id: a.id, role: "", goal: a.goal, start: (a.startAt ?? Date.now()) / 1000, tool: a.tool || undefined })));
   }, [paneId, state.subagents]);
   useEffect(() => () => setLiveSubagents(paneId, []), [paneId]);
+  useEffect(() => {
+    setBackgroundTasks(paneId, state.items.flatMap((i) => (i.kind === "background" ? [i.taskId] : [])));
+  }, [paneId, state.items]);
+  useEffect(() => () => setBackgroundTasks(paneId, []), [paneId]);
   const down = state.conn === "error" || state.conn === "closed";
   return (
     <div className="chat">

@@ -220,3 +220,21 @@ fn post_llm_call_sets_and_pre_llm_call_clears_asks() {
     let st = step(st, ev("pre_llm_call", json!({"user_message": "y"})), 15);
     assert_eq!((st["asks"].as_bool(), st["ask"].as_str()), (Some(false), Some("")));
 }
+
+#[test]
+fn pane_env_is_written_only_when_safe() {
+    let d = std::env::temp_dir().join(format!("perch-pane-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    let read = |id: &str| -> Value {
+        serde_json::from_str(&std::fs::read_to_string(d.join(format!("sessions/hermes-{id}.json"))).unwrap()).unwrap()
+    };
+    let e = |sid: &str| json!({"hook_event_name": "on_session_open", "session_id": sid, "extra": {}}).to_string();
+    perch_hook::run_pane(&e("a"), &d, 1, Some("p3")).unwrap();
+    assert_eq!(read("a")["pane"], "p3");
+    for (i, bad) in [None, Some(""), Some("a b"), Some("../x")].into_iter().enumerate() {
+        let id = format!("b{i}");
+        perch_hook::run_pane(&e(&id), &d, 1, bad).unwrap();
+        assert!(read(&id).get("pane").is_none(), "{bad:?}");
+    }
+    let _ = std::fs::remove_dir_all(&d);
+}
