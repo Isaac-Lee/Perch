@@ -1,10 +1,28 @@
 import { useCallback, useEffect, useState } from "react";
 import type { AgentKind, Pane, PaneView, Session } from "../lib/types";
+import { setPaneGraph } from "../lib/paneGraph";
+import type { SubagentLive } from "../lib/chatSession";
 import { folderName, mockPanes, mockSessions } from "./sessions";
 
 const TOOLS: [string, string][] = [["read_file", "src/app.ts"], ["terminal", "npm test"], ["patch", "src/app.ts"]];
 const sec = () => Math.floor(Date.now() / 1000);
 let seq = 100;
+
+// Sample graph for pane p2 (session s2) so the dock can be reviewed in the browser.
+const mk = (id: string, delegationId: string, index: number, count: number, goal: string, model: string, o: Partial<SubagentLive>): SubagentLive =>
+  ({ id, delegationId, index, count, goal, model, status: "running", tool: "", toolPreview: "", toolCount: 0, startAt: Date.now() - 80_000, ...o });
+function seedGraph() {
+  setPaneGraph("p2", {
+    subagents: [
+      mk("m1", "d1", 0, 3, "로그인 테스트 원인 찾기", "claude-sonnet-4", { status: "done", toolCount: 6, durationSec: 80, summary: "토큰 만료 시간이 초 단위가 아니라 밀리초로 비교되고 있었습니다.", tokens: { in: 12400, out: 2100 }, outputTail: [{ tool: "read_file", preview: "src/auth/token.ts", isError: false }, { tool: "terminal", preview: "npm test -- auth", isError: false }] }),
+      mk("m2", "d1", 1, 3, "API 응답 스키마 점검", "claude-sonnet-4", { tool: "terminal", toolPreview: "npm test", toolCount: 3 }),
+      mk("m3", "d1", 2, 3, "문서 링크 검사", "gpt-5-mini", { status: "starting", startAt: null }),
+      mk("m4", "d2", 0, 2, "린트 오류 수정", "claude-sonnet-4", { status: "failed", toolCount: 2, durationSec: 41, tokens: { in: 3000, out: 400 }, outputTail: [{ tool: "terminal", preview: "eslint: 12 problems", isError: true }] }),
+      mk("m5", "d2", 1, 2, "타입 오류 수정", "claude-sonnet-4", { tool: "patch", toolPreview: "src/app.ts", toolCount: 1 }),
+    ],
+    background: [{ taskId: "bg_a1b2c3", text: "빌드 로그에서 경고만 추려 주세요", status: "running", startedAt: Date.now() - 45_000 }],
+  });
+}
 
 export function useMockDesk(_hermesView?: PaneView) {
   const [now, setNow] = useState(sec);
@@ -13,6 +31,7 @@ export function useMockDesk(_hermesView?: PaneView) {
   const [stopped, setStopped] = useState<Record<string, number>>({}); // per-session stop counter; terminals print "중지됨" on change
   const [focusedPaneId, setFocused] = useState<string | null>(mockPanes[0]?.id ?? null);
 
+  useEffect(() => { seedGraph(); return () => setPaneGraph("p2", { subagents: [], background: [] }); }, []);
   useEffect(() => {
     let tick = 0;
     const id = setInterval(() => {

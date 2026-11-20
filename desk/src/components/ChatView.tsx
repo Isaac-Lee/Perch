@@ -9,6 +9,7 @@ import ChatLive from "./ChatLive";
 import ChatQueue from "./ChatQueue";
 import { setLiveSubagents } from "../lib/liveSubagents";
 import { setBackgroundTasks } from "../lib/liveBackground";
+import { setPaneGraph } from "../lib/paneGraph";
 
 export default function ChatView({ paneId, cwd, sessionId, focused }: { paneId: string; cwd: string; sessionId: string | null; focused: boolean }) {
   // Session id at first render only (equal to the pane id means none yet); a later paneSetSession must not reconnect.
@@ -47,6 +48,10 @@ export default function ChatView({ paneId, cwd, sessionId, focused }: { paneId: 
     setBackgroundTasks(paneId, state.items.flatMap((i) => (i.kind === "background" ? [i.taskId] : [])));
   }, [paneId, state.items]);
   useEffect(() => () => setBackgroundTasks(paneId, []), [paneId]);
+  useEffect(() => {
+    setPaneGraph(paneId, { subagents: Object.values(state.subagents), background: state.items.flatMap((i) => (i.kind === "background" ? [{ taskId: i.taskId, text: i.text, status: i.status, startedAt: i.startedAt, durationS: i.durationS }] : [])) });
+  }, [paneId, state.subagents, state.items]);
+  useEffect(() => () => setPaneGraph(paneId, { subagents: [], background: [] }), [paneId]);
   const down = state.conn === "error" || state.conn === "closed";
   return (
     <div className="chat">

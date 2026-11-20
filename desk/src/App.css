@@ -63,6 +63,32 @@ body.row-dragging, body.row-dragging * { cursor: grabbing !important; user-selec
 .pane.focused::after { content: ""; position: absolute; inset: 0; border: 1px solid var(--accent); pointer-events: none; z-index: 2; }
 .pane-head { flex: none; height: 32px; display: flex; align-items: center; gap: 12px; padding: 0 4px 0 12px; border-bottom: 1px solid var(--line); }
 .pane-title { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+.pane-body { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
+.pane-body.wide { flex-direction: row; }
+.pane-main { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
+.sg { flex: none; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--surface-1); }
+.sg.right { width: 360px; border-left: 1px solid var(--line); }
+.sg.bottom { height: 45%; min-height: 180px; border-top: 1px solid var(--line); }
+.sg-head { flex: none; height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 4px 0 12px; border-bottom: 1px solid var(--line); color: var(--text-2); font-size: 12px; }
+.sg-scroll { flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) transparent; }
+.sg-canvas { position: relative; }
+.sg-canvas > svg { position: absolute; inset: 0; fill: none; stroke: var(--text-3); stroke-width: 1; pointer-events: none; }
+.sg-node { position: absolute; box-sizing: border-box; padding: 8px 12px; display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 0; overflow: hidden; text-align: left; background: var(--surface-1); border: 1px solid var(--line); border-radius: 8px; color: var(--text); font-size: 12px; line-height: 16px; }
+.sg-node.dashed { border-style: dashed; }
+button.sg-node { cursor: pointer; }
+button.sg-node:hover, .sg-node.picked { background: var(--surface-2); }
+.sg-l1 { display: flex; align-items: center; gap: 8px; font-weight: 500; min-width: 0; }
+.sg-ico { width: 12px; height: 16px; flex: none; display: inline-flex; align-items: center; justify-content: center; }
+.sg-run { display: flex; align-items: center; gap: 4px; }
+.sg-run canvas { flex: none; margin: -2px 0; }
+.sg-l2 { color: var(--text-2); }
+.sg-l3 { display: flex; }
+.sg-badge { max-width: 100%; padding: 0 4px; border: 1px solid var(--line); border-radius: 4px; color: var(--text-3); font-size: 11px; line-height: 14px; }
+.sg-detail { flex: none; max-height: 40%; overflow: auto; padding: 8px 12px; border-top: 1px solid var(--line); }
+.sg-detail .chat-tool-body { padding-left: 0; }
+.row-sub-btn { color: var(--text-3); } .row-sub-btn:hover { color: var(--text); }
+.row-line-link { cursor: pointer; } .row-line-link:hover { color: var(--text); }
+.stop-btn.on { color: var(--accent); }
 .think { display: inline-flex; align-items: center; gap: 8px; color: var(--text-2); font-size: 12px; white-space: nowrap; flex: none; }
 .think canvas, .pane-foot canvas { flex: none; }
 .term { flex: 1; min-height: 0; min-width: 0; background: var(--term-bg); overflow: hidden; }
