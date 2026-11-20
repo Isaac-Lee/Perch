@@ -587,6 +587,21 @@ describe("queued messages", () => {
     const s = chatReducer(initialChat, info([row({ input_id: "x", admission_id: "ax", text: "other" }), row({ input_id: "y", status: "started" })]));
     expect(s.queued).toMatchObject([{ id: "x", admissionId: "ax", text: "other", seen: true }]);
   });
+  it("an idle prompt that shows up in pending is not adopted or bubbled twice", () => {
+    let s = chatReducer(initialChat, { t: "userSent", id: "u0", text: "hi", submissionId: "s1" });
+    s = chatReducer(s, info([row({ input_id: "s1" })]));
+    expect(s.queued).toEqual([]);
+    s = chatReducer(s, info([]));
+    expect(s.queued).toEqual([]);
+    expect(users(s)).toHaveLength(1);
+  });
+  it("a foreign row is still adopted and bubbled once", () => {
+    let s = chatReducer(initialChat, { t: "userSent", id: "u0", text: "hi", submissionId: "s1" });
+    s = chatReducer(s, info([row({ input_id: "other", text: "x" })]));
+    expect(s.queued).toMatchObject([{ id: "other" }]);
+    s = chatReducer(s, info([]));
+    expect(users(s)).toHaveLength(2);
+  });
   it("steering and controls come from the pending row", () => {
     let s = chatReducer(queued(), info([row({ status: "started", steering: true, controls: ["replace"] })]));
     expect(s.queued[0]).toMatchObject({ steering: true, canSteer: false });
