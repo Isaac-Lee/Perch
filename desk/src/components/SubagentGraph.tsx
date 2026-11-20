@@ -66,10 +66,12 @@ export default function SubagentGraph({ pane, rootLabel, title, data, dock, onDo
   const startDrag = (e: React.PointerEvent) => {
     const body = el.current?.parentElement;
     if (e.button !== 0 || !body || (e.target as HTMLElement).closest("button")) return;
+    e.preventDefault();
     const sx = e.clientX, sy = e.clientY;
     let on = false, to: "right" | "bottom" | null = null;
     const move = (m: PointerEvent) => {
       if (!on && Math.hypot(m.clientX - sx, m.clientY - sy) < 5) return;
+      if (!on) document.body.classList.add("pane-dragging");
       on = true;
       const r = body.getBoundingClientRect(), fx = (m.clientX - r.left) / r.width, fy = (m.clientY - r.top) / r.height;
       to = fy < 0 || fy > 1 || fx < 0 || fx > 1 ? null : fy > 0.6 ? "bottom" : fx > 0.6 && r.width >= 560 ? "right" : null;
@@ -77,7 +79,7 @@ export default function SubagentGraph({ pane, rootLabel, title, data, dock, onDo
     };
     const up = () => {
       window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
-      setDrop(null);
+      document.body.classList.remove("pane-dragging"); setDrop(null);
       if (on && to) onDock(to);
     };
     window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
