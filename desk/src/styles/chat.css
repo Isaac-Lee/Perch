@@ -46,6 +46,7 @@
 /* opens upward from the meta row, right-aligned; high specificity so App.css .menu does not win */
 .chat-composer .menu.chat-model-menu { top: auto; left: auto; right: 12px; /* overridden inline to sit above the opening button */ bottom: calc(100% + 6px); z-index: 20; width: max-content; min-width: 220px; max-width: min(360px, calc(100% - 24px)); max-height: 320px; }
 .chat-effort { max-width: 30%; }
+.chat-hist { flex: none; margin: 0 2px 2px; line-height: 22px; color: var(--text-3); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .chat-composer .menu.chat-effort-menu { min-width: 160px; }
 /* slash-command popup: above the box, left-aligned, full width */
 .chat-composer .menu.chat-slash-menu { top: auto; left: 12px; right: 12px; bottom: calc(100% + 6px); z-index: 20; width: auto; max-width: 560px; max-height: 280px; overflow-y: auto; }
