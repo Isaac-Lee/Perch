@@ -2,8 +2,13 @@ name: Build installers
 
 # Pull requests and manual runs build both installers and keep them as run artifacts.
 # A tag like v0.1.0 also attaches them to a draft release for review before publishing.
+# Docs-only PRs (Markdown, docs/, LICENSE) skip the build.
 on:
   pull_request:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
   workflow_dispatch:
   push:
     tags: ["v*"]
