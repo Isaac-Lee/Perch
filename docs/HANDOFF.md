@@ -10,7 +10,7 @@ Perch는 여러 코딩 에이전트(Hermes, OpenCode)를 분할 터미널로 띄
 
 | 위치 | 내용 | 상태 |
 |---|---|---|
-| `desk/src/` | 화면 (React 19 + TypeScript). 브라우저에서는 가짜 데이터, Tauri 창에서는 실제 백엔드 | 테스트 174개 통과 |
+| `desk/src/` | 화면 (React 19 + TypeScript). 브라우저에서는 가짜 데이터, Tauri 창에서는 실제 백엔드 | 테스트 176개 통과 |
 | `desk/src-tauri/src/` | Rust 백엔드: `pty.rs`(터미널), `desk.rs`(칸·창), `sessions.rs`(상태 수집, state.db 보강), `hermes.rs`(실행 파일 찾기, 연결) | 테스트 39개 통과 (1개는 무시) |
 | `desk/src-tauri/src/gateway.rs` | Hermes gateway 중계. `hermes gateway attach`가 준 ws:// 주소에 loopback TcpStream으로 직접 WebSocket을 말하고 JSON 줄을 채팅 칸과 주고받는다 (gateway가 Origin 헤더를 거부해서 웹뷰가 직접 못 붙는다) | 테스트 포함 |
 | `desk/src/components/Chat*.tsx` | 채팅 보기. `ChatView`(전체), `ChatMessage`(마크다운 답변·도구 줄), `ChatPrompt`(승인·질문 버튼), `ChatComposer`(입력 상자: `+` 이미지, 모델 칩과 메뉴, 엔터 아이콘) | `chatSession`, `composer` 테스트 |
