@@ -5,7 +5,7 @@ import { createRpc, type Rpc } from "./gateway";
 import type { GatewayEvent, SessionSnapshot } from "./gatewayTypes";
 
 export type ChatItem =
-  | { kind: "user"; id: string; text: string; images?: string[] }
+  | { kind: "user"; id: string; text: string; images?: string[]; /** id sent as prompt.submit submission_id (idle path): its pending row is this bubble */ submissionId?: string }
   | { kind: "assistant"; id: string; text: string; streaming: boolean }
   | { kind: "thought"; id: string; text: string; streaming: boolean; startedAt?: number; durationS?: number }
   | {
@@ -52,7 +52,7 @@ export type ChatAction =
   | { t: "receipt"; id: string; admissionId?: string; status?: string }
   | { t: "unqueue"; id: string }
   | { t: "steering"; id: string; on: boolean }
-  | { t: "userSent"; id: string; text: string; images?: string[]; /** set for a real prompt (not a slash command): starts the turn clock at once */ at?: number }
+  | { t: "userSent"; id: string; text: string; images?: string[]; submissionId?: string; /** set for a real prompt (not a slash command): starts the turn clock at once */ at?: number }
   | { t: "event"; ev: GatewayEvent; at?: number };
 
 const str = (v: unknown) => (typeof v === "string" ? v : "");
@@ -127,7 +127,8 @@ function leave(s: ChatState, gone: QueuedMsg[]): ChatState {
 }
 /** session.info `pending` is the full queue: match local entries, bubble the ones that left it, adopt foreign rows. */
 function reconcileQueue(s: ChatState, pending: unknown): ChatState {
-  const rows = waitingRows(pending), used = new Set<any>(), gone: QueuedMsg[] = [];
+  const sent = new Set(s.items.flatMap((i) => (i.kind === "user" && i.submissionId ? [i.submissionId] : [])));
+  const rows = waitingRows(pending).filter((r) => !sent.has(str(r.input_id))), used = new Set<any>(), gone: QueuedMsg[] = [];
   const kept = s.queued.flatMap((q) => {
     const row = rows.find((r) => !used.has(r) && (str(r.input_id) === q.id || (!!q.admissionId && str(r.admission_id) === q.admissionId)));
     if (row) { used.add(row); return [{ ...q, ...toQueued(row), id: q.id, text: q.text, images: q.images }]; }
@@ -167,7 +168,7 @@ export function chatReducer(s: ChatState, a: ChatAction): ChatState {
       return a.status !== "queued" ? leave(s, [q]) : { ...s, queued: s.queued.map((x) => (x === q ? { ...q, admissionId: a.admissionId ?? q.admissionId } : x)) };
     }
     case "userSent": return {
-      ...s, items: [...settle(s.items), { kind: "user", id: a.id, text: a.text, images: a.images }],
+      ...s, items: [...settle(s.items), { kind: "user", id: a.id, text: a.text, images: a.images, submissionId: a.submissionId }],
       ...(a.at != null && !s.running ? { running: true, turnStart: a.at, sentAt: a.at, cleared: false } : {}),
     };
     case "event": {
@@ -512,9 +513,9 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
   };
 
   /** `qid` set = queued behind a running turn: the entry is dropped again when the gateway refuses it. */
-  const submit = (sid: string, text: string, attachments?: { path: string; mime: string }[], qid?: string) => {
+  const submit = (sid: string, text: string, attachments?: { path: string; mime: string }[], qid?: string, submissionId = qid ?? crypto.randomUUID()) => {
     const fail = (message: string) => { if (qid) dispatch({ t: "unqueue", id: qid }); dispatch({ t: "event", ev: { type: "error", payload: { message } } }); };
-    return rpcRef.current?.request<{ admission_id?: string; status?: string }>("prompt.submit", { session_id: sid, text, submission_id: qid ?? crypto.randomUUID(), ...(attachments?.length ? { attachments } : {}) }).then(
+    return rpcRef.current?.request<{ admission_id?: string; status?: string }>("prompt.submit", { session_id: sid, text, submission_id: submissionId, ...(attachments?.length ? { attachments } : {}) }).then(
       (r) => { const f = submitFailure(r); if (f) fail(f); else if (qid) dispatch({ t: "receipt", id: qid, admissionId: r?.admission_id, status: r?.status }); },
       (e) => fail(e instanceof Error ? e.message : String(e)));
   };
@@ -593,9 +594,10 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
         submit(sid, text, attachments, id);
         return;
       }
-      dispatch({ t: "userSent", id: `u${stateRef.current.items.length}`, text, images, ...(slash ? {} : { at: Date.now() }) });
+      const submissionId = crypto.randomUUID();
+      dispatch({ t: "userSent", id: `u${stateRef.current.items.length}`, text, images, ...(slash ? {} : { at: Date.now(), submissionId }) });
       if (slash) runSlash(sid, text).catch((e) => say(e instanceof Error ? e.message : String(e)));
-      else submit(sid, text, attachments);
+      else submit(sid, text, attachments, undefined, submissionId);
     },
     /** 지금 보내기: hands a queued prompt to the running turn. session.info then reports it as steering and later drops it. */
     sendNow(id: string) {
