@@ -42,7 +42,7 @@ export function paneGraphData(chat: PaneGraphData | undefined, session: Session 
   if (chat) return { subagents: chat.subagents, background: chat.background.map((b) => (kids.some((k) => k.sessionId === b.taskId) ? { ...b, sessionId: b.taskId, tool: kids.find((k) => k.sessionId === b.taskId)!.tool } : b)) };
   const n = session?.subagents.length ?? 0;
   return {
-    subagents: (session?.subagents ?? []).map((a, index) => ({ id: a.id, index, count: n, goal: a.goal, model: "", status: "running", tool: a.tool ?? "", toolPreview: "", toolCount: 0, startAt: a.start * 1000 })),
+    subagents: (session?.subagents ?? []).map((a, index) => ({ id: a.id, index, count: n, goal: a.goal, model: "", status: "running", tool: a.tool ?? "", toolPreview: "", toolCount: 0, depth: 0, startAt: a.start * 1000 })),
     background: kids.map((k) => ({ taskId: k.sessionId, sessionId: k.sessionId, tool: k.tool, text: sessionTitle(k), status: WORKING.includes(k.state) ? "running" : "done", startedAt: (k.turnStart ?? k.since) * 1000, durationS: k.lastTurn ?? undefined })),
   };
 }
@@ -50,20 +50,31 @@ export function paneGraphData(chat: PaneGraphData | undefined, session: Session 
 /** Header badge: starting/running subagents + running background tasks. */
 export const runningCount = (d: PaneGraphData) => d.subagents.filter((a) => a.status === "starting" || a.status === "running").length + d.background.filter((b) => b.status === "running").length;
 
-export interface GNode { id: string; kind: "root" | "sub" | "bg"; title: string; label?: string; sub?: SubagentLive; bg?: BgLive }
+export interface GNode { id: string; kind: "root" | "sub" | "bg"; title: string; label?: string; sub?: SubagentLive; bg?: BgLive; /** graph parent node id ("root" for top-level and background) */ parentId?: string; /** 0 root, 1 top-level and background, +1 per nesting */ level: number; /** first node of a new delegation group (top-level, or a sibling with another delegation) or of the background group: extra space above */ gap?: boolean }
 
-/** Row 0 root; one row per delegate_task call (first-seen order, nodes by index); one background row. */
-export function graphRows(root: { title: string; label: string }, subagents: SubagentLive[], background: BgLive[]): GNode[][] {
-  const groups = new Map<string, SubagentLive[]>();
-  for (const a of subagents) { const k = a.delegationId ?? ""; groups.set(k, [...(groups.get(k) ?? []), a]); }
-  return [
-    [{ id: "root", kind: "root", title: root.title, label: root.label }],
-    ...[...groups.values()].map((g) => [...g].sort((a, b) => a.index - b.index).map((a): GNode => ({ id: a.id, kind: "sub", title: a.goal || a.id, sub: a }))),
-    ...(background.length ? [background.map((b): GNode => ({ id: b.taskId, kind: "bg", title: b.text, bg: b }))] : []),
-  ];
+/** Flat depth-first list: root; top-level subagents grouped per delegation (first-seen order, then index), each followed by its descendants; background last. */
+export function graphRows(root: { title: string; label: string }, subagents: SubagentLive[], background: BgLive[]): GNode[] {
+  const ids = new Set(subagents.map((a) => a.id));
+  const top = (a: SubagentLive) => !a.parentId || a.parentId === a.id || !ids.has(a.parentId);
+  const rank = new Map<string, number>();
+  for (const a of subagents) { const k = a.delegationId ?? ""; if (!rank.has(k)) rank.set(k, rank.size); }
+  const order = (l: SubagentLive[]) => [...l].sort((a, b) => rank.get(a.delegationId ?? "")! - rank.get(b.delegationId ?? "")! || a.index - b.index);
+  const out: GNode[] = [{ id: "root", kind: "root", title: root.title, label: root.label, level: 0 }];
+  const seen = new Set<string>(); // guards parent cycles
+  const emit = (list: SubagentLive[], parentId: string, level: number) => {
+    list.forEach((a, i) => {
+      if (seen.has(a.id)) return;
+      seen.add(a.id);
+      out.push({ id: a.id, kind: "sub", title: a.goal || a.id, sub: a, parentId, level, ...((i === 0 ? level === 1 : a.delegationId !== list[i - 1].delegationId) ? { gap: true } : {}) });
+      emit(order(subagents.filter((c) => c.parentId === a.id)), a.id, level + 1);
+    });
+  };
+  emit(order(subagents.filter(top)), "root", 1);
+  background.forEach((b, i) => out.push({ id: b.taskId, kind: "bg", title: b.text, bg: b, parentId: "root", level: 1, ...(i === 0 ? { gap: true } : {}) }));
+  return out;
 }
 
-export const NODE_W = 200, NODE_H = 72, ROOT_H = 56, GAP = 12, ROW_GAP = 40, PAD = 16, R = 6;
+export const COL_W = 200, ROW_GAP = 32, GAP_X = 16, INDENT = 32, MAX_W = 280, MIN_W = 160, NODE_H = 72, ROOT_H = 56, GAP = 12, GROUP_GAP = 8, PAD = 16, R = 6;
 export interface Laid { nodes: { id: string; x: number; y: number; w: number; h: number }[]; edges: { id: string; d: string }[]; width: number; height: number }
 
 /** Orthogonal polyline with quadratic rounded corners. */
@@ -81,34 +92,43 @@ function round(pts: [number, number][]): string {
   return d;
 }
 
-/** Rows of nodes (row 0 = root) -> boxes and edges. Rows wrap into centered lines; edges run root bottom-center -> child top-center. */
-export function layoutGraph(rows: { id: string }[][], width: number): Laid {
-  const inner = width - 2 * PAD, nw = Math.max(120, Math.min(NODE_W, Math.floor((inner - GAP) / 2))); // >= 2 per line once inner >= 252
-  const per = Math.max(1, Math.floor((inner + GAP) / (nw + GAP)));
+/** Flat depth-first list -> one node per line, indented by level. Each edge: parent trunk (x + 12) down from its bottom to the child's vertical center, then right to the child's left edge. */
+export function layoutGraph(list: { id: string; parentId?: string; level: number; gap?: boolean }[], width: number, orient: "vertical" | "horizontal" = "vertical"): Laid {
   const nodes: Laid["nodes"] = [];
-  const root = rows[0]?.[0];
-  if (!root) return { nodes, edges: [], width, height: 2 * PAD };
-  nodes.push({ id: root.id, x: (width - nw) / 2, y: PAD, w: nw, h: ROOT_H });
-  let y = PAD + ROOT_H;
-  const lines: { y: number; first: boolean; ids: string[] }[] = [];
-  rows.slice(1).forEach((row, ri) => {
-    for (let i = 0; i < row.length; i += per) {
-      const line = row.slice(i, i + per);
-      y += ROW_GAP;
-      const x0 = (width - (line.length * nw + (line.length - 1) * GAP)) / 2;
-      line.forEach((n, k) => nodes.push({ id: n.id, x: x0 + k * (nw + GAP), y, w: nw, h: NODE_H }));
-      lines.push({ y, first: ri === 0 && i === 0, ids: line.map((n) => n.id) });
-      y += NODE_H;
-    }
+  if (orient === "horizontal") return layoutSideways(list, width);
+  let y = PAD, right = width;
+  for (const n of list) {
+    const x = PAD + n.level * INDENT, w = Math.max(MIN_W, Math.min(MAX_W, width - x - PAD)), h = n.level === 0 ? ROOT_H : NODE_H;
+    if (nodes.length) y += GAP + (n.gap ? GROUP_GAP : 0);
+    nodes.push({ id: n.id, x, y, w, h });
+    right = Math.max(right, x + w + PAD);
+    y += h;
+  }
+  const at = new Map(nodes.map((n) => [n.id, n]));
+  const edges = list.flatMap((n) => {
+    const c = at.get(n.id)!, p = n.parentId ? at.get(n.parentId) : undefined;
+    if (!p) return [];
+    const tx = p.x + 12, cy = c.y + c.h / 2;
+    return [{ id: n.id, d: round([[tx, p.y + p.h], [tx, cy], [c.x, cy]]) }];
   });
-  const rx = width / 2, rb = PAD + ROOT_H;
-  // one shared trunk for every later line, just left of the leftmost line start
-  const gutter = Math.max(PAD / 2, Math.min(...lines.filter((l) => !l.first).map((l) => nodes.find((n) => n.id === l.ids[0])!.x), Infinity) - 8);
-  const edges = lines.flatMap((l) => l.ids.map((id) => {
-    const c = nodes.find((n) => n.id === id)!, cx = c.x + c.w / 2;
-    const pts: [number, number][] = l.first ? [[rx, rb], [rx, l.y - ROW_GAP / 2], [cx, l.y - ROW_GAP / 2], [cx, l.y]]
-      : [[rx, rb], [rx, rb + ROW_GAP / 2], [gutter, rb + ROW_GAP / 2], [gutter, l.y - ROW_GAP / 2], [cx, l.y - ROW_GAP / 2], [cx, l.y]];
-    return { id, d: round(pts) };
-  }));
-  return { nodes, edges, width, height: y + PAD };
+  return { nodes, edges, width: right, height: y + PAD };
+}
+
+/** Bottom dock: one row per level; in depth-first order a node's column is max(parent's column, next free column of its row), so siblings stay evenly spaced and rows never overlap. Edges leave the parent's bottom, run across the row gap and drop onto the child's top. */
+function layoutSideways(list: { id: string; parentId?: string; level: number; gap?: boolean }[], width: number): Laid {
+  const H = NODE_H, xs = new Map<string, number>(), free: number[] = [], used: boolean[] = [];
+  for (const n of list) {
+    const f = (free[n.level] ?? PAD) + (n.gap && used[n.level] ? GROUP_GAP : 0), x = Math.max(f, xs.get(n.parentId ?? "") ?? PAD);
+    xs.set(n.id, x); free[n.level] = x + COL_W + GAP_X; used[n.level] = true;
+  }
+  const nodes: Laid["nodes"] = list.map((n) => ({ id: n.id, x: xs.get(n.id)!, y: PAD + n.level * (H + ROW_GAP), w: COL_W, h: n.level === 0 ? ROOT_H : H }));
+  const right = Math.max(...nodes.map((n) => n.x + n.w)), bottom = Math.max(...nodes.map((n) => n.y + H));
+  const at = new Map(nodes.map((n) => [n.id, n]));
+  const edges = list.flatMap((n) => {
+    const c = at.get(n.id)!, p = n.parentId ? at.get(n.parentId) : undefined;
+    if (!p) return [];
+    const my = c.y - ROW_GAP / 2;
+    return [{ id: n.id, d: round([[p.x + 16, p.y + p.h], [p.x + 16, my], [c.x + 16, my], [c.x + 16, c.y]]) }];
+  });
+  return { nodes, edges, width: Math.max(width, right + PAD), height: bottom + PAD };
 }

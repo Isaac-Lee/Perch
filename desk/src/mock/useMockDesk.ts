@@ -10,12 +10,15 @@ let seq = 100;
 
 // Sample graph for pane p2 (session s2) so the dock can be reviewed in the browser.
 const mk = (id: string, delegationId: string, index: number, count: number, goal: string, model: string, o: Partial<SubagentLive>): SubagentLive =>
-  ({ id, delegationId, index, count, goal, model, status: "running", tool: "", toolPreview: "", toolCount: 0, startAt: Date.now() - 80_000, ...o });
+  ({ id, depth: 0, delegationId, index, count, goal, model, status: "running", tool: "", toolPreview: "", toolCount: 0, startAt: Date.now() - 80_000, ...o });
 function seedGraph() {
   setPaneGraph("p2", {
     subagents: [
       mk("m1", "d1", 0, 3, "로그인 테스트 원인 찾기", "claude-sonnet-4", { status: "done", toolCount: 6, durationSec: 80, summary: "토큰 만료 시간이 초 단위가 아니라 밀리초로 비교되고 있었습니다.", tokens: { in: 12400, out: 2100 }, outputTail: [{ tool: "read_file", preview: "src/auth/token.ts", isError: false }, { tool: "terminal", preview: "npm test -- auth", isError: false }] }),
       mk("m2", "d1", 1, 3, "API 응답 스키마 점검", "claude-sonnet-4", { tool: "terminal", toolPreview: "npm test", toolCount: 3 }),
+      mk("m2a", "d1a", 0, 2, "스키마 필드 대조", "claude-haiku-4", { parentId: "m2", depth: 1, tool: "read_file", toolPreview: "api/schema.json", toolCount: 2 }),
+      mk("m2b", "d1a", 1, 2, "응답 예시 수집", "gpt-5-mini", { parentId: "m2", depth: 1, status: "done", toolCount: 4, durationSec: 27, tokens: { in: 5200, out: 800 } }),
+      mk("m2b1", "d1b", 0, 1, "예시 JSON 검증", "claude-haiku-4", { parentId: "m2b", depth: 2, tool: "terminal", toolPreview: "jq . examples/*.json", toolCount: 1 }),
       mk("m3", "d1", 2, 3, "문서 링크 검사", "gpt-5-mini", { status: "starting", startAt: null }),
       mk("m4", "d2", 0, 2, "린트 오류 수정", "claude-sonnet-4", { status: "failed", toolCount: 2, durationSec: 41, tokens: { in: 3000, out: 400 }, outputTail: [{ tool: "terminal", preview: "eslint: 12 problems", isError: true }] }),
       mk("m5", "d2", 1, 2, "타입 오류 수정", "claude-sonnet-4", { tool: "patch", toolPreview: "src/app.ts", toolCount: 1 }),

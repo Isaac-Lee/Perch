@@ -10,7 +10,7 @@ Perch는 여러 코딩 에이전트(Hermes, OpenCode)를 분할 터미널로 띄
 
 | 위치 | 내용 | 상태 |
 |---|---|---|
-| `desk/src/` | 화면 (React 19 + TypeScript). 브라우저에서는 가짜 데이터, Tauri 창에서는 실제 백엔드 | 테스트 170개 통과 |
+| `desk/src/` | 화면 (React 19 + TypeScript). 브라우저에서는 가짜 데이터, Tauri 창에서는 실제 백엔드 | 테스트 174개 통과 |
 | `desk/src-tauri/src/` | Rust 백엔드: `pty.rs`(터미널), `desk.rs`(칸·창), `sessions.rs`(상태 수집, state.db 보강), `hermes.rs`(실행 파일 찾기, 연결) | 테스트 39개 통과 (1개는 무시) |
 | `desk/src-tauri/src/gateway.rs` | Hermes gateway 중계. `hermes gateway attach`가 준 ws:// 주소에 loopback TcpStream으로 직접 WebSocket을 말하고 JSON 줄을 채팅 칸과 주고받는다 (gateway가 Origin 헤더를 거부해서 웹뷰가 직접 못 붙는다) | 테스트 포함 |
 | `desk/src/components/Chat*.tsx` | 채팅 보기. `ChatView`(전체), `ChatMessage`(마크다운 답변·도구 줄), `ChatPrompt`(승인·질문 버튼), `ChatComposer`(입력 상자: `+` 이미지, 모델 칩과 메뉴, 엔터 아이콘) | `chatSession`, `composer` 테스트 |
@@ -102,7 +102,7 @@ npm run tauri build   # 릴리스 exe와 설치 파일
 - 서브에이전트: 채팅 보기에서 `delegate_task` 줄 아래에 자식 목록(목표, 지금 도구, 도구 수, 경과/걸린 시간, 펼치면 요약과 마지막 출력). 출처는 게이트웨이 `subagent.*` 프레임(`__fixtures__/delegate.jsonl`, 실제 녹화). 비동기라 부모 턴이 끝난 뒤에도 갱신되고 부모의 running에는 영향을 주지 않는다. 진행 중인 자식은 패널 행에도 보인다(`liveSubagents.ts`, 칸 id 기준). 훅 상태 파일의 `subagents`는 비동기 위임에서 채워지지 않는다(확인함). resume한 기록에는 자식이 없다.
 - 상태별 보기: 정렬 메뉴의 Group by에서 Folder/Status. Status는 Needs you, Working, Unread, Done, Idle, 맨 아래 Recent 하나. 이때 정렬은 고정(`perch.sessionGroupBy`, `groupByStatus`).
 - 백그라운드 작업: Hermes `/background`는 부모 링크 없는 별도 `bg_` 세션을 만든다(state.db parent_session_id도 비어 있음, 확인함). perch-hook이 상태 파일에 `PERCH_PANE`을 `pane`으로 남기고, 백엔드가 그 칸의 세션을 `parentId`로 준다. 채팅 보기는 `prompt.background` 응답의 task_id로 잇는다. 패널에서는 부모 행 아래 `└ Background ·` 줄, 부모를 모르면 `Background` 태그. 채팅 `/background`, `/bg`는 `prompt.background`로 보낸다.
-- 서브에이전트 그래프 (2026-11-20): 서브에이전트나 백그라운드 자식이 있으면 칸 머리줄에 `Network` 버튼(실행 중 수). 누르면 그 칸 안에 그래프가 붙는다: 칸 폭 760px 이상이면 오른쪽 360px, 아니면 아래 45%. 맨 위 이 세션, 그 아래 `delegate_task` 호출별 행, 마지막 행 백그라운드. 간선은 직교선(둥근 꺾임), 라이브러리 없음(`paneGraph.ts` `graphRows`/`layoutGraph`). 노드 첫 줄 상태 아이콘+제목, 둘째 줄 실행 중이면 오브+지금 작업, 셋째 줄 모델 배지. 점선 테두리는 시작 전·끝난 노드만. 서브에이전트 노드를 누르면 요약과 마지막 출력, 백그라운드 노드는 그 세션으로 포커스. 패널 행의 `N agents`와 `└ Background` 줄로도 연다. 채팅 칸은 `ChatView`가 끝난 자식까지 `setPaneGraph`로 올리고, TUI 칸은 `bg_` 자식과 훅 `subagents`만 보인다.
+- 서브에이전트 그래프 (2026-11-20): 서브에이전트나 백그라운드 자식이 있으면 칸 머리줄에 `Network` 버튼(실행 중 수). 누르면 그 칸 안에 그래프가 붙는다. 붙는 곳은 오른쪽(360px) 또는 아래(45%)이고, 그래프 머리줄을 끌어 옮긴다(`perch.graphDock`, 전역). 고른 적이 없으면 칸 폭 760px 이상일 때 오른쪽, 칸 폭 560px 미만이면 늘 아래. 오른쪽은 세로 들여쓴 트리(한 줄에 노드 하나, 레벨마다 32px 들여쓰기, 부모 아래에서 꺾여 들어가는 선), 아래는 같은 레벨을 같은 간격으로 옆에 놓고 하위는 부모 아래 줄에서 시작한다(사용자 결정). 순서는 루트, `delegate_task` 호출별 자식(각 자식 바로 뒤에 그 하위), 마지막 백그라운드. 중첩은 게이트웨이 `subagent.*`의 `parent_id`/`depth`로 잇는다(Hermes TUI와 같은 방식, 깊이 제한 없음). 손자는 채팅의 `delegate_task` 줄 목록에는 넣지 않는다. 노드 첫 줄 상태 아이콘+제목, 둘째 줄 실행 중이면 오브+지금 작업(아니면 `N agents · N tools · 경과`), 셋째 줄 모델 배지. 점선 테두리는 시작 전·끝난 노드만. 서브에이전트 노드를 누르면 요약과 마지막 출력, 백그라운드 노드는 그 세션으로 포커스. Esc는 그래프 안에 포커스가 있을 때만 닫는다. 패널 행의 `N agents`와 `└ Background` 줄로도 연다. 채팅 칸은 `ChatView`가 끝난 자식까지 `setPaneGraph`로 올리고, TUI 칸은 `bg_` 자식과 훅 `subagents`만 보인다. 배치는 `paneGraph.ts` `graphRows`/`layoutGraph`(라이브러리 없음). 도크를 바꿔도 이미 열린 다른 칸은 다시 열 때 따라간다.
 
 ## 5. 반드시 지킬 규칙
 
