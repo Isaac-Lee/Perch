@@ -35,6 +35,7 @@ export default function ChatComposer({ running, disabled, focused, model, effort
   const [menu, setMenu] = useState<"closed" | "loading" | "ready" | "error" | "effort">("closed");
   const [slash, setSlash] = useState<(SlashResult & { typed: string }) | null>(null);
   const [sel, setSel] = useState(0);
+  const [histIdx, setHistIdx] = useState(-1); // mirror of hist.current.index for rendering
   const hist = useRef({ index: -1, saved: "" }); // Up/Down prompt browsing; index -1 = not browsing
   const caretEnd = useRef(false);
   const reqN = useRef(0);
@@ -92,7 +93,7 @@ export default function ChatComposer({ running, disabled, focused, model, effort
     return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", esc); };
   }, [menu]);
   useEffect(() => { if ((running || disabled) && menu !== "closed") setMenu("closed"); }, [running, disabled, menu]);
-  useEffect(() => { if (draft?.n) { hist.current = { index: -1, saved: "" }; setText(draft.text); ref.current?.focus(); } }, [draft?.n]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (draft?.n) { hist.current = { index: -1, saved: "" }; setHistIdx(-1); setText(draft.text); ref.current?.focus(); } }, [draft?.n]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Slash popup: only for a single line starting with "/" and the caret at its end; debounced, stale answers dropped.
   useEffect(() => {
@@ -143,7 +144,7 @@ export default function ChatComposer({ running, disabled, focused, model, effort
     if (disabled || empty) return;
     onSend(text.trim(), atts.map(({ path, mime }) => ({ path, mime })));
     atts.forEach((a) => URL.revokeObjectURL(a.url));
-    hist.current = { index: -1, saved: "" }; setText(""); setAtts([]); setErr(null); setSlash(null);
+    hist.current = { index: -1, saved: "" }; setHistIdx(-1); setText(""); setAtts([]); setErr(null); setSlash(null);
   };
   const remove = (a: Attachment) => { URL.revokeObjectURL(a.url); setAtts((l) => l.filter((x) => x !== a)); };
   const addFiles = (files: File[]) => files.forEach(async (f) => {
@@ -232,7 +233,7 @@ export default function ChatComposer({ running, disabled, focused, model, effort
             rows={1}
             value={text}
             placeholder=""
-            onChange={(e) => { hist.current.index = -1; setText(e.target.value); }}
+            onChange={(e) => { hist.current.index = -1; setHistIdx(-1); setText(e.target.value); }}
             onPaste={onPaste}
             onKeyDown={(e) => {
               const h = historyStep({
@@ -240,7 +241,7 @@ export default function ChatComposer({ running, disabled, focused, model, effort
                 menuOpen: !!(slash && slash.typed === text), text, selectionStart: e.currentTarget.selectionStart, selectionEnd: e.currentTarget.selectionEnd,
                 history, index: hist.current.index, saved: hist.current.saved,
               });
-              if (h) { e.preventDefault(); hist.current = { index: h.index, saved: h.saved }; caretEnd.current = true; setSlash(null); setText(h.text); return; }
+              if (h) { e.preventDefault(); hist.current = { index: h.index, saved: h.saved }; setHistIdx(h.index); caretEnd.current = true; setSlash(null); setText(h.text); return; }
               if (slash && slash.typed === text && !e.nativeEvent.isComposing && e.keyCode !== 229) {
                 const n = slash.items.length, it = slash.items[sel];
                 if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); setSel((sel + (e.key === "ArrowDown" ? 1 : n - 1)) % n); return; }
@@ -253,6 +254,7 @@ export default function ChatComposer({ running, disabled, focused, model, effort
             }}
           />
           </div>
+          {histIdx >= 0 && <span className="chat-hist" title="위/아래 화살표로 이전 요청 이동, 아래로 끝까지 내리면 작성 중이던 글로 돌아갑니다" aria-live="polite">기록 {histIdx + 1}/{history.length}</span>}
           <button className="chat-model" ref={modelRef} aria-haspopup="menu" aria-expanded={menu !== "closed" && menu !== "effort"} disabled={disabled || running || !onListModels}
             title={running ? "작업 중에는 모델을 바꿀 수 없습니다" : model ? "Model · " + model : "모델"} onClick={toggleMenu}>
             <span className="ellipsis">{model ? modelLabel(model) : "모델"}</span><ChevronDown size={12} strokeWidth={1.5} />
