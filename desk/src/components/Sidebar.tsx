@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUpDown, Check, ChevronDown, ChevronRight, PanelLeftClose, Plus, Search, X } from "lucide-react";
 import type { Group, Pane, Session } from "../lib/types";
-import { SESSION_SORTS, displayState, groupSessions, groupSummary, isUnread, matchSession, moveInOrder, splitNeedsYou, waitingOnYou, type SessionSort } from "../lib/groups";
+import { SESSION_SORTS, displayState, groupByStatus, groupSessions, groupSummary, isUnread, matchSession, moveInOrder, splitNeedsYou, waitingOnYou, type GroupBy, type SessionSort } from "../lib/groups";
 import SessionRow from "./SessionRow";
-import { clampSidebarWidth, SIDEBAR_DEFAULT, MAX_ORDER, loadArchived, loadCollapsed, loadDismissed, saveDismissed, loadReadAt, saveReadAt, markRead, loadSessionOrder, loadSessionSort, saveArchived, saveCollapsed, saveSessionOrder, saveSessionSort } from "../lib/uiSettings";
+import { clampSidebarWidth, SIDEBAR_DEFAULT, MAX_ORDER, loadArchived, loadCollapsed, loadDismissed, saveDismissed, loadReadAt, saveReadAt, markRead, loadSessionOrder, loadSessionSort, loadGroupBy, saveGroupBy, saveArchived, saveCollapsed, saveSessionOrder, saveSessionSort } from "../lib/uiSettings";
 import { useScrollReveal } from "../lib/useScrollReveal";
 import { useRowDrag } from "../lib/useRowDrag";
 import { useLiveSubagents } from "../lib/liveSubagents";
@@ -45,6 +45,10 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
   const q = query.trim().toLowerCase();
   const split = useMemo(() => (q ? splitNeedsYou(groupSessions(shown.filter((s) => matchSession(s, q)), now, sort, order, dismissed, readAt), now) : allSplit), [q, shown, now, allSplit, sort, order, dismissed, readAt]);
   const groups = split.groups;
+  const [groupBy, setGroupBy] = useState<GroupBy>(loadGroupBy);
+  const chooseGroupBy = (g: GroupBy) => { setGroupBy(g); saveGroupBy(g); };
+  const byStatus = groupBy === "status";
+  const statusView = useMemo(() => groupByStatus(groups, now, readAt), [groups, now, readAt]);
   const chooseSort = (s: SessionSort) => { setSort(s); saveSessionSort(s); };
   // Reordering switches to manual; the saved order is the whole visible order so nothing jumps.
   const reorder = (gkey: string, id: string, to: number) => {
@@ -57,7 +61,7 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
     setOrder(next); saveSessionOrder(next); chooseSort("manual");
   };
   const refocus = useRef<string | null>(null);
-  const { drag: rowDrag, suppressClick, onPointerDown } = useRowDrag(!q, bodyRef, reorder);
+  const { drag: rowDrag, suppressClick, onPointerDown } = useRowDrag(!q && !byStatus, bodyRef, reorder);
   useEffect(() => { // React moves the row's DOM node on reorder, which drops focus
     if (refocus.current) bodyRef.current?.querySelector<HTMLElement>(`[data-sid="${CSS.escape(refocus.current)}"]`)?.focus();
     refocus.current = null;
@@ -150,9 +154,17 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
             <button className="icon-btn" aria-label="Sort sessions" aria-expanded={sortOpen} title={`Sort · ${SORT_LABEL[sort]}`} onClick={() => setSortOpen((v) => !v)}><ArrowUpDown size={16} strokeWidth={1.5} /></button>
             {sortOpen && (
               <div className="menu" role="menu">
+                <div className="menu-label">Sort</div>
                 {SESSION_SORTS.map((s) => (
-                  <button key={s} className="menu-item" role="menuitemradio" aria-checked={s === sort} onClick={() => { chooseSort(s); setSortOpen(false); }}>
+                  <button key={s} className="menu-item" role="menuitemradio" aria-checked={s === sort} disabled={byStatus} title={byStatus ? "상태별 보기에서는 정렬이 고정됩니다." : undefined} onClick={() => { chooseSort(s); setSortOpen(false); }}>
                     {SORT_LABEL[s]}{s === sort && <Check className="check" size={16} strokeWidth={1.5} />}
+                  </button>
+                ))}
+                <div className="menu-sep" />
+                <div className="menu-label">Group by</div>
+                {(["folder", "status"] as const).map((g) => (
+                  <button key={g} className="menu-item" role="menuitemradio" aria-checked={g === groupBy} onClick={() => { chooseGroupBy(g); setSortOpen(false); }}>
+                    {g === "folder" ? "Folder" : "Status"}{g === groupBy && <Check className="check" size={16} strokeWidth={1.5} />}
                   </button>
                 ))}
               </div>
@@ -169,7 +181,28 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
             {split.needs.map(({ s, label }) => row(s, undefined, label))}
           </div>
         )}
-        {groups.map((g) => (
+        {byStatus && statusView.sections.map((x) => {
+          const k = `status:${x.key}`;
+          return (
+            <div key={k} className="group">
+              <button className="group-title" aria-expanded={!isFolded(k)} onClick={() => fold(k)}>
+                {isFolded(k) ? <ChevronRight size={16} strokeWidth={1.5} /> : <ChevronDown size={16} strokeWidth={1.5} />}
+                <span className="ellipsis">{x.label}</span><span className="count">{x.items.length}</span>
+              </button>
+              {!isFolded(k) && x.items.map(({ s, label }) => row(s, undefined, label))}
+            </div>
+          );
+        })}
+        {byStatus && statusView.recent.length > 0 && (
+          <div className="group">
+            <button className="recent-toggle" onClick={() => toggle("status:recent")}>
+              {isOpen("status:recent") ? <ChevronDown size={16} strokeWidth={1.5} /> : <ChevronRight size={16} strokeWidth={1.5} />}
+              Recent <span className="count">{statusView.recent.length}</span>
+            </button>
+            {isOpen("status:recent") && statusView.recent.map(({ s }) => row(s))}
+          </div>
+        )}
+        {!byStatus && groups.map((g) => (
           <div key={g.key} className="group" data-gkey={g.key}>
             <div className="group-head">
             <button className="group-title" aria-expanded={!isFolded(g.key)} onClick={() => fold(g.key)}>

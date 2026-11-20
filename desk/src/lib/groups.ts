@@ -125,6 +125,33 @@ export function groupSessions(sessions: Session[], now: number, sort: SessionSor
   return groups.sort((a, b) => Number(a.isCommon) - Number(b.isCommon)); // common group last
 }
 
+export type GroupBy = "folder" | "status";
+export interface StatusSection { key: "working" | "unread" | "done" | "idle"; label: string; items: { s: Session; label: string }[] }
+
+/** Status view: the groups left after splitNeedsYou, regrouped by what each session is doing. Empty sections are omitted; recent sessions of all folders are merged, newest first. */
+export function groupByStatus(groups: Group[], now: number, readAt: Readonly<Record<string, number>> = {}): { sections: StatusSection[]; recent: { s: Session; label: string }[] } {
+  const sec: StatusSection[] = [
+    { key: "working", label: "Working", items: [] }, { key: "unread", label: "Unread", items: [] },
+    { key: "done", label: "Done", items: [] }, { key: "idle", label: "Idle", items: [] },
+  ];
+  const recent: { s: Session; label: string }[] = [];
+  for (const g of groups) {
+    for (const s of g.sessions) {
+      const d = displayState(s, now);
+      const i = d === "running" || d === "thinking" || d === "tool" || d === "stale" ? 0 : isUnread(s, readAt, now) ? 1 : d === "done" ? 2 : 3;
+      sec[i].items.push({ s, label: g.label });
+    }
+    for (const s of g.recent) recent.push({ s, label: g.label });
+  }
+  const by: Record<StatusSection["key"], (a: Session, b: Session) => number> = {
+    working: (a, b) => (a.turnStart ?? a.since) - (b.turnStart ?? b.since),
+    unread: (a, b) => b.since - a.since, done: (a, b) => b.since - a.since, idle: (a, b) => b.seen - a.seen,
+  };
+  for (const x of sec) x.items.sort((a, b) => by[x.key](a.s, b.s));
+  recent.sort((a, b) => b.s.seen - a.s.seen);
+  return { sections: sec.filter((x) => x.items.length), recent };
+}
+
 /** Pulls live sessions waiting on the user out of their folders into one list (approval, question, reply; longest wait first). */
 export function splitNeedsYou(groups: Group[], now: number): { needs: { s: Session; label: string }[]; groups: Group[] } {
   const needs: { s: Session; label: string }[] = [];

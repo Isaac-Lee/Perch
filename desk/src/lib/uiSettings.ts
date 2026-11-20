@@ -1,5 +1,5 @@
 import type { AgentKind, PaneView } from "./types";
-import { SESSION_SORTS, type SessionSort } from "./groups";
+import { SESSION_SORTS, type GroupBy, type SessionSort } from "./groups";
 
 // ponytail: localStorage until stage 2 moves settings to a Tauri config file
 const read = <T>(key: string, fallback: T): T => {
@@ -21,6 +21,8 @@ export const saveArchived = (ids: string[]) => write("perch.archivedSessions", i
 
 export const loadSessionSort = (): SessionSort => { const v = read<unknown>("perch.sessionSort", "status"); return SESSION_SORTS.includes(v as SessionSort) ? (v as SessionSort) : "status"; };
 export const saveSessionSort = (s: SessionSort) => write("perch.sessionSort", s);
+export const loadGroupBy = (): GroupBy => { const v = read<unknown>("perch.sessionGroupBy", "folder"); return v === "status" ? "status" : "folder"; };
+export const saveGroupBy = (g: GroupBy) => write("perch.sessionGroupBy", g);
 
 export const MAX_ORDER = 300;
 export const loadSessionOrder = (): string[] => { const v = read<unknown>("perch.sessionOrder", []); return Array.isArray(v) ? v.filter((x) => typeof x === "string").slice(0, MAX_ORDER) : []; };
