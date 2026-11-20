@@ -13,6 +13,7 @@ export type ChatItem =
     summary?: string; preview?: string; args?: Record<string, unknown>; resultText?: string; diff?: string; labels?: string[]; progress?: string;
     /** delegate_task only: `subagent_id`s of the children it spawned (see ChatState.subagents) */ subagentIds?: string[];
   }
+  | { kind: "background"; id: string; taskId: string; text: string; status: "running" | "done" | "failed"; result?: string; startedAt?: number; durationS?: number }
   | { kind: "error"; id: string; text: string }
   | { kind: "system"; id: string; text: string };
 export interface ChatPrompt {
@@ -39,6 +40,8 @@ export type ChatAction =
   | { t: "effortChanged"; revision: number; executionGeneration: number; effort: string }
   | { t: "effort"; effort: string }
   | { t: "system"; text: string }
+  /** prompt.background accepted: a separate Hermes session `taskId` runs `text` */
+  | { t: "background"; taskId: string; text: string; at?: number }
   /** Stop pressed twice on a turn Hermes will not end: drop Perch's indicators only */
   | { t: "clear" }
   | { t: "promptDone"; promptId: string }
@@ -121,6 +124,8 @@ export function chatReducer(s: ChatState, a: ChatAction): ChatState {
     case "effortChanged": return { ...s, revision: a.revision, executionGeneration: a.executionGeneration, effort: a.effort };
     case "effort": return s.effort ? s : { ...s, effort: a.effort };
     case "system": return { ...s, items: [...settle(s.items), { kind: "system", id: `s${s.items.length}`, text: a.text }] };
+    case "background": return s.items.some((i) => i.kind === "background" && i.taskId === a.taskId) ? s
+      : { ...s, items: [...s.items, { kind: "background", id: `bg-${a.taskId}`, taskId: a.taskId, text: a.text, status: "running", startedAt: a.at }] };
     case "clear": return { ...endTurn(s), cleared: true };
     case "promptDone": return dropPrompt(s, a.promptId);
     case "userSent": return {
@@ -129,6 +134,7 @@ export function chatReducer(s: ChatState, a: ChatAction): ChatState {
     };
     case "event": {
       if (a.ev.type.startsWith("subagent.")) return subagentEvent(s, a.ev, a.at);
+      if (a.ev.type === "background.complete") return backgroundDone(s, a.ev, a.at);
       const n = onEvent(typeof a.ev.execution_generation === "number" ? { ...s, executionGeneration: a.ev.execution_generation } : s, a.ev, a.at);
       if (a.ev.type === "message.start") return { ...n, turnStart: s.turnStart ?? a.at ?? null, sentAt: null, cleared: false };
       if (a.ev.type === "message.complete" || a.ev.type === "error") return { ...n, turnStart: null, sentAt: null, cleared: false };
@@ -137,6 +143,15 @@ export function chatReducer(s: ChatState, a: ChatAction): ChatState {
       return n;
     }
   }
+}
+
+/** background.complete touches only the matching background item: never running or the turn clock. Unknown task ids are ignored. */
+function backgroundDone(s: ChatState, ev: GatewayEvent, at?: number): ChatState {
+  const p = ev.payload ?? {}, id = str(p.task_id), text = str(p.text);
+  if (!s.items.some((i) => i.kind === "background" && i.taskId === id)) return s;
+  return { ...s, items: s.items.map((i) => i.kind === "background" && i.taskId === id ? {
+    ...i, status: /^error:/i.test(text) ? "failed" : "done", result: text, ...(i.startedAt != null && at != null ? { durationS: Math.max(0, Math.round((at - i.startedAt) / 1000)) } : {}),
+  } : i) };
 }
 
 /** subagent.* frames touch only `subagents` and the delegate_task item's `subagentIds`: never running, turn clock or item order. */
@@ -470,6 +485,12 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
       const pick = parseModelArg(arg);
       if (!pick) return say("모델 버튼에서 고르거나 /model <이름> [--provider <slug>] 로 지정하세요");
       return changeModel(pick.provider, pick.model).then(() => say("모델을 바꿨습니다: " + pick.model), (e) => { const m = e instanceof Error ? e.message : String(e); say(m === "model_resolution_failed" ? `모델을 찾지 못했습니다: ${pick.model}. provider를 지정해 보세요 (예: /model ${pick.model} --provider custom)` : "모델을 바꾸지 못했습니다: " + m); });
+    }
+    if (name === "background" || name === "bg") { // the gateway rejects it via slash.exec; it has its own method
+      const task = arg.trim();
+      if (!task) return say("/background <작업> 형식으로 입력하세요");
+      const r = await rpc.request<{ task_id?: string }>("prompt.background", { session_id: sid, text: task });
+      return r?.task_id ? dispatch({ t: "background", taskId: r.task_id, text: task, at: Date.now() }) : say("백그라운드 작업을 시작하지 못했습니다");
     }
     if (BLOCKED_SLASH.has(name)) return say(`이 명령은 채팅 보기에서 지원하지 않습니다. TUI 칸을 쓰세요: /${name}`);
     let raw: unknown;

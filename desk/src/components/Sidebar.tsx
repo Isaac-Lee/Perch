@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUpDown, Check, ChevronDown, ChevronRight, PanelLeftClose, Plus, Search, X } from "lucide-react";
 import type { Group, Pane, Session } from "../lib/types";
-import { SESSION_SORTS, displayState, groupByStatus, groupSessions, groupSummary, isUnread, matchSession, moveInOrder, splitNeedsYou, waitingOnYou, type GroupBy, type SessionSort } from "../lib/groups";
+import { SESSION_SORTS, displayState, groupByStatus, nestBackground, groupSessions, groupSummary, isUnread, matchSession, moveInOrder, splitNeedsYou, waitingOnYou, type GroupBy, type SessionSort } from "../lib/groups";
 import SessionRow from "./SessionRow";
 import { clampSidebarWidth, SIDEBAR_DEFAULT, MAX_ORDER, loadArchived, loadCollapsed, loadDismissed, saveDismissed, loadReadAt, saveReadAt, markRead, loadSessionOrder, loadSessionSort, loadGroupBy, saveGroupBy, saveArchived, saveCollapsed, saveSessionOrder, saveSessionSort } from "../lib/uiSettings";
 import { useScrollReveal } from "../lib/useScrollReveal";
 import { useRowDrag } from "../lib/useRowDrag";
 import { useLiveSubagents } from "../lib/liveSubagents";
+import { useBackgroundTasks } from "../lib/liveBackground";
 
 const SORT_LABEL: Record<SessionSort, string> = { status: "Status", recent: "Recent activity", name: "Name", manual: "Manual order" };
 import { fmtTok, summarize } from "../lib/usage";
@@ -34,16 +35,19 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
   // Chat panes report their children over gateway frames, not the state file: fill empty rows from that live store.
   const liveSubs = useLiveSubagents();
   const shown = useMemo(() => sessions.filter((s) => !hiddenIn(archived, s)).map((s) => (!s.subagents.length && s.paneId && liveSubs.has(s.paneId) ? { ...s, subagents: liveSubs.get(s.paneId)! } : s)), [sessions, archived, liveSubs]);
+  // Background runs nest under their parent row (see nestBackground); the rest of the sidebar only sees `top`.
+  const bgTasks = useBackgroundTasks();
+  const nest = useMemo(() => nestBackground(shown, bgTasks, now), [shown, bgTasks, now]);
   const bodyRef = useRef<HTMLDivElement>(null);
   const [sort, setSort] = useState<SessionSort>(loadSessionSort);
   const [order, setOrder] = useState<string[]>(loadSessionOrder);
   const [readAt, setReadAt] = useState<Record<string, number>>(loadReadAt);
   const markSeen = (id: string) => setReadAt((m) => { const n = markRead(m, id, now); saveReadAt(n); return n; });
-  const allGroups = useMemo(() => groupSessions(shown, now, sort, order, dismissed, readAt), [shown, now, sort, order, dismissed, readAt]);
+  const allGroups = useMemo(() => groupSessions(nest.top, now, sort, order, dismissed, readAt), [nest, now, sort, order, dismissed, readAt]);
   const allSplit = useMemo(() => splitNeedsYou(allGroups, now), [allGroups, now]);
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
-  const split = useMemo(() => (q ? splitNeedsYou(groupSessions(shown.filter((s) => matchSession(s, q)), now, sort, order, dismissed, readAt), now) : allSplit), [q, shown, now, allSplit, sort, order, dismissed, readAt]);
+  const split = useMemo(() => (q ? splitNeedsYou(groupSessions(nest.top.filter((s) => matchSession(s, q)), now, sort, order, dismissed, readAt), now) : allSplit), [q, nest, now, allSplit, sort, order, dismissed, readAt]);
   const groups = split.groups;
   const [groupBy, setGroupBy] = useState<GroupBy>(loadGroupBy);
   const chooseGroupBy = (g: GroupBy) => { setGroupBy(g); saveGroupBy(g); };
@@ -114,7 +118,7 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
   const isFolded = (k: string) => !q && folded.has(k);
   const isOpen = (k: string) => !!q || open.has(k);
   const row = (s: Session, g?: Group, folder?: string) => (
-    <SessionRow key={s.sessionId} s={s} now={now} unread={isUnread(s, readAt, now)} folder={folder} focused={s.sessionId === focusedSession}
+    <SessionRow key={s.sessionId} s={s} kids={nest.children.get(s.sessionId)} now={now} unread={isUnread(s, readAt, now)} folder={folder} focused={s.sessionId === focusedSession}
       drag={g && !q ? {
         dragging: rowDrag?.id === s.sessionId,
         onPointerDown: (e) => onPointerDown(e, s.sessionId),

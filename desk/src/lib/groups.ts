@@ -125,6 +125,27 @@ export function groupSessions(sessions: Session[], now: number, sort: SessionSor
   return groups.sort((a, b) => Number(a.isCommon) - Number(b.isCommon)); // common group last
 }
 
+export const isBackgroundId = (id: string) => id.startsWith("bg_");
+
+/** A background run (`bg_*`) whose parent row is visible moves under it. Parent = `parentId` (backend, PERCH_PANE match) or, for runs
+ *  started from a chat pane, the session of the pane that `chatTasks` (taskId -> paneId) names. Anything without a visible parent stays in `top`. */
+export function nestBackground(sessions: Session[], chatTasks: ReadonlyMap<string, string>, now: number): { top: Session[]; children: Map<string, Session[]> } {
+  const visible = new Map<string, Session>();
+  for (const s of sessions) if (!isBackgroundId(s.sessionId) && (s.paneId || now - s.seen <= DROP_SEC)) visible.set(s.sessionId, s);
+  const byPane = new Map<string, string>();
+  for (const s of visible.values()) if (s.paneId) byPane.set(s.paneId, s.sessionId);
+  const children = new Map<string, Session[]>();
+  const top: Session[] = [];
+  for (const s of sessions) {
+    const pane = chatTasks.get(s.sessionId);
+    const parent = isBackgroundId(s.sessionId) ? [s.parentId, pane ? byPane.get(pane) : undefined].find((p) => p && visible.has(p)) : undefined;
+    if (!parent) { top.push(s); continue; }
+    children.set(parent, [...(children.get(parent) ?? []), s]);
+  }
+  for (const l of children.values()) l.sort((a, b) => a.since - b.since);
+  return { top, children };
+}
+
 export type GroupBy = "folder" | "status";
 export interface StatusSection { key: "working" | "unread" | "done" | "idle"; label: string; items: { s: Session; label: string }[] }
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import turn from "./__fixtures__/turn.jsonl?raw";
+import background from "./__fixtures__/background.jsonl?raw";
 import delegate from "./__fixtures__/delegate.jsonl?raw";
 import { STUCK_MSG, WATCHDOG_MS, activityLabel, canSend, submitFailure, watchdogDue, chatReducer, fmtSec, groupItems, staleRetry, initialChat, shouldAutoReconnect, toDirective, toModelProviders, transcriptToItems, type ChatAction } from "./chatSession";
 
@@ -515,5 +516,40 @@ describe("subagents", () => {
     const d = s.items[1];
     expect(d.kind === "tool" && d.subagentIds).toEqual(["x"]);
     expect(groupItems(s.items).map((i) => i.kind)).toEqual(["tool", "tool"]);
+  });
+});
+
+describe("background", () => {
+  const started = (at = 1000) => chatReducer(initialChat, { t: "background", taskId: "bg_000001", text: "list the files", at });
+
+  it("replays the background fixture: item runs, completes, parent running untouched", () => {
+    let s = initialChat;
+    for (const l of background.split("\n").filter(Boolean)) {
+      const { dir, line } = JSON.parse(l);
+      const m = JSON.parse(line);
+      if (dir === "out" && m.method === "prompt.background") continue;
+      if (dir === "in" && m.result?.task_id) { s = chatReducer(s, { t: "background", taskId: m.result.task_id, text: "list the files", at: 1000 }); continue; }
+      if (dir !== "in" || m.method !== "event") continue;
+      const before = s;
+      s = chatReducer(s, { t: "event", ev: m.params, at: 13000 });
+      if (m.params.type === "background.complete") { expect(s.running).toBe(before.running); expect(s.turnStart).toBe(before.turnStart); }
+    }
+    expect(s.items.filter((i) => i.kind === "background")).toEqual([
+      expect.objectContaining({ taskId: "bg_000001", status: "done", result: expect.stringContaining("README.md"), durationS: 12 }),
+    ]);
+  });
+
+  it("duplicate task id is ignored; running item has no result", () => {
+    const s = chatReducer(started(), { t: "background", taskId: "bg_000001", text: "x" });
+    expect(s.items).toHaveLength(1);
+    expect(s.items[0]).toMatchObject({ status: "running", text: "list the files" });
+  });
+
+  it("error: result is failed; unknown task id changes nothing", () => {
+    const s = started();
+    expect(chatReducer(s, ev("background.complete", { task_id: "bg_zzz", text: "ok" }))).toBe(s);
+    const f = chatReducer(s, ev("background.complete", { task_id: "bg_000001", text: "error: boom" }));
+    expect(f.items[0]).toMatchObject({ status: "failed", result: "error: boom" });
+    expect(f.running).toBe(false);
   });
 });

@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { COMMON_LABEL, displayState, groupSessions, groupSummary, groupByStatus, isUnread, splitNeedsYou, matchSession, moveInOrder, shownSeconds } from "./groups";
+import { COMMON_LABEL, displayState, groupSessions, groupSummary, groupByStatus, isUnread, nestBackground, splitNeedsYou, matchSession, moveInOrder, shownSeconds } from "./groups";
 import type { Session } from "./types";
 
 const NOW = 1_000_000;
@@ -274,4 +274,26 @@ test("groupByStatus: sections, order, empty ones omitted, no overlap with Needs 
   expect(listed.some((s) => needs.some((n) => n.s === s))).toBe(false);
   expect(needs.map((n) => n.s)).toEqual([ap, rep]);
   expect(groupByStatus(splitNeedsYou(groupSessions([w1], NOW), NOW).groups, NOW).sections.map((x) => x.key)).toEqual(["working"]);
+});
+
+test("nestBackground: parentId and chat-store links nest, orphans stay, no duplicates", () => {
+  const parent = mk({ sessionId: "p", paneId: "pane1", repoRoot: "D:\r" });
+  const viaDb = mk({ sessionId: "bg_aaaaaa", parentId: "p", since: NOW - 5 });
+  const viaChat = mk({ sessionId: "bg_111111_bbbbbb", since: NOW - 9 });
+  const orphan = mk({ sessionId: "bg_cccccc", parentId: "gone" });
+  const old = mk({ sessionId: "oldp", seen: NOW - 700_000 });
+  const lateKid = mk({ sessionId: "bg_dddddd", parentId: "oldp" });
+  const all = [parent, viaDb, viaChat, orphan, old, lateKid];
+  const { top, children } = nestBackground(all, new Map([["bg_111111_bbbbbb", "pane1"]]), NOW);
+  expect(children.get("p")?.map((s) => s.sessionId)).toEqual(["bg_111111_bbbbbb", "bg_aaaaaa"]);
+  expect(top.map((s) => s.sessionId)).toEqual(["p", "bg_cccccc", "oldp", "bg_dddddd"]); // dropped parent -> orphan
+  const shown = [...top, ...[...children.values()].flat()];
+  expect(new Set(shown).size).toBe(all.length);
+  // nested children leave every list: folder groups and status sections only see `top`
+  const groups = splitNeedsYou(groupSessions(top, NOW), NOW).groups;
+  expect(groups.flatMap((g) => [...g.sessions, ...g.recent]).some((s) => s.sessionId === "bg_aaaaaa")).toBe(false);
+  const st = groupByStatus(groups, NOW);
+  expect([...st.sections.flatMap((x) => x.items), ...st.recent].map((x) => x.s.sessionId)).not.toContain("bg_111111_bbbbbb");
+  // a bg session is never a parent
+  expect(nestBackground([viaDb, mk({ sessionId: "bg_x", parentId: "bg_aaaaaa" })], new Map(), NOW).children.size).toBe(0);
 });

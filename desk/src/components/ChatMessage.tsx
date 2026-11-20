@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { openUrl } from "../lib/backend";
 import { fmtSec, type ChatItem, type SubagentLive, type ToolGroup, type ToolItem } from "../lib/chatSession";
@@ -21,6 +21,30 @@ function ToolDetails({ t }: { t: ToolItem }) {
       {t.diff && <pre className="chat-tool-result"><code>{highlight("diff", t.diff.slice(0, 20000)).map((k, i) => (k.t ? <span key={i} className={"hl-" + k.t}>{k.s}</span> : k.s))}</code></pre>}
       <Rows rows={res.rows} />
       {res.text && <pre className="chat-tool-result">{res.text.slice(0, 2000)}</pre>}
+    </div>
+  );
+}
+
+const BG_STATUS = { running: "Running", done: "Done", failed: "Failed" } as const;
+
+/** A `/background` run: one compact row, click for the result. Never part of the parent turn. */
+function BackgroundRow({ item }: { item: Extract<ChatItem, { kind: "background" }> }) {
+  const [open, setOpen] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const running = item.status === "running";
+  useEffect(() => {
+    if (!running) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [running]);
+  const secs = running ? (item.startedAt != null ? Math.round((now - item.startedAt) / 1000) : null) : item.durationS ?? null;
+  const parts = [`Background · ${item.text}`, BG_STATUS[item.status], secs != null ? fmtSec(Math.max(0, secs)) : ""].filter(Boolean);
+  return (
+    <div className={`chat-tool ${item.status === "failed" ? "error" : item.status}`}>
+      <button className="chat-tool-row" onClick={() => setOpen(!open)} aria-expanded={open} title="다른 세션에서 실행 중인 백그라운드 작업입니다.">
+        <ChevronRight className={"chat-chev" + (open ? " open" : "")} size={12} strokeWidth={1.75} />{parts.join(" · ")}
+      </button>
+      {open && (item.result ? <div className="chat-thought-body"><Markdown text={item.result} onLink={(u) => { openUrl(u).catch(console.error); }} /></div> : <div className="chat-thought-body">아직 결과가 없습니다.</div>)}
     </div>
   );
 }
@@ -76,6 +100,8 @@ export default function ChatMessage({ item, subagents }: { item: ChatItem | Tool
         </div>
       );
     }
+    case "background":
+      return <BackgroundRow item={item} />;
     case "error":
       return <div className="chat-error">{item.text}</div>;
     case "system":
