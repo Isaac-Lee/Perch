@@ -662,10 +662,10 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
     try { await f(); }
     catch (e) { if (text !== null) setDraft((x) => ({ text, n: x.n + 1 })); dispatch({ t: "localError", text: rewindFailure(e) }); }
   }
-  async function rewind(rowId: number): Promise<string> {
+  async function rewind(rowId: number, toDraft = false): Promise<void> {
     const r = await mutate("rewind", { target_message_id: rowId }) as { target_message?: { content?: unknown } };
+    if (toDraft) { const t = rewindText(r.target_message?.content); setDraft((x) => ({ text: t, n: x.n + 1 })); } // before the resync: the text must never be lost
     await resync();
-    return rewindText(r.target_message?.content);
   }
 
   const api = {
@@ -774,9 +774,9 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
     },
     reconnect() { setNonce((n) => n + 1); },
     /** Takes the conversation back to just before the user row and puts its text in the composer. */
-    rewindTo: (rowId: number): Promise<void> => guarded(null, async () => { const t = await rewind(rowId); setDraft((x) => ({ text: t, n: x.n + 1 })); }),
+    rewindTo: (rowId: number): Promise<void> => guarded(null, () => rewind(rowId, true)),
     /** Rewinds, then sends `text` in place of that message. */
-    overwrite: (rowId: number, text: string): Promise<void> => guarded(text, async () => { await rewind(rowId); api.send(text); }),
+    overwrite: (rowId: number, text: string): Promise<void> => guarded(text, async () => { await rewind(rowId); if (!canSend(stateRef.current)) throw new Error("연결되지 않았습니다"); api.send(text); }),
     /** Opens a child session (branch before the item, or a fresh one) in a new pane, carrying `text` to send or edit there. */
     fork: (item: ChatItem, text: string, sendNow: boolean): Promise<void> => guarded(text, async () => {
       const rpc = rpcRef.current, b = forkBoundary(item);

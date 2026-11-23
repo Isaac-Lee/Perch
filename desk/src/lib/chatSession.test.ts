@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import turn from "./__fixtures__/turn.jsonl?raw";
 import background from "./__fixtures__/background.jsonl?raw";
 import delegate from "./__fixtures__/delegate.jsonl?raw";
-import { STUCK_MSG, pendingToQueued, WATCHDOG_MS, activityLabel, canSend, submitFailure, watchdogDue, chatReducer, forkBoundary, userActions, fmtSec, groupItems, staleRetry, initialChat, shouldAutoReconnect, toDirective, toModelProviders, transcriptToItems, type ChatAction } from "./chatSession";
+import { STUCK_MSG, pendingToQueued, WATCHDOG_MS, activityLabel, canSend, submitFailure, watchdogDue, chatReducer, forkBoundary, rewindFailure, rewindText, userActions, fmtSec, groupItems, staleRetry, initialChat, shouldAutoReconnect, toDirective, toModelProviders, transcriptToItems, type ChatAction } from "./chatSession";
 
 const ev = (type: string, payload: object = {}): ChatAction => ({ t: "event", ev: { type, payload } });
 
@@ -762,5 +762,20 @@ describe("snapshot keepLocal", () => {
   });
   it("drops them without keepLocal", () => {
     expect(chatReducer(st, { t: "snapshot", snap }).items.map((i) => i.kind)).toEqual(["user"]);
+  });
+});
+
+describe("rewind helpers", () => {
+  it("rewindText reads string and array content", () => {
+    expect(rewindText("hi")).toBe("hi");
+    expect(rewindText([{ type: "text", text: "a" }, { type: "image_url" }, { type: "text", text: "b" }])).toBe("a\nb");
+    expect(rewindText(undefined)).toBe("");
+  });
+  it("rewindFailure maps stale targets, passes the rest through", () => {
+    const stale = "대화가 바뀌어 되감지 못했습니다";
+    expect(rewindFailure(new Error("revision_conflict"))).toBe(stale);
+    expect(rewindFailure(new Error("invalid_params: target user message is no longer in session history"))).toBe(stale);
+    expect(rewindFailure(new Error("invalid_params compacted: target user message was summarized"))).toContain("compacted:");
+    expect(rewindFailure(new Error("session_busy"))).toBe("session_busy");
   });
 });
