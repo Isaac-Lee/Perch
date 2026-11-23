@@ -74,6 +74,11 @@ pub struct SessionInfo {
     /// `pane` from the state file (the adapter saw PERCH_PANE); internal, not part of the contract
     #[serde(skip)]
     pub pane: Option<String>,
+    /// state.db `source` / `message_count` (None = no row or older schema); internal, used by `decorate` to hide non-user sessions
+    #[serde(skip)]
+    pub source: Option<String>,
+    #[serde(skip)]
+    pub message_count: Option<u64>,
     pub title: Option<String>,
     pub cwd: String,
     pub repo_root: Option<String>,
@@ -149,6 +154,8 @@ pub(crate) fn parse_state(v: &Value) -> Option<SessionInfo> {
         pane_id: None,
         parent_id: None,
         pane: v["pane"].as_str().filter(|s| !s.is_empty()).map(String::from),
+        source: None,
+        message_count: None,
         title: None,
         cwd: String::new(),
         repo_root: None,
@@ -163,6 +170,8 @@ struct Db {
     repo_root: Option<String>,
     branch: Option<String>,
     usage: Usage,
+    source: Option<String>,
+    message_count: Option<u64>,
 }
 
 /// Read-only lookup in Hermes' state.db. Any failure (no file, locked, older schema) means "no enrichment".
@@ -172,6 +181,12 @@ fn query_db(db: &Path, id: &str) -> Option<Db> {
     }
     let c = Connection::open_with_flags(db, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX).ok()?;
     c.busy_timeout(Duration::from_millis(200)).ok()?;
+    // tolerant: a schema without these columns just leaves them unknown
+    let (source, message_count) = c
+        .query_row("SELECT source, message_count FROM sessions WHERE id = ?1", [id], |r| {
+            Ok((r.get::<_, Option<String>>(0)?, r.get::<_, Option<f64>>(1)?.map(|n| n.max(0.0) as u64)))
+        })
+        .unwrap_or((None, None));
     c.query_row(
         "SELECT title, cwd, git_repo_root, git_branch, model, started_at, input_tokens, output_tokens, \
          cache_read_tokens, cache_write_tokens, reasoning_tokens, api_call_count, \
@@ -197,6 +212,8 @@ fn query_db(db: &Path, id: &str) -> Option<Db> {
                     api_calls: num(11),
                     cost_usd: r.get::<_, Option<f64>>(12).ok().flatten(),
                 },
+                source: source.clone(),
+                message_count,
             })
         },
     )
@@ -210,6 +227,8 @@ fn enrich(db: &Path, info: &mut SessionInfo) {
         info.repo_root = d.repo_root;
         info.branch = d.branch;
         info.usage = Some(d.usage);
+        info.source = d.source;
+        info.message_count = d.message_count;
         // Hermes often leaves git_repo_root/git_branch empty; without them a closed session falls into "Shared workspace".
         if info.repo_root.is_none() && !info.cwd.is_empty() {
             (info.repo_root, info.branch) = crate::desk::git_info(Path::new(&info.cwd));
@@ -317,6 +336,15 @@ pub fn decorate(mut base: Vec<SessionInfo>, panes: &[PaneInfo]) -> Vec<SessionIn
             s.branch = s.branch.take().or_else(|| p.branch.clone());
         }
     }
+    // Sessions Hermes runs on its own are not the user's: cron, subagent, unparented /background, never-prompted.
+    base.retain(|s| {
+        let never_prompted = s.prompt.is_empty() && s.steps == 0 && s.pane.is_none() && s.pane_id.is_none() && s.message_count == Some(0);
+        !(s.session_id.starts_with("cron_")
+            || s.source.as_deref() == Some("cron")
+            || s.source.as_deref() == Some("subagent")
+            || (s.session_id.starts_with("bg_") && s.parent_id.is_none())
+            || never_prompted)
+    });
     base
 }
 
@@ -462,7 +490,7 @@ pub fn usage_history_from(db: &Path) -> Vec<SessionInfo> {
         out.push(SessionInfo {
             agent: "hermes".into(), session_id: id, state: "closed".into(), since: usage.started_at, turn_start: None, last_turn: None, busy_total: 0, steps: 0,
             tool: String::new(), tool_detail: String::new(), prompt: String::new(), pending: None, asks: false, ask: String::new(), subagents: vec![], todos: vec![],
-            seen: usage.started_at, pane_id: None, parent_id: None, pane: None, title, cwd, repo_root, branch, usage: Some(usage),
+            seen: usage.started_at, pane_id: None, parent_id: None, pane: None, source: None, message_count: None, title, cwd, repo_root, branch, usage: Some(usage),
         });
     }
     out
@@ -507,7 +535,7 @@ mod tests {
         c.execute_batch(
             "CREATE TABLE sessions (id TEXT PRIMARY KEY, title TEXT, title_source TEXT, cwd TEXT, git_repo_root TEXT, git_branch TEXT, \
              model TEXT, started_at REAL, input_tokens INTEGER, output_tokens INTEGER, cache_read_tokens INTEGER, cache_write_tokens INTEGER, \
-             reasoning_tokens INTEGER, api_call_count INTEGER, estimated_cost_usd REAL, actual_cost_usd REAL, parent_session_id TEXT);",
+             reasoning_tokens INTEGER, api_call_count INTEGER, estimated_cost_usd REAL, actual_cost_usd REAL, parent_session_id TEXT, source TEXT, message_count INTEGER);",
         ).unwrap();
         c.execute(
             "INSERT INTO sessions (id, title, cwd, git_repo_root, git_branch, model, started_at, input_tokens, output_tokens, \
@@ -658,6 +686,54 @@ mod tests {
         };
         let d = decorate(vec![s], &[pane]);
         assert_eq!((d[0].pane_id.as_deref(), d[0].cwd.as_str(), d[0].branch.as_deref()), (Some("p1"), "/c", Some("b")));
+    }
+
+    #[test]
+    fn decorate_hides_non_user_sessions() {
+        let t = tempfile::tempdir().unwrap();
+        let db = t.path().join("state.db");
+        make_db(&db, "keep");
+        let c = Connection::open(&db).unwrap();
+        for (id, src, n) in [("sub1", "subagent", 5), ("cronsrc", "cron", 5), ("empty", "cli", 0), ("used", "cli", 3)] {
+            c.execute("INSERT INTO sessions (id, source, message_count) VALUES (?1, ?2, ?3)", rusqlite::params![id, src, n]).unwrap();
+        }
+        drop(c);
+        let dir = t.path().join("s");
+        fs::create_dir(&dir).unwrap();
+        let mut ids = vec!["keep", "sub1", "cronsrc", "empty", "used", "cron_job_20261118_010101", "bg_orphan", "bg_child", "nodb"];
+        ids.sort();
+        for id in &ids {
+            let mut v: Value = serde_json::from_str(&state(id, "idle")).unwrap();
+            if matches!(*id, "empty" | "nodb") {
+                v["prompt"] = "".into();
+                v["steps"] = 0.into();
+            }
+            if *id == "bg_child" {
+                v["pane"] = "p1".into();
+            }
+            fs::write(dir.join(format!("hermes-{id}.json")), v.to_string()).unwrap();
+        }
+        fs::write(dir.join("hermes-parent.json"), {
+            let mut v: Value = serde_json::from_str(&state("parent", "idle")).unwrap();
+            v["pane"] = "p1".into();
+            v.to_string()
+        }).unwrap();
+        let mut p = Poller::new(dir, db);
+        p.scan(0);
+        let out: Vec<String> = decorate(p.snapshot(), &[]).into_iter().map(|s| s.session_id).collect();
+        let mut want = vec!["keep", "used", "nodb", "bg_child", "parent"];
+        want.sort();
+        assert_eq!(out, want);
+    }
+
+    #[test]
+    fn old_schema_keeps_enrichment_without_source() {
+        let t = tempfile::tempdir().unwrap();
+        let db = t.path().join("state.db");
+        make_db(&db, "a");
+        Connection::open(&db).unwrap().execute_batch("ALTER TABLE sessions DROP COLUMN source; ALTER TABLE sessions DROP COLUMN message_count;").unwrap();
+        let d = query_db(&db, "a").unwrap();
+        assert_eq!((d.title.as_deref(), d.source, d.message_count), (Some("T"), None, None));
     }
 
     #[test]

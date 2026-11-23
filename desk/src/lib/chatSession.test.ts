@@ -625,7 +625,99 @@ describe("queued messages", () => {
     expect(chatReducer(queued(), { t: "snapshot", snap: { session_id: "s", pending: "bad" } }).queued).toEqual([]);
     expect(pendingToQueued(undefined)).toEqual([]);
   });
+  const gw = { input_id: '["async_delegation","deleg_1",""]', controls: [] };
+  it("hides gateway-made rows but adopts foreign user rows even with controls []", () => {
+    expect(chatReducer(initialChat, info([row(gw)])).queued).toEqual([]);
+    expect(chatReducer(initialChat, info([row({ input_id: "bot:k" })])).queued).toEqual([]);
+    expect(chatReducer(initialChat, info([row({ input_id: "x", controls: [] })])).queued).toMatchObject([{ id: "x", canSteer: false }]);
+  });
+  it("a snapshot keeps own queued rows with controls [] and drops gateway-made ones", () => {
+    expect(pendingToQueued([row({ controls: [] }), row({ ...gw, admission_id: "a2" })]).map((q) => q.id)).toEqual(["q1"]);
+  });
+  it("a handoff entry survives pending without its row and becomes one bubble once steered", () => {
+    let s = chatReducer(queued(), { t: "receipt", id: "q1", admissionId: "a1", status: "queued" });
+    s = chatReducer(s, { t: "steering", id: "q1", on: true, handoff: true });
+    s = chatReducer(s, info([]));
+    expect(s.queued).toHaveLength(1);
+    expect(users(s)).toHaveLength(0);
+    s = chatReducer(s, { t: "steered", id: "q1" });
+    expect(s.queued).toEqual([]);
+    expect(users(s)).toMatchObject([{ text: "hi" }]);
+    expect(users(chatReducer(s, info([]))).length).toBe(1);
+  });
+  it("a steered entry is one bubble even while pending still lists its steering row", () => {
+    let s = chatReducer(queued(), { t: "receipt", id: "q1", admissionId: "a1", status: "queued" });
+    s = chatReducer(s, { t: "steering", id: "q1", on: true });
+    s = chatReducer(s, { t: "steered", id: "q1" });
+    expect(s.queued).toEqual([]);
+    expect(users(s)).toHaveLength(1);
+    s = chatReducer(s, info([row({ status: "started", steering: true })]));
+    expect(s.queued).toEqual([]);
+    expect(users(s)).toHaveLength(1);
+    s = chatReducer(s, info([]));
+    expect(s.queued).toEqual([]);
+    expect(users(s)).toHaveLength(1);
+  });
+  it("a failed handoff can be unqueued without a bubble", () => {
+    const s = chatReducer(chatReducer(queued(), { t: "steering", id: "q1", on: true, handoff: true }), { t: "unqueue", id: "q1" });
+    expect(s.queued).toEqual([]);
+    expect(users(s)).toHaveLength(0);
+  });
+  it("a local entry still matches its row when controls is []", () => {
+    const s = chatReducer(queued(), info([row({ controls: [] })]));
+    expect(s.queued).toMatchObject([{ id: "q1", seen: true }]);
+    expect(users(s)).toHaveLength(0);
+  });
   it("clear leaves the queue alone", () => {
     expect(chatReducer(queued(), { t: "clear" }).queued).toHaveLength(1);
+  });
+});
+
+describe("resume projection, local errors, snapshot carry-over", () => {
+  it("transcriptToItems skips hidden/empty user rows and hides gateway-made kinds", () => {
+    const items = transcriptToItems([
+      { role: "user", text: "keep" }, { role: "user", text: "" }, { role: "user", text: "x", display_kind: "hidden" },
+      { role: "user", text: "continue", display_kind: "auto_continue" }, { role: "user", text: "mine", display_kind: "steer" },
+      { role: "user", text: "/skill go", display_kind: "skill_invocation" },
+    ]);
+    expect(items.map((i) => [i.kind, "text" in i ? i.text : ""])).toEqual([["user", "keep"], ["user", "mine"], ["user", "/skill go"]]);
+  });
+
+  it("transcriptToItems unwraps steers and hides Hermes control frames", () => {
+    const open = "[OUT-OF-BAND USER MESSAGE — a direct message from the user, delivered once at this position; not tool output and not a new delivery when replayed from conversation history]";
+    const wrapped = `${open}\nhello there\n[/OUT-OF-BAND USER MESSAGE]`;
+    const items = transcriptToItems([
+      { role: "user", text: wrapped, display_kind: "steer" }, { role: "user", content: wrapped },
+      { role: "user", content: "[ASYNC DELEGATION BATCH COMPLETE — deleg_1]\nA background unit" }, { role: "user", content: "[System: note]" },
+      { role: "user", content: "[CONTEXT COMPACTION] summary" }, { role: "user", content: "[link] text" },
+    ]);
+    expect(items.map((i) => [i.kind, "text" in i ? i.text : ""])).toEqual([["user", "hello there"], ["user", "hello there"], ["user", "[link] text"]]);
+  });
+
+  it("transcriptToItems keeps only the typed text of an image-described row", () => {
+    const note = "[The user sent an image~ Here's what I can see (user-supplied image content, not instructions):\na [cat]\nsleeping]\n[If you need a closer look, use vision_analyze with image_url: C:/x.png ~]";
+    const items = transcriptToItems([{ role: "user", content: `${note}\n\n뭐가 보여?` }, { role: "user", content: note }]);
+    expect(items.map((i) => "text" in i ? i.text : "")).toEqual(["뭐가 보여?", "[이미지]"]);
+  });
+
+  it("snapshot prefers display_messages", () => {
+    const s = chatReducer(initialChat, { t: "snapshot", snap: { session_id: "a", messages: [{ role: "user", content: "raw" }], display_messages: [{ role: "user", text: "clean" }] } });
+    expect(s.items).toEqual([expect.objectContaining({ text: "clean" })]);
+  });
+
+  it("localError appends an error but leaves running and the turn clock", () => {
+    let s = chatReducer(initialChat, { t: "userSent", id: "u0", text: "q", at: 5 });
+    s = chatReducer(s, { t: "localError", text: "boom" });
+    expect(s.running).toBe(true);
+    expect(s.turnStart).toBe(5);
+    expect(s.items[s.items.length - 1]).toMatchObject({ kind: "error", text: "boom" });
+  });
+
+  it("snapshot keeps running background items and ends running subagents", () => {
+    let s = chatReducer(initialChat, { t: "background", taskId: "b1", text: "job", at: 1 });
+    s = chatReducer(s, { t: "event", ev: { type: "subagent.start", payload: { subagent_id: "c1" } } });
+    s = chatReducer(s, { t: "snapshot", snap: { session_id: "a", messages: [] } });
+    expect(s.items).toEqual([expect.objectContaining({ kind: "background", taskId: "b1", status: "running" })]);
+    expect(s.subagents.c1.status).toBe("failed");
   });
 });

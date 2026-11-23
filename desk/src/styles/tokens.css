@@ -12,14 +12,14 @@
   --surface-2: #1d1f23;
   --text: #e6e6e6;
   --text-2: #a1a1a6;
-  --text-3: #6e6e73;
+  --text-3: #8b8b91;
   --line: rgba(255, 255, 255, 0.08);
   --accent: #6c9bf2;
   --ok: #5fb87c;
   --warn: #e0894a;
   --warn-bg: rgba(224, 137, 74, 0.12);
   --idle: #d1b350;
-  --muted: #6e6e73;
+  --muted: #8b8b91;
   --hover-soft: rgba(255, 255, 255, 0.03);
   --hover: rgba(255, 255, 255, 0.06);
   --hover-strong: rgba(255, 255, 255, 0.08);
@@ -41,7 +41,7 @@
 }
 :root[data-theme="midnight"] {
   --bg: #0d1117; --surface-1: #131a24; --surface-2: #1a2330;
-  --text: #dde3ea; --text-2: #9aa7b5; --text-3: #64717f; --muted: #64717f;
+  --text: #dde3ea; --text-2: #9aa7b5; --text-3: #8795a3; --muted: #8795a3;
   --accent: #6ea8fe;
   --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%239aa7b5' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
 }
@@ -50,7 +50,7 @@
 }
 :root[data-theme="light"] {
   --bg: #f6f6f7; --surface-1: #ffffff; --surface-2: #ececee;
-  --text: #1c1c1e; --text-2: #5c5c63; --text-3: #8a8a90; --muted: #8a8a90;
+  --text: #1c1c1e; --text-2: #5c5c63; --text-3: #65656c; --muted: #65656c;
   --line: rgba(0, 0, 0, 0.10);
   --accent: #2f6fdb; --ok: #277a4c; --warn: #b35514; --warn-bg: rgba(179, 85, 20, 0.12); --idle: #8f7312;
   --hover-soft: rgba(0, 0, 0, 0.04); --hover: rgba(0, 0, 0, 0.06); --hover-strong: rgba(0, 0, 0, 0.09);

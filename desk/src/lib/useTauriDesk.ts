@@ -46,8 +46,9 @@ export function useTauriDesk(hermesView: PaneView = "chat") {
   const sessions = useMemo<Session[]>(() => {
     const byId = new Map(infos.map((i) => [i.id, i]));
     const linked = sInfos.map((s) => toSession(s, s.paneId ? byId.get(s.paneId) : undefined));
-    const plain = infos.filter((i) => !i.sessionId).map((i): Session => ({
-      agent: i.agent, sessionId: i.id, cwd: i.cwd, repoRoot: i.repoRoot, branch: i.branch,
+    const known = new Set(sInfos.map((s) => s.sessionId));
+    const plain = infos.filter((i) => !i.sessionId || !known.has(i.sessionId)).map((i): Session => ({
+      agent: i.agent, sessionId: i.sessionId ?? i.id, cwd: i.cwd, repoRoot: i.repoRoot, branch: i.branch,
       state: "plain", since: i.createdAt, seen: i.createdAt, prompt: "", title: folderName(i.cwd), paneId: i.window === WINDOW ? i.id : null,
       pending: null, subagents: [], todos: [], steps: 0, tool: "", toolDetail: "", turnStart: null, usage: null,
     }));
@@ -65,7 +66,7 @@ export function useTauriDesk(hermesView: PaneView = "chat") {
   const focusSession = useCallback((sessionId: string) => {
     const s = sInfosRef.current.find((x) => x.sessionId === sessionId);
     if (!s) {
-      const info = infosRef.current.find((i) => i.id === sessionId);
+      const info = infosRef.current.find((i) => i.id === sessionId || i.sessionId === sessionId);
       if (info) focusPaneInfo(info);
       return;
     }
@@ -75,7 +76,7 @@ export function useTauriDesk(hermesView: PaneView = "chat") {
     else (s.agent === "hermes" ? paneCreate("hermes", s.cwd, sessionId, hermesViewRef.current) : paneCreate(s.agent, s.cwd)).then(setFocused, console.error);
   }, [focusPaneInfo]);
   const stop = useCallback((sessionId: string) => {
-    const paneId = sInfosRef.current.find((x) => x.sessionId === sessionId)?.paneId ?? sessionId;
+    const paneId = sInfosRef.current.find((x) => x.sessionId === sessionId)?.paneId ?? infosRef.current.find((i) => i.sessionId === sessionId)?.id ?? sessionId;
     if (infosRef.current.find((i) => i.id === paneId)?.view === "chat") emitChatStop(paneId).catch(console.error); // the chat pane resyncs with the gateway and clears the hook file itself
     else {
       paneWrite(paneId, "\x03").catch(console.error);

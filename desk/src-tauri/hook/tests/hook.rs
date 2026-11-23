@@ -12,6 +12,22 @@ fn step(st: Value, e: Value, now: u64) -> Value {
 }
 
 #[test]
+fn prompt_skips_control_frames_and_unwraps_steers() {
+    let say = |st: Value, m: &str| step(st, ev("pre_llm_call", json!({"user_message": m})), 10);
+    let st = say(Value::Null, "hello");
+    for frame in ["[ASYNC DELEGATION BATCH COMPLETE — deleg_1]\nx", "[System: note]", "[CONTEXT COMPACTION] s", "[/OUT-OF-BAND USER MESSAGE]"] {
+        assert_eq!(say(st.clone(), frame)["prompt"], "hello", "{frame}");
+    }
+    let steer = "[OUT-OF-BAND USER MESSAGE — a direct message from the user]\nstop now\n[/OUT-OF-BAND USER MESSAGE]";
+    assert_eq!(say(st.clone(), steer)["prompt"], "stop now");
+    assert_eq!(say(st.clone(), "[link] text")["prompt"], "[link] text");
+    let note = "[The user sent an image~ Here's what I can see (user-supplied image content, not instructions):\na [cat]\nsleeping]\n[If you need a closer look, use vision_analyze with image_url: C:/x.png ~]";
+    assert_eq!(say(st.clone(), &format!("{note}\n\n{note}\n\n뭐가 보여?"))["prompt"], "뭐가 보여?");
+    assert_eq!(say(st.clone(), note)["prompt"], "[이미지]");
+    assert_eq!(say(st, "[The user sent an image but I couldn't quite see it]\n\nhi")["prompt"], "hi");
+}
+
+#[test]
 fn transitions() {
     let st = step(Value::Null, ev("on_session_open", json!({})), 10);
     assert_eq!((st["state"].as_str(), st["since"].as_u64(), st["sessionId"].as_str()), (Some("idle"), Some(10), Some("local-a")));

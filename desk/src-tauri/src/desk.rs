@@ -286,7 +286,7 @@ pub async fn pane_attach(
             return Err(err);
         }
     };
-    let (c1, app2, id2) = (chan.clone(), app.clone(), id.clone());
+    let (c1, c2, app2, id2) = (chan.clone(), chan.clone(), app.clone(), id.clone());
     let (app3, id3) = (app.clone(), id.clone());
     let mut scan = guess.then(Scan::new);
     let spawned = pty::spawn(
@@ -303,8 +303,14 @@ pub async fn pane_attach(
                 let _ = ch.send(InvokeResponseBody::Raw(bytes.to_vec()));
             }
         },
-        move || {
-            if !app2.state::<Desk>().remove(|i| i.id == id2).is_empty() {
+        move |code, lived| {
+            // A failed or instantly-ending process (e.g. agent not installed) keeps its pane so the error stays readable.
+            if code != 0 || lived < std::time::Duration::from_secs(2) {
+                let ch = c2.lock().unwrap().clone();
+                if let Some(ch) = ch {
+                    let _ = ch.send(InvokeResponseBody::Raw(format!("\r\n[Perch] 프로세스가 종료되었습니다 (코드 {code})\r\n").into_bytes()));
+                }
+            } else if !app2.state::<Desk>().remove(|i| i.id == id2).is_empty() {
                 emit_snapshot(&app2);
             }
         },
