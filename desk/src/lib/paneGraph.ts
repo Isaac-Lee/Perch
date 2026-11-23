@@ -50,6 +50,19 @@ export function paneGraphData(chat: PaneGraphData | undefined, session: Session 
 /** Header badge: starting/running subagents + running background tasks. */
 export const runningCount = (d: PaneGraphData) => d.subagents.filter((a) => a.status === "starting" || a.status === "running").length + d.background.filter((b) => b.status === "running").length;
 
+const live = (s: string) => s === "starting" || s === "running";
+/** Drops finished subagents and background tasks; a finished subagent stays while a descendant still runs (keeps the tree joined). */
+export function hideFinished(d: PaneGraphData): PaneGraphData & { hidden: number } {
+  const keep = new Set<string>();
+  for (const a of d.subagents) {
+    if (!live(a.status)) continue;
+    const seen = new Set<string>();
+    for (let c: SubagentLive | undefined = a; c && !seen.has(c.id); c = d.subagents.find((x) => x.id === c!.parentId)) { seen.add(c.id); keep.add(c.id); }
+  }
+  const subagents = d.subagents.filter((a) => keep.has(a.id)), background = d.background.filter((b) => live(b.status));
+  return { subagents, background, hidden: d.subagents.length - subagents.length + d.background.length - background.length };
+}
+
 export interface GNode { id: string; kind: "root" | "sub" | "bg"; title: string; label?: string; sub?: SubagentLive; bg?: BgLive; /** graph parent node id ("root" for top-level and background) */ parentId?: string; /** 0 root, 1 top-level and background, +1 per nesting */ level: number; /** first node of a new delegation group (top-level, or a sibling with another delegation) or of the background group: extra space above */ gap?: boolean }
 
 /** Flat depth-first list: root; top-level subagents grouped per delegation (first-seen order, then index), each followed by its descendants; background last. */
