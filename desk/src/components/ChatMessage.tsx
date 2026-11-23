@@ -42,7 +42,7 @@ function UserBubble({ item, actions }: { item: Extract<ChatItem, { kind: "user" 
   const confirm = (go: () => void) => (
     <div className="chat-act-confirm" role="alert">
       <span>이 메시지와 그 뒤 대화가 지워집니다. 되돌릴 수 없습니다</span>
-      <button className="btn" autoFocus onClick={() => { done(); go(); }}>확인</button>
+      <button className="btn" autoFocus disabled={off} title={off ? why : undefined} onClick={() => { done(); go(); }}>확인</button>
       <button className="btn" onClick={() => setMode(mode === "ask-overwrite" ? "edit" : "")}>취소</button>
     </div>
   );

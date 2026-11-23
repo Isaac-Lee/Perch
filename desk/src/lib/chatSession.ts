@@ -659,6 +659,12 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
 
   /** Runs a rewind/branch/create step; a failure shows the error and gives `text` back to this pane's composer. */
   async function guarded(text: string | null, f: () => Promise<void>): Promise<void> {
+    const st = stateRef.current;
+    if (st.running || st.queued.length > 0) { // destructive: never mid-turn, whatever the UI showed
+      if (text !== null) setDraft((x) => ({ text, n: x.n + 1 }));
+      dispatch({ t: "localError", text: "작업 중에는 쓸 수 없습니다" });
+      return;
+    }
     try { await f(); }
     catch (e) { if (text !== null) setDraft((x) => ({ text, n: x.n + 1 })); dispatch({ t: "localError", text: rewindFailure(e) }); }
   }
