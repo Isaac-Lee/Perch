@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import turn from "./__fixtures__/turn.jsonl?raw";
 import background from "./__fixtures__/background.jsonl?raw";
 import delegate from "./__fixtures__/delegate.jsonl?raw";
-import { STUCK_MSG, pendingToQueued, WATCHDOG_MS, activityLabel, canSend, submitFailure, watchdogDue, chatReducer, fmtSec, groupItems, staleRetry, initialChat, shouldAutoReconnect, toDirective, toModelProviders, transcriptToItems, type ChatAction } from "./chatSession";
+import { STUCK_MSG, pendingToQueued, WATCHDOG_MS, activityLabel, canSend, submitFailure, watchdogDue, chatReducer, forkBoundary, userActions, fmtSec, groupItems, staleRetry, initialChat, shouldAutoReconnect, toDirective, toModelProviders, transcriptToItems, type ChatAction } from "./chatSession";
 
 const ev = (type: string, payload: object = {}): ChatAction => ({ t: "event", ev: { type, payload } });
 
@@ -719,5 +719,35 @@ describe("resume projection, local errors, snapshot carry-over", () => {
     s = chatReducer(s, { t: "snapshot", snap: { session_id: "a", messages: [] } });
     expect(s.items).toEqual([expect.objectContaining({ kind: "background", taskId: "b1", status: "running" })]);
     expect(s.subagents.c1.status).toBe("failed");
+  });
+});
+
+describe("row ids", () => {
+  const rows = [
+    { role: "user", text: "a", row_id: 1 }, { role: "assistant", text: "A", row_id: 2 },
+    { role: "user", text: "b", row_id: 4 }, { role: "user", text: "", row_id: 5 },
+  ];
+  it("user items carry their row id and the nearest earlier row id", () => {
+    const u = transcriptToItems(rows).filter((i) => i.kind === "user");
+    expect(u).toMatchObject([{ text: "a", rowId: 1 }, { text: "b", rowId: 4, prevRowId: 2 }]);
+    expect((u[0] as any).prevRowId).toBeUndefined();
+  });
+  it("forkBoundary: through the previous row, or fresh for the first message", () => {
+    const u = transcriptToItems(rows).filter((i) => i.kind === "user");
+    expect(forkBoundary(u[1])).toEqual({ through: 2 });
+    expect(forkBoundary(u[0])).toEqual({ fresh: true });
+  });
+  it("snapshot sets rowIds only when display_messages came", () => {
+    expect(chatReducer(initialChat, { t: "snapshot", snap: { session_id: "s", display_messages: rows } }).rowIds).toBe(true);
+    expect(chatReducer(initialChat, { t: "snapshot", snap: { session_id: "s", messages: rows } }).rowIds).toBe(false);
+  });
+  it("userActions: hidden without row ids, disabled while busy or unsaved", () => {
+    const item = { kind: "user", id: "u", text: "x", rowId: 3 } as const;
+    expect(userActions({ running: false, queued: [], rowIds: false }, item).show).toBe(false);
+    expect(userActions({ running: true, queued: [], rowIds: true }, item)).toEqual({ show: true, enabled: false, reason: "작업 중에는 쓸 수 없습니다" });
+    expect(userActions({ running: false, queued: [{} as any], rowIds: true }, item).reason).toBe("작업 중에는 쓸 수 없습니다");
+    expect(userActions({ running: false, queued: [], rowIds: true }, { ...item, rowId: undefined })).toEqual({ show: true, enabled: false, reason: "저장되는 중" });
+    expect(userActions({ running: false, queued: [], rowIds: true }, item)).toEqual({ show: true, enabled: true });
+    expect(userActions({ running: false, queued: [], rowIds: true }, { kind: "system", id: "s", text: "x" }).show).toBe(false);
   });
 });

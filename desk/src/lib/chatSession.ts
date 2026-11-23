@@ -7,7 +7,7 @@ import { activityOf } from "./orbState";
 import type { GatewayEvent, SessionSnapshot } from "./gatewayTypes";
 
 export type ChatItem =
-  | { kind: "user"; id: string; text: string; images?: string[]; /** id sent as prompt.submit submission_id (idle path): its pending row is this bubble */ submissionId?: string }
+  | { kind: "user"; id: string; text: string; images?: string[]; /** id sent as prompt.submit submission_id (idle path): its pending row is this bubble */ submissionId?: string; /** its own Hermes row (display_messages row_id) */ rowId?: number; /** nearest earlier row with a row_id, any role */ prevRowId?: number }
   | { kind: "assistant"; id: string; text: string; streaming: boolean }
   | { kind: "thought"; id: string; text: string; streaming: boolean; startedAt?: number; durationS?: number }
   | {
@@ -35,9 +35,10 @@ export interface QueuedMsg { id: string /* submission_id */; admissionId?: strin
 export interface ChatState { conn: "connecting" | "ready" | "closed" | "error"; error?: string; sessionId: string | null; executionGeneration: number; revision: number; running: boolean; items: ChatItem[]; prompts: ChatPrompt[]; model: string | null; effort: string | null; /** ms epoch the current turn began; set from timestamps the dispatcher passes in (the reducer stays pure) */ turnStart: number | null; /** Hermes status line (thinking.delta) */ status: string; /** tool named by tool.generating, before its tool.start */ generating: string;
   /** prompts waiting behind the running turn (not in `items` yet) */ queued: QueuedMsg[];
   /** `at` of a local prompt that has not seen message.start yet (the optimistic window); null otherwise */ sentAt: number | null;
+  /** the last snapshot carried display_messages (rows have row_id) */ rowIds: boolean;
   /** the user cleared a stuck indicator by hand: the next real frame turns it back on */ cleared: boolean;
   /** delegate_task children by subagent_id. Not in session.resume snapshots: after a resume/reconnect only children seen live exist. */ subagents: Record<string, SubagentLive> }
-export const initialChat: ChatState = { conn: "connecting", sessionId: null, executionGeneration: 0, revision: 0, running: false, items: [], prompts: [], queued: [], model: null, effort: null, turnStart: null, status: "", generating: "", sentAt: null, cleared: false, subagents: {} };
+export const initialChat: ChatState = { conn: "connecting", sessionId: null, executionGeneration: 0, revision: 0, running: false, items: [], prompts: [], queued: [], model: null, effort: null, turnStart: null, status: "", generating: "", sentAt: null, cleared: false, rowIds: false, subagents: {} };
 export type ChatAction =
   | { t: "conn"; conn: ChatState["conn"]; error?: string }
   | { t: "snapshot"; snap: any; at?: number }
@@ -83,8 +84,11 @@ const toolExtra = (p: any) => ({
 export function transcriptToItems(messages: any[]): ChatItem[] {
   const out: ChatItem[] = [];
   let calls: any[] = [];
+  let last: number | undefined; // latest row_id seen, skipped rows included
   for (const m of messages) {
     if (!m || typeof m !== "object") continue;
+    const prev = last;
+    if (typeof m.row_id === "number") last = m.row_id;
     const id = `h${out.length}`;
     const text = typeof m.text === "string" ? m.text : typeof m.content === "string" ? m.content : "";
     if (m.role === "user") {
@@ -93,7 +97,7 @@ export function transcriptToItems(messages: any[]): ChatItem[] {
       // display_messages rows: steer / skill_invocation carry the user's own words; other kinds (auto_continue, delegation notices, ...) are gateway-made: hidden
       if (k && k !== "steer" && k !== "skill_invocation") continue;
       const shown = userText(text);
-      if (shown !== null) out.push({ kind: "user", id, text: shown });
+      if (shown !== null) out.push({ kind: "user", id, text: shown, ...(typeof m.row_id === "number" ? { rowId: m.row_id } : {}), ...(prev !== undefined ? { prevRowId: prev } : {}) });
     }
     else if (m.role === "assistant") {
       calls = Array.isArray(m.tool_calls) ? m.tool_calls : [];
@@ -110,6 +114,16 @@ export function transcriptToItems(messages: any[]): ChatItem[] {
     }
   }
   return out;
+}
+
+/** Fork point of a user message: everything before it, or a fresh session for the first one. */
+export const forkBoundary = (item: ChatItem): { through: number } | { fresh: true } =>
+  item.kind === "user" && typeof item.prevRowId === "number" ? { through: item.prevRowId } : { fresh: true };
+export function userActions(s: Pick<ChatState, "running" | "queued" | "rowIds">, item: ChatItem): { show: boolean; enabled: boolean; reason?: string } {
+  if (item.kind !== "user" || !s.rowIds) return { show: false, enabled: false };
+  if (s.running || s.queued.length > 0) return { show: true, enabled: false, reason: "작업 중에는 쓸 수 없습니다" };
+  if (item.rowId === undefined) return { show: true, enabled: false, reason: "저장되는 중" };
+  return { show: true, enabled: true };
 }
 
 // Event payloads and session.resume snapshot rows share one shape (CanonicalPendingPrompt).
@@ -166,7 +180,7 @@ export function chatReducer(s: ChatState, a: ChatAction): ChatState {
       ...s, conn: "ready", error: undefined, sessionId: a.snap.session_id ?? null,
       executionGeneration: typeof a.snap.execution_generation === "number" ? a.snap.execution_generation : s.executionGeneration,
       revision: typeof a.snap.revision === "number" ? a.snap.revision : 0,
-      sentAt: null, cleared: false, running: !!a.snap.running, turnStart: a.snap.running ? s.turnStart ?? a.at ?? null : null, model: a.snap.info?.model || s.model, effort: str(a.snap.info?.reasoning_effort) || s.effort, items: [...transcriptToItems(a.snap.display_messages ?? a.snap.messages ?? []), ...s.items.filter((i) => i.kind === "background" && i.status === "running")], prompts: (Array.isArray(a.snap.prompts) ? a.snap.prompts : []).map((p: any) => toPrompt(p, p?.kind)).filter((p: ChatPrompt | null): p is ChatPrompt => !!p), queued: pendingToQueued(a.snap.pending),
+      sentAt: null, cleared: false, rowIds: Array.isArray(a.snap.display_messages), running: !!a.snap.running, turnStart: a.snap.running ? s.turnStart ?? a.at ?? null : null, model: a.snap.info?.model || s.model, effort: str(a.snap.info?.reasoning_effort) || s.effort, items: [...transcriptToItems(a.snap.display_messages ?? a.snap.messages ?? []), ...s.items.filter((i) => i.kind === "background" && i.status === "running")], prompts: (Array.isArray(a.snap.prompts) ? a.snap.prompts : []).map((p: any) => toPrompt(p, p?.kind)).filter((p: ChatPrompt | null): p is ChatPrompt => !!p), queued: pendingToQueued(a.snap.pending),
       // children still "running" belong to a connection that is gone; no frame will ever finish them
       subagents: Object.fromEntries(Object.entries(s.subagents).map(([k, v]) => [k, v.status === "starting" || v.status === "running" ? { ...v, status: "failed" as const } : v])),
     };
@@ -476,6 +490,7 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
           if (dead) return;
           lastFrame.current = Date.now();
           dispatch({ t: "event", ev, at: lastFrame.current });
+          if (ev.type === "message.complete") void resync(); // adopt row ids once the turn is saved (a queued next turn keeps running: resync leaves it)
           if (ev.type === "session.info") abandonUnknown(ev.payload?.pending, ev.session_id ?? stateRef.current.sessionId);
           if (ev.type === "session.replay_gap" && stateRef.current.sessionId) // events were lost: re-read the whole session
             rpc.request<SessionSnapshot>("session.resume", { session_id: stateRef.current.sessionId, display_projection: true }).then((snap) => { if (!dead) { dispatch({ t: "snapshot", snap, at: Date.now() }); abandonUnknown((snap as any).pending, snap.session_id); } }, console.error);
