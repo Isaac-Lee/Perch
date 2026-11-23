@@ -2,7 +2,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { chatClose, chatConnect, chatSend, paneCreate, paneSetSession, sessionForceIdle } from "./backend";
 import { BLOCKED_SLASH, imageExt, isSlashCommand, parseModelArg, parseSlash, toBase64 } from "./composer";
 import { FOCUS_PANE_EVENT, setPrefill, takePrefill } from "./forkPrefill";
-import { createRpc, type Rpc } from "./gateway";
+import { createRpc, type Rpc, type RpcError } from "./gateway";
 import { userText } from "./hermesFrames";
 import { activityOf } from "./orbState";
 import type { GatewayEvent, SessionSnapshot } from "./gatewayTypes";
@@ -42,7 +42,7 @@ export interface ChatState { conn: "connecting" | "ready" | "closed" | "error"; 
 export const initialChat: ChatState = { conn: "connecting", sessionId: null, executionGeneration: 0, revision: 0, running: false, items: [], prompts: [], queued: [], model: null, effort: null, turnStart: null, status: "", generating: "", sentAt: null, cleared: false, rowIds: false, subagents: {} };
 export type ChatAction =
   | { t: "conn"; conn: ChatState["conn"]; error?: string }
-  | { t: "snapshot"; snap: any; at?: number; /** carry the current local error/system rows over (post-turn resync) */ keepLocal?: boolean }
+  | { t: "snapshot"; snap: any; at?: number; /** post-turn resync: annotate row ids onto the live items; if they do not line up, replace but carry local error/system rows over */ keepLocal?: boolean }
   | { t: "modelChanged"; revision: number; executionGeneration: number; model: string }
   | { t: "effortChanged"; revision: number; executionGeneration: number; effort: string }
   | { t: "effort"; effort: string }
@@ -174,17 +174,39 @@ const addPrompt = (s: ChatState, pr: ChatPrompt | null): ChatState =>
 const dropPrompt = (s: ChatState, id: string): ChatState =>
   s.prompts.some((x) => x.promptId === id) ? { ...s, prompts: s.prompts.filter((x) => x.promptId !== id) } : s;
 
+/** Live items with row ids copied from a snapshot's user rows, matched one to one in order by shown text; null when they do not line up. Other items stay as they are. */
+export function annotateRows(items: ChatItem[], rows: unknown): ChatItem[] | null {
+  if (!Array.isArray(rows)) return null;
+  const snap = transcriptToItems(rows).filter((i): i is Extract<ChatItem, { kind: "user" }> => i.kind === "user");
+  const live = items.flatMap((i, k) => (i.kind === "user" ? [k] : []));
+  if (live.length !== snap.length) return null;
+  const out = [...items];
+  for (let j = 0; j < live.length; j++) {
+    const i = items[live[j]] as Extract<ChatItem, { kind: "user" }>, r = snap[j];
+    if (i.text.trim() !== r.text.trim() || r.rowId === undefined || (i.rowId !== undefined && i.rowId !== r.rowId)) return null;
+    if (i.rowId !== r.rowId || i.prevRowId !== r.prevRowId) out[live[j]] = { ...i, rowId: r.rowId, ...(r.prevRowId !== undefined ? { prevRowId: r.prevRowId } : {}) };
+  }
+  return out;
+}
+
 export function chatReducer(s: ChatState, a: ChatAction): ChatState {
   switch (a.t) {
     case "conn": return { ...s, conn: a.conn, error: a.error };
-    case "snapshot": return {
+    case "snapshot": {
+      const ann = a.keepLocal ? annotateRows(s.items, a.snap.display_messages) : null;
+      if (ann) return {
+        ...s, items: ann, rowIds: true, revision: typeof a.snap.revision === "number" ? a.snap.revision : s.revision,
+        executionGeneration: typeof a.snap.execution_generation === "number" ? a.snap.execution_generation : s.executionGeneration,
+      };
+      return {
       ...s, conn: "ready", error: undefined, sessionId: a.snap.session_id ?? null,
       executionGeneration: typeof a.snap.execution_generation === "number" ? a.snap.execution_generation : s.executionGeneration,
       revision: typeof a.snap.revision === "number" ? a.snap.revision : 0,
-      sentAt: null, cleared: false, rowIds: Array.isArray(a.snap.display_messages), running: !!a.snap.running, turnStart: a.snap.running ? s.turnStart ?? a.at ?? null : null, model: a.snap.info?.model || s.model, effort: str(a.snap.info?.reasoning_effort) || s.effort, items: [...transcriptToItems(a.snap.display_messages ?? a.snap.messages ?? []), ...(a.keepLocal ? s.items.filter((i) => i.kind === "error" || i.kind === "system") : []), ...s.items.filter((i) => i.kind === "background" && i.status === "running")], prompts: (Array.isArray(a.snap.prompts) ? a.snap.prompts : []).map((p: any) => toPrompt(p, p?.kind)).filter((p: ChatPrompt | null): p is ChatPrompt => !!p), queued: pendingToQueued(a.snap.pending),
+      sentAt: null, cleared: false, rowIds: Array.isArray(a.snap.display_messages), running: !!a.snap.running, turnStart: a.snap.running ? s.turnStart ?? a.at ?? null : null, model: a.snap.info?.model || s.model, effort: str(a.snap.info?.reasoning_effort) || s.effort, items: [...transcriptToItems(a.snap.display_messages ?? a.snap.messages ?? []), ...(a.keepLocal ? s.items.filter((i) => i.kind === "error" || i.kind === "system").map((i) => ({ ...i, id: `k${i.id}` })) /* re-keyed: a later local row's e<n>/s<n> must not collide */ : []), ...s.items.filter((i) => i.kind === "background" && i.status === "running")], prompts: (Array.isArray(a.snap.prompts) ? a.snap.prompts : []).map((p: any) => toPrompt(p, p?.kind)).filter((p: ChatPrompt | null): p is ChatPrompt => !!p), queued: pendingToQueued(a.snap.pending),
       // children still "running" belong to a connection that is gone; no frame will ever finish them
       subagents: Object.fromEntries(Object.entries(s.subagents).map(([k, v]) => [k, v.status === "starting" || v.status === "running" ? { ...v, status: "failed" as const } : v])),
-    };
+      };
+    }
     case "modelChanged": return { ...s, revision: a.revision, executionGeneration: a.executionGeneration, model: a.model };
     case "effortChanged": return { ...s, revision: a.revision, executionGeneration: a.executionGeneration, effort: a.effort };
     case "effort": return s.effort ? s : { ...s, effort: a.effort };
@@ -400,11 +422,17 @@ export function staleRetry(err: unknown): { revision: number; executionGeneratio
 /** Typed text of a rewind receipt's target message: a string, or the text parts of a content array. */
 export const rewindText = (c: unknown): string =>
   typeof c === "string" ? c : Array.isArray(c) ? c.map((x) => (typeof x === "string" ? x : isObj(x) && typeof x.text === "string" ? x.text : "")).filter(Boolean).join("\n") : "";
-/** Message for a failed rewind/branch: a stale or vanished target reads the same to the user. */
+/** Message for a failed rewind/branch. The gateway's reason is the message, its explanation `data.detail`; a stale or vanished target reads the same to the user. */
 export const rewindFailure = (e: unknown): string => {
-  const m = e instanceof Error ? e.message : String(e);
-  return /revision_conflict|stale_revision|stale_generation|no longer in session history|invalid_params/.test(m) && !/compacted:/.test(m) ? "대화가 바뀌어 되감지 못했습니다" : m;
+  const m = e instanceof Error ? e.message : String(e), detail = str((e as RpcError | null)?.data?.detail);
+  if (detail.startsWith("compacted:")) return "압축된 메시지라 되감을 수 없습니다: " + detail;
+  if (/^(invalid_params|revision_conflict|stale_revision|stale_generation)$/.test(m)) return "대화가 바뀌어 되감지 못했습니다";
+  if (m === "session_busy") return "작업 중에는 쓸 수 없습니다";
+  return m;
 };
+/** The gateway also subscribes this connection to sessions it opens for us (a branch or a fresh fork child): only frames of this pane's own session, or frames naming none, are ours. */
+export const forThisPane = (evSession: unknown, own: (string | null | undefined)[]): boolean =>
+  typeof evSession !== "string" || !evSession || !own.some(Boolean) || own.includes(evSession);
 export interface ModelProvider { provider: string; providerName: string; models: string[] }
 interface ModelOptions { model?: string; provider?: string; providers?: { slug: string; name?: string; models?: string[]; authenticated?: boolean; is_current?: boolean }[] }
 /** model.options rows -> picker groups. Unauthenticated providers stay (in-house models), and the session's current model is added when no row lists it. */
@@ -466,7 +494,7 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
   const lastFrame = useRef(Date.now()); // time of the last gateway frame (a ref: no render per frame)
   const lastResync = useRef(0);
   const resyncRef = useRef<(keepLocal?: boolean) => unknown>(() => {}); // the event handler lives in an effect declared before resync
-  const turnStarts = useRef(0); // message.start frames seen: a resync that began before one must not apply its stale snapshot
+  const turnStarts = useRef(0); // message.start frames seen and local submits: a resync that began before one must not apply its stale snapshot
   const stuck = useRef(false); // Stop did not end the turn and Hermes still says it runs
   const [draft, setDraft] = useState({ text: "", n: 0 }); // /undo-style prefill; the composer applies it when n changes
   const sendRef = useRef<(text: string) => void>(() => {});
@@ -500,7 +528,7 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
       dispatch({ t: "conn", conn: "connecting" });
       try {
         offs.push(rpc.onEvent((ev) => {
-          if (dead) return;
+          if (dead || !forThisPane(ev.session_id, [stateRef.current.sessionId, resumeRef.current])) return;
           lastFrame.current = Date.now();
           dispatch({ t: "event", ev, at: lastFrame.current });
           if (ev.type === "message.start") turnStarts.current++;
@@ -557,7 +585,7 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
     try {
       const snap = await rpc.request<SessionSnapshot>("session.resume", { session_id: rid, display_projection: true });
       if (snap.running) return true;
-      if (turnStarts.current !== starts) return true; // a turn started while we asked: the snapshot is stale
+      if (turnStarts.current !== starts) return null; // a turn started (or was sent) while we asked: the snapshot is stale
       dispatch({ t: "snapshot", snap, at: Date.now(), keepLocal });
       abandonUnknown((snap as any).pending, snap.session_id);
       sessionForceIdle(resumeRef.current ?? rid, 0).catch(console.error); // sidebar and pane header follow the chat row
@@ -589,6 +617,7 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
   useEffect(() => { const t = autoSend.current; if (t !== null && state.sessionId) { autoSend.current = null; sendRef.current(t); } }, [state.sessionId]);
 
   const submit = (sid: string, text: string, attachments?: { path: string; mime: string }[], qid?: string, submissionId = qid ?? crypto.randomUUID()) => {
+    turnStarts.current++; // a resync already in flight must not wipe this send
     const fail = (message: string) => {
       if (qid) { dispatch({ t: "unqueue", id: qid }); setDraft((x) => ({ text, n: x.n + 1 })); dispatch({ t: "localError", text: message }); } // queued: the turn still runs; give the text back
       else { setDraft((x) => ({ text, n: x.n + 1 })); dispatch({ t: "event", ev: { type: "error", payload: { message } } }); }
@@ -657,20 +686,25 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
     dispatch({ t: "modelChanged", revision: r.revision, executionGeneration: r.execution_generation, model: r.model || model });
   }
 
+  const busy = useRef(false); // a rewind/overwrite/fork is in flight: a second click does nothing
   /** Runs a rewind/branch/create step; a failure shows the error and gives `text` back to this pane's composer. */
   async function guarded(text: string | null, f: () => Promise<void>): Promise<void> {
+    if (busy.current) return;
     const st = stateRef.current;
     if (st.running || st.queued.length > 0) { // destructive: never mid-turn, whatever the UI showed
       if (text !== null) setDraft((x) => ({ text, n: x.n + 1 }));
       dispatch({ t: "localError", text: "작업 중에는 쓸 수 없습니다" });
       return;
     }
+    busy.current = true;
     try { await f(); }
     catch (e) { if (text !== null) setDraft((x) => ({ text, n: x.n + 1 })); dispatch({ t: "localError", text: rewindFailure(e) }); }
+    finally { busy.current = false; }
   }
-  async function rewind(rowId: number, toDraft = false): Promise<void> {
+  /** `draft` set: that text goes to the composer (the receipt's raw content if it is empty). */
+  async function rewind(rowId: number, draft?: string): Promise<void> {
     const r = await mutate("rewind", { target_message_id: rowId }) as { target_message?: { content?: unknown } };
-    if (toDraft) { const t = rewindText(r.target_message?.content); setDraft((x) => ({ text: t, n: x.n + 1 })); } // before the resync: the text must never be lost
+    if (draft !== undefined) { const t = draft || rewindText(r.target_message?.content); setDraft((x) => ({ text: t, n: x.n + 1 })); } // before the resync: the text must never be lost
     await resync();
   }
 
@@ -779,12 +813,12 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
       dispatch({ t: "effortChanged", revision: r.revision, executionGeneration: r.execution_generation, effort: r.effort || effort });
     },
     reconnect() { setNonce((n) => n + 1); },
-    /** Takes the conversation back to just before the user row and puts its text in the composer. */
-    rewindTo: (rowId: number): Promise<void> => guarded(null, () => rewind(rowId, true)),
+    /** Takes the conversation back to just before the user row and puts its bubble text in the composer. */
+    rewindTo: (rowId: number, text: string): Promise<void> => guarded(null, () => rewind(rowId, text)),
     /** Rewinds, then sends `text` in place of that message. */
     overwrite: (rowId: number, text: string): Promise<void> => guarded(text, async () => { await rewind(rowId); if (!canSend(stateRef.current)) throw new Error("연결되지 않았습니다"); api.send(text); }),
     /** Opens a child session (branch before the item, or a fresh one) in a new pane, carrying `text` to send or edit there. */
-    fork: (item: ChatItem, text: string, sendNow: boolean): Promise<void> => guarded(text, async () => {
+    fork: (item: ChatItem, text: string, sendNow: boolean): Promise<void> => guarded(!sendNow && item.kind === "user" && text === item.text ? null : text, async () => { // a plain fork never writes this composer
       const rpc = rpcRef.current, b = forkBoundary(item);
       if (!rpc) throw new Error("연결되지 않았습니다");
       let child: string;
@@ -796,7 +830,9 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
       }
       if (!child) throw new Error("새 세션을 만들지 못했습니다");
       setPrefill(child, { text, send: sendNow });
-      const paneId = await paneCreate("hermes", cwd, child, "chat");
+      let paneId: string;
+      try { paneId = await paneCreate("hermes", cwd, child, "chat"); }
+      catch (e) { takePrefill(child); throw e; } // no pane will take it: a later pane on this session must not auto-send
       window.dispatchEvent(new CustomEvent(FOCUS_PANE_EVENT, { detail: paneId }));
     }),
   };

@@ -25,7 +25,7 @@ export default function ChatView({ paneId, cwd, sessionId, focused, session }: {
       if (item.kind !== "user") continue;
       m.set(item.id, {
         state: userActions(state, item),
-        onRewind: () => { if (item.rowId !== undefined) void rewindTo(item.rowId); },
+        onRewind: () => { if (item.rowId !== undefined) void rewindTo(item.rowId, item.text); },
         onOverwrite: (t) => { if (item.rowId !== undefined) void overwrite(item.rowId, t); },
         onFork: (t, now) => { void fork(item, t, now); },
       });
@@ -74,7 +74,8 @@ export default function ChatView({ paneId, cwd, sessionId, focused, session }: {
       <div className="chat-scroll" ref={scrollRef} onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight <= 40; }}>
         <div className="chat-col">
           {state.items.length === 0 && state.conn === "ready" && <div className="chat-empty">메시지를 입력해 대화를 시작하세요</div>}
-          {groupItems(state.items).map((i) => <ChatMessage key={i.id} item={i} subagents={state.subagents} actions={actions.get(i.id)} />)}
+          {/* user rows keyed by their Hermes row: a re-indexed transcript (or a newly saved row) remounts the bubble, so an open editor never binds to another message */}
+          {groupItems(state.items).map((i) => <ChatMessage key={i.kind === "user" && i.rowId !== undefined ? `row${i.rowId}` : i.id} item={i} subagents={state.subagents} actions={actions.get(i.id)} />)}
           {state.running && <ChatLive state={state} session={session} />}
           {state.prompts.map((p) => <ChatPrompt key={p.promptId} prompt={p} onApproval={(c) => answerApproval(p.promptId, c)} onClarify={(a) => answerClarify(p.promptId, a)} />)}
           {down && retrying && <div className="chat-status">다시 연결하는 중…</div>}
