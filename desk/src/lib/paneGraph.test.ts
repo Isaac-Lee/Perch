@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SubagentLive } from "./chatSession";
-import { getGraphOpen, getPaneGraph, graphRows, layoutGraph, GAP, INDENT, PAD, ROW_GAP, openGraph, closeGraph, runningCount, setPaneGraph, toggleGraph } from "./paneGraph";
+import { getGraphOpen, getPaneGraph, graphRows, hideFinished, layoutGraph, GAP, INDENT, PAD, ROW_GAP, openGraph, closeGraph, runningCount, setPaneGraph, toggleGraph } from "./paneGraph";
 
 const sa = (id: string, index: number, delegationId?: string, status: SubagentLive["status"] = "running"): SubagentLive => ({ id, index, count: 3, delegationId, goal: id, model: "m", status, tool: "", toolPreview: "", toolCount: 0, depth: 0, startAt: null });
 const kid = (id: string, parentId: string, depth: number, index = 0, delegationId = "n"): SubagentLive => ({ ...sa(id, index, delegationId), parentId, depth });
@@ -128,5 +128,21 @@ describe("store", () => {
     expect(getPaneGraph().has("p")).toBe(false);
     toggleGraph("p"); expect(getGraphOpen().has("p")).toBe(true);
     openGraph("p"); closeGraph("p"); expect(getGraphOpen().has("p")).toBe(false);
+  });
+});
+
+describe("hideFinished", () => {
+  const s = (id: string, status: string, parentId?: string) => ({ id, status, parentId }) as any;
+  it("drops finished subagents and background, keeping finished ancestors of running ones", () => {
+    const d = hideFinished({
+      subagents: [s("a", "done"), s("b", "done"), s("c", "running", "b"), s("d", "failed", "b"), s("e", "starting")],
+      background: [{ taskId: "x", text: "", status: "done" }, { taskId: "y", text: "", status: "running" }],
+    });
+    expect(d.subagents.map((a) => a.id)).toEqual(["b", "c", "e"]);
+    expect(d.background.map((b) => b.taskId)).toEqual(["y"]);
+    expect(d.hidden).toBe(3);
+  });
+  it("survives a parent cycle", () => {
+    expect(hideFinished({ subagents: [s("a", "running", "b"), s("b", "done", "a")], background: [] }).subagents).toHaveLength(2);
   });
 });

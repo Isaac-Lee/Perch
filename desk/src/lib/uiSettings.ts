@@ -76,3 +76,5 @@ export const saveNewPane =(v: NewPaneDefaults) => write("perch.newPane", v);
 /** User-chosen dock of the subagent graph; null = automatic by pane width. */
 export const loadGraphDock = (): "right" | "bottom" | null => { const v = read<unknown>("perch.graphDock", null); return v === "right" || v === "bottom" ? v : null; };
 export const saveGraphDock = (d: "right" | "bottom") => write("perch.graphDock", d);
+export const loadGraphShowDone = (): boolean => read<unknown>("perch.graphShowDone", false) === true;
+export const saveGraphShowDone = (v: boolean) => write("perch.graphShowDone", v);

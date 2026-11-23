@@ -6,7 +6,8 @@ import { useIsLight } from "../lib/theme";
 import { activityOf, type Activity } from "../lib/orbState";
 import { fmtElapsed } from "../lib/format";
 import { paneIcon } from "../lib/paneIcon";
-import { graphRows, layoutGraph, runningCount, type GNode, type PaneGraphData } from "../lib/paneGraph";
+import { graphRows, hideFinished, layoutGraph, runningCount, type GNode, type PaneGraphData } from "../lib/paneGraph";
+import { loadGraphShowDone, saveGraphShowDone } from "../lib/uiSettings";
 import { SubagentDetail } from "./SubagentBlock";
 
 type St = "starting" | "running" | "done" | "failed";
@@ -52,7 +53,11 @@ export default function SubagentGraph({ pane, rootLabel, title, data, dock, onDo
     const ro = new ResizeObserver(() => setW(el.clientWidth)); ro.observe(el); setW(el.clientWidth);
     return () => ro.disconnect();
   }, []);
-  const rows = useMemo(() => graphRows({ title, label: rootLabel }, data.subagents, data.background), [title, rootLabel, data]);
+  const [showDone, setShowDone] = useState(loadGraphShowDone);
+  const shown = useMemo(() => (showDone ? { ...data, hidden: 0 } : hideFinished(data)), [data, showDone]);
+  const finished = data.subagents.filter((a) => a.status === "done" || a.status === "failed").length + data.background.filter((b) => b.status !== "running").length;
+  const toggleDone = () => { setShowDone(!showDone); saveGraphShowDone(!showDone); };
+  const rows = useMemo(() => graphRows({ title, label: rootLabel }, shown.subagents, shown.background), [title, rootLabel, shown]);
   const lay = useMemo(() => layoutGraph(rows, w, dock === "bottom" ? "horizontal" : "vertical"), [rows, w, dock]);
   const byId = new Map(rows.map((n) => [n.id, n]));
   const all = [...data.subagents.map((a) => a.status), ...data.background.map((b) => b.status)];
@@ -87,7 +92,7 @@ export default function SubagentGraph({ pane, rootLabel, title, data, dock, onDo
   const aid = `sg-arrow-${pane.id}`;
   return (
     <aside ref={el} className={`sg ${dock}`} aria-label="Subagents" tabIndex={-1} onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}>
-      <div className="sg-head" onPointerDown={startDrag} onMouseDown={(e) => { if (!(e.target as Element).closest("button")) e.preventDefault(); }}><span className="ellipsis">{data.subagents.length || !data.background.length ? "Subagents" : "Background"}{head && ` · ${head}`}</span><span className="grow" /><button className="icon-btn" aria-label="Close" onMouseDown={(e) => { if (e.button !== 0) return; e.preventDefault(); e.stopPropagation(); onClose(); }} onClick={(e) => { e.stopPropagation(); if (e.detail === 0) onClose(); }}><X size={16} strokeWidth={1.5} /></button></div>
+      <div className="sg-head" onPointerDown={startDrag} onMouseDown={(e) => { if (!(e.target as Element).closest("button")) e.preventDefault(); }}><span className="ellipsis">{data.subagents.length || !data.background.length ? "Subagents" : "Background"}{head && ` · ${head}`}</span><span className="grow" />{finished > 0 && <button className="sg-done-btn" aria-pressed={showDone} title={showDone ? "끝난 작업을 숨깁니다." : "숨긴 끝난 작업을 보여줍니다."} onClick={toggleDone}>{showDone ? "완료 숨기기" : `완료 ${shown.hidden}개 보기`}</button>}<button className="icon-btn" aria-label="Close" onMouseDown={(e) => { if (e.button !== 0) return; e.preventDefault(); e.stopPropagation(); onClose(); }} onClick={(e) => { e.stopPropagation(); if (e.detail === 0) onClose(); }}><X size={16} strokeWidth={1.5} /></button></div>
       <div className="sg-scroll" ref={box}>
         {w > 0 && (
           <div className="sg-canvas" style={{ width: lay.width, height: lay.height }}>
