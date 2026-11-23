@@ -15,7 +15,7 @@ export default function SettingsMenu({ theme, onTheme, value, onChange, pane, on
   const ref = useRef<HTMLDivElement>(null);
   const [hermes, setHermes] = useState<HermesStatus | null>(null);
   const [error, setError] = useState("");
-  const [restart, setRestart] = useState<"" | "ask" | "done">("");
+  const [restart, setRestart] = useState<"" | "ask" | "busy" | "done">("");
   const hermesCall = (f: () => Promise<HermesStatus>, changed = false) => {
     setError("");
     f().then((s) => { setHermes(s); if (changed || s.autoUpdated) setRestart("ask"); }, (e) => setError(String(e)));
@@ -108,10 +108,10 @@ export default function SettingsMenu({ theme, onTheme, value, onChange, pane, on
               <div className="set-row"><span />
                 <button className="btn" disabled={!hermes} onClick={() => hermesCall(hermes?.connected ? hermesDisconnect : hermesConnect, true)}>{hermes?.connected ? "Disconnect" : "Connect"}</button>
               </div>
-              {restart === "ask" && <div className="menu-help">변경을 적용하려면 Hermes gateway를 다시 시작해야 합니다. 실행 중인 Hermes 작업은 중단됩니다.</div>}
-              {restart === "ask" && (
+              {(restart === "ask" || restart === "busy") && <div className="menu-help">변경을 적용하려면 Hermes gateway를 다시 시작해야 합니다. 실행 중인 Hermes 작업은 중단됩니다.</div>}
+              {(restart === "ask" || restart === "busy") && (
                 <div className="set-row"><span />
-                  <button className="btn" onClick={() => { setError(""); hermesGatewayStop().then(() => setRestart("done"), (e) => setError(String(e))); }}>Restart gateway</button>
+                  <button className="btn" disabled={restart === "busy"} onClick={() => { setError(""); setRestart("busy"); hermesGatewayStop().then(() => setRestart("done"), (e) => { setError(String(e)); setRestart("ask"); }); }}>{restart === "busy" ? "멈추는 중…" : "Restart gateway"}</button>
                 </div>
               )}
               {restart === "done" && <div className="menu-help">gateway를 멈췄습니다. 다음 Hermes 세션부터 적용됩니다.</div>}

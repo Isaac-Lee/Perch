@@ -29,6 +29,7 @@ export default function ChatComposer({ running, disabled, focused, model, effort
   const [text, setText] = useState("");
   const [atts, setAtts] = useState<Attachment[]>([]);
   const [err, setErr] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(0); // images still going to the gateway: sending now would leave them out
   const ref = useRef<HTMLTextAreaElement>(null);
   const live = useRef<Attachment[]>([]);
   // one menu at a time: the model menu (loading / ready / error) or the effort menu
@@ -141,19 +142,22 @@ export default function ChatComposer({ running, disabled, focused, model, effort
 
   const empty = !text.trim() && atts.length === 0;
   const send = () => {
-    if (disabled || empty) return;
+    if (disabled || empty || uploading > 0) return;
     onSend(text.trim(), atts.map(({ path, mime }) => ({ path, mime })));
     atts.forEach((a) => URL.revokeObjectURL(a.url));
     hist.current = { index: -1, saved: "" }; setHistIdx(-1); setText(""); setAtts([]); setErr(null); setSlash(null);
   };
   const remove = (a: Attachment) => { URL.revokeObjectURL(a.url); setAtts((l) => l.filter((x) => x !== a)); };
   const addFiles = (files: File[]) => files.forEach(async (f) => {
+    setUploading((n) => n + 1);
     try {
       const r = await onAttach(new Uint8Array(await f.arrayBuffer()), f.type);
       setAtts((l) => [...l, { path: r.path, mime: r.mime, url: URL.createObjectURL(f) }]);
       setErr(null);
     } catch (x) {
       setErr(msg(x));
+    } finally {
+      setUploading((n) => n - 1);
     }
   });
   const onPaste = (e: React.ClipboardEvent) => {
@@ -170,7 +174,7 @@ export default function ChatComposer({ running, disabled, focused, model, effort
   const stopMode = running && empty;
   return (
     <div className="chat-composer" ref={compRef}>
-      {err && <div className="chat-composer-err">{err}</div>}
+      {(uploading > 0 || err) && <div className="chat-composer-err">{uploading > 0 ? "이미지 올리는 중…" : err}</div>}
       {menu === "effort" && (
         <div className="menu chat-model-menu chat-effort-menu" role="menu" style={{ right: anchor }} ref={(el) => { menuRef.current = el; if (el) attachScrollReveal(el); }}>
           {EFFORT_LEVELS.map((lv) => (
@@ -265,7 +269,7 @@ export default function ChatComposer({ running, disabled, focused, model, effort
           </button>
           {stopMode
             ? <button className="chat-icon-btn" aria-label="중지" title="중지" onClick={onStop}><Square size={12} strokeWidth={1.75} /></button>
-            : <button className="chat-icon-btn chat-send" aria-label="전송" title="전송 (Enter)" onClick={send} disabled={empty || disabled}><CornerDownLeft size={16} strokeWidth={1.75} /></button>}
+            : <button className="chat-icon-btn chat-send" aria-label="전송" title="전송 (Enter)" onClick={send} disabled={empty || disabled || uploading > 0}><CornerDownLeft size={16} strokeWidth={1.75} /></button>}
         </div>
       </div>
     </div>

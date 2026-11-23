@@ -625,7 +625,50 @@ describe("queued messages", () => {
     expect(chatReducer(queued(), { t: "snapshot", snap: { session_id: "s", pending: "bad" } }).queued).toEqual([]);
     expect(pendingToQueued(undefined)).toEqual([]);
   });
+  it("does not adopt a foreign row with controls [] but adopts one with controls", () => {
+    expect(chatReducer(initialChat, info([row({ input_id: "x", controls: [] })])).queued).toEqual([]);
+    expect(chatReducer(initialChat, info([row({ input_id: "x", controls: ["steer", "replace"] })])).queued).toMatchObject([{ id: "x" }]);
+  });
+  it("a snapshot drops pending rows with controls []", () => {
+    expect(pendingToQueued([row({ controls: [] })])).toEqual([]);
+  });
+  it("a local entry still matches its row when controls is []", () => {
+    const s = chatReducer(queued(), info([row({ controls: [] })]));
+    expect(s.queued).toMatchObject([{ id: "q1", seen: true }]);
+    expect(users(s)).toHaveLength(0);
+  });
   it("clear leaves the queue alone", () => {
     expect(chatReducer(queued(), { t: "clear" }).queued).toHaveLength(1);
+  });
+});
+
+describe("resume projection, local errors, snapshot carry-over", () => {
+  it("transcriptToItems skips hidden/empty user rows and shows gateway-made kinds as system", () => {
+    const items = transcriptToItems([
+      { role: "user", text: "keep" }, { role: "user", text: "" }, { role: "user", text: "x", display_kind: "hidden" },
+      { role: "user", text: "continue", display_kind: "auto_continue" }, { role: "user", text: "mine", display_kind: "steer" },
+    ]);
+    expect(items.map((i) => [i.kind, "text" in i ? i.text : ""])).toEqual([["user", "keep"], ["system", "continue"], ["user", "mine"]]);
+  });
+
+  it("snapshot prefers display_messages", () => {
+    const s = chatReducer(initialChat, { t: "snapshot", snap: { session_id: "a", messages: [{ role: "user", content: "raw" }], display_messages: [{ role: "user", text: "clean" }] } });
+    expect(s.items).toEqual([expect.objectContaining({ text: "clean" })]);
+  });
+
+  it("localError appends an error but leaves running and the turn clock", () => {
+    let s = chatReducer(initialChat, { t: "userSent", id: "u0", text: "q", at: 5 });
+    s = chatReducer(s, { t: "localError", text: "boom" });
+    expect(s.running).toBe(true);
+    expect(s.turnStart).toBe(5);
+    expect(s.items[s.items.length - 1]).toMatchObject({ kind: "error", text: "boom" });
+  });
+
+  it("snapshot keeps running background items and ends running subagents", () => {
+    let s = chatReducer(initialChat, { t: "background", taskId: "b1", text: "job", at: 1 });
+    s = chatReducer(s, { t: "event", ev: { type: "subagent.start", payload: { subagent_id: "c1" } } });
+    s = chatReducer(s, { t: "snapshot", snap: { session_id: "a", messages: [] } });
+    expect(s.items).toEqual([expect.objectContaining({ kind: "background", taskId: "b1", status: "running" })]);
+    expect(s.subagents.c1.status).toBe("failed");
   });
 });

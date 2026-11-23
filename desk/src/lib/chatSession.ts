@@ -44,6 +44,8 @@ export type ChatAction =
   | { t: "effortChanged"; revision: number; executionGeneration: number; effort: string }
   | { t: "effort"; effort: string }
   | { t: "system"; text: string }
+  /** local failure (RPC refused, not a gateway frame): shows an error row, leaves running/turn clock alone */
+  | { t: "localError"; text: string }
   /** prompt.background accepted: a separate Hermes session `taskId` runs `text` */
   | { t: "background"; taskId: string; text: string; at?: number }
   /** Stop pressed twice on a turn Hermes will not end: drop Perch's indicators only */
@@ -74,7 +76,7 @@ const toolExtra = (p: any) => ({
   ...(str(p.result_text) ? { resultText: p.result_text } : {}), ...(str(p.inline_diff) ? { diff: p.inline_diff } : {}), ...labelsOf(p.labels),
 });
 
-// session.resume rows are raw model-API messages (user / assistant+tool_calls / tool).
+// Rows are session.resume `display_messages` (cleaned, display_kind-tagged) or, from an older gateway, raw model-API messages (user / assistant+tool_calls / tool).
 export function transcriptToItems(messages: any[]): ChatItem[] {
   const out: ChatItem[] = [];
   let calls: any[] = [];
@@ -82,7 +84,12 @@ export function transcriptToItems(messages: any[]): ChatItem[] {
     if (!m || typeof m !== "object") continue;
     const id = `h${out.length}`;
     const text = typeof m.text === "string" ? m.text : typeof m.content === "string" ? m.content : "";
-    if (m.role === "user") out.push({ kind: "user", id, text });
+    if (m.role === "user") {
+      const k = str(m.display_kind);
+      if (!text.trim() || k === "hidden") continue;
+      // display_messages rows: steer / skill_invocation carry the user's own words; other kinds (auto_continue, delegation notices, ...) are gateway-made
+      out.push(k && k !== "steer" && k !== "skill_invocation" ? { kind: "system", id, text } : { kind: "user", id, text });
+    }
     else if (m.role === "assistant") {
       calls = Array.isArray(m.tool_calls) ? m.tool_calls : [];
       const reasoning = str(m.reasoning) || str(m.reasoning_content);
@@ -118,7 +125,9 @@ export function toPrompt(p: any, kind: string): ChatPrompt | null {
 const waitingRows = (pending: unknown): any[] => (Array.isArray(pending) ? pending : []).filter((r) => isObj(r) && (r.status === "queued" || r.steering === true));
 const toQueued = (r: any): QueuedMsg => ({ id: str(r.input_id) || str(r.admission_id), admissionId: str(r.admission_id) || undefined, text: str(r.text), steering: !!r.steering, canSteer: r.controls == null ? true : Array.isArray(r.controls) && r.controls.includes("steer"), seen: true });
 /** Waiting rows of a gateway `pending` list as queue entries (input_id is the submission_id we sent). */
-export const pendingToQueued = (pending: unknown): QueuedMsg[] => waitingRows(pending).map(toQueued);
+// The gateway lists its own admissions (e.g. background-task notifications) with controls []; those are not user prompts.
+const userRow = (r: any) => r.steering === true || r.controls == null || (Array.isArray(r.controls) && r.controls.length > 0);
+export const pendingToQueued = (pending: unknown): QueuedMsg[] => waitingRows(pending).filter(userRow).map(toQueued);
 /** Moves entries out of the queue and into the transcript as user bubbles. */
 function leave(s: ChatState, gone: QueuedMsg[]): ChatState {
   if (!gone.length) return s;
@@ -136,7 +145,7 @@ function reconcileQueue(s: ChatState, pending: unknown): ChatState {
     if (q.seen || q.admissionId) { gone.push(q); return []; }
     return [q]; // optimistic: the receipt is still on its way
   });
-  return leave({ ...s, queued: [...kept, ...rows.filter((r) => !used.has(r)).map(toQueued)] }, gone);
+  return leave({ ...s, queued: [...kept, ...rows.filter((r) => !used.has(r) && userRow(r)).map(toQueued)] }, gone);
 }
 const addPrompt = (s: ChatState, pr: ChatPrompt | null): ChatState =>
   !pr || s.prompts.some((x) => x.promptId === pr.promptId) ? s : { ...s, prompts: [...s.prompts, pr] };
@@ -150,11 +159,14 @@ export function chatReducer(s: ChatState, a: ChatAction): ChatState {
       ...s, conn: "ready", error: undefined, sessionId: a.snap.session_id ?? null,
       executionGeneration: typeof a.snap.execution_generation === "number" ? a.snap.execution_generation : s.executionGeneration,
       revision: typeof a.snap.revision === "number" ? a.snap.revision : 0,
-      sentAt: null, cleared: false, running: !!a.snap.running, turnStart: a.snap.running ? s.turnStart ?? a.at ?? null : null, model: a.snap.info?.model || s.model, effort: str(a.snap.info?.reasoning_effort) || s.effort, items: transcriptToItems(a.snap.messages ?? []), prompts: (Array.isArray(a.snap.prompts) ? a.snap.prompts : []).map((p: any) => toPrompt(p, p?.kind)).filter((p: ChatPrompt | null): p is ChatPrompt => !!p), queued: pendingToQueued(a.snap.pending),
+      sentAt: null, cleared: false, running: !!a.snap.running, turnStart: a.snap.running ? s.turnStart ?? a.at ?? null : null, model: a.snap.info?.model || s.model, effort: str(a.snap.info?.reasoning_effort) || s.effort, items: [...transcriptToItems(a.snap.display_messages ?? a.snap.messages ?? []), ...s.items.filter((i) => i.kind === "background" && i.status === "running")], prompts: (Array.isArray(a.snap.prompts) ? a.snap.prompts : []).map((p: any) => toPrompt(p, p?.kind)).filter((p: ChatPrompt | null): p is ChatPrompt => !!p), queued: pendingToQueued(a.snap.pending),
+      // children still "running" belong to a connection that is gone; no frame will ever finish them
+      subagents: Object.fromEntries(Object.entries(s.subagents).map(([k, v]) => [k, v.status === "starting" || v.status === "running" ? { ...v, status: "failed" as const } : v])),
     };
     case "modelChanged": return { ...s, revision: a.revision, executionGeneration: a.executionGeneration, model: a.model };
     case "effortChanged": return { ...s, revision: a.revision, executionGeneration: a.executionGeneration, effort: a.effort };
     case "effort": return s.effort ? s : { ...s, effort: a.effort };
+    case "localError": return { ...s, items: [...settle(s.items), { kind: "error", id: `e${s.items.length}`, text: a.text }] };
     case "system": return { ...s, items: [...settle(s.items), { kind: "system", id: `s${s.items.length}`, text: a.text }] };
     case "background": return s.items.some((i) => i.kind === "background" && i.taskId === a.taskId) ? s
       : { ...s, items: [...s.items, { kind: "background", id: `bg-${a.taskId}`, taskId: a.taskId, text: a.text, status: "running", startedAt: a.at }] };
@@ -425,6 +437,20 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
   const stuck = useRef(false); // Stop did not end the turn and Hermes still says it runs
   const [draft, setDraft] = useState({ text: "", n: 0 }); // /undo-style prefill; the composer applies it when n changes
 
+  // An `unknown` admission (turn lost to a gateway restart) pauses the gateway's FIFO until acknowledged; the input is discarded, never requeued.
+  const handled = useRef(new Set<string>());
+  const abandonUnknown = useCallback((pending: unknown, sid: string | null | undefined) => {
+    const rpc = rpcRef.current;
+    if (!rpc || !sid) return;
+    for (const r of Array.isArray(pending) ? pending : []) {
+      const id = isObj(r) && r.status === "unknown" ? str(r.admission_id) : "";
+      if (!id || handled.current.has(id)) continue;
+      handled.current.add(id);
+      rpc.request("prompt.resolve_unknown", { session_id: sid, admission_id: id, execution_generation: typeof r.execution_generation === "number" ? r.execution_generation : stateRef.current.executionGeneration })
+        .then(() => dispatch({ t: "system", text: "이전 작업은 gateway 재시작으로 중단되었습니다" }), console.error);
+    }
+  }, []);
+
   useEffect(() => {
     let dead = false;
     let abort = () => {};
@@ -442,8 +468,9 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
           if (dead) return;
           lastFrame.current = Date.now();
           dispatch({ t: "event", ev, at: lastFrame.current });
+          if (ev.type === "session.info") abandonUnknown(ev.payload?.pending, ev.session_id ?? stateRef.current.sessionId);
           if (ev.type === "session.replay_gap" && stateRef.current.sessionId) // events were lost: re-read the whole session
-            rpc.request<SessionSnapshot>("session.resume", { session_id: stateRef.current.sessionId }).then((snap) => { if (!dead) dispatch({ t: "snapshot", snap, at: Date.now() }); }, console.error);
+            rpc.request<SessionSnapshot>("session.resume", { session_id: stateRef.current.sessionId, display_projection: true }).then((snap) => { if (!dead) { dispatch({ t: "snapshot", snap, at: Date.now() }); abandonUnknown((snap as any).pending, snap.session_id); } }, console.error);
         }));
         offs.push(rpc.onClosed((reason) => {
           if (dead) return;
@@ -463,10 +490,11 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
         await ready;
         const rid = stateRef.current.sessionId ?? resumeRef.current;
         const snap = await (rid
-          ? rpc.request<SessionSnapshot>("session.resume", { session_id: rid })
+          ? rpc.request<SessionSnapshot>("session.resume", { session_id: rid, display_projection: true })
           : rpc.request<SessionSnapshot>("session.create", { request_id: crypto.randomUUID(), source: "tui", cwd }));
         if (dead) return;
         dispatch({ t: "snapshot", snap, at: Date.now() });
+        abandonUnknown((snap as any).pending, snap.session_id);
         if (!snap.info?.reasoning_effort) // the snapshot may not carry it; failure just leaves the label generic
           rpc.request<{ value?: string }>("config.get", { key: "reasoning", session_id: snap.session_id }).then((r) => { if (!dead && r?.value) dispatch({ t: "effort", effort: r.value }); }, () => {});
         autoUsed.current = 0; // connected: re-arm
@@ -478,7 +506,7 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
       }
     })();
     return () => { dead = true; clearTimeout(timer.current); abort(); offs.forEach((o) => o()); chatClose(paneId).catch(() => {}); };
-  }, [paneId, cwd, nonce]);
+  }, [paneId, cwd, nonce, abandonUnknown]);
 
   /** Asks the gateway whether the turn still runs. Only a finished turn is adopted (history is authoritative then, which
    *  also drops local system lines); a running turn keeps its live rows. Returns the gateway's `running`, null if unknown. */
@@ -487,13 +515,14 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
     if (!rpc || !rid) return null;
     lastResync.current = Date.now();
     try {
-      const snap = await rpc.request<SessionSnapshot>("session.resume", { session_id: rid });
+      const snap = await rpc.request<SessionSnapshot>("session.resume", { session_id: rid, display_projection: true });
       if (snap.running) return true;
       dispatch({ t: "snapshot", snap, at: Date.now() });
+      abandonUnknown((snap as any).pending, snap.session_id);
       sessionForceIdle(resumeRef.current ?? rid, 0).catch(console.error); // sidebar and pane header follow the chat row
       return false;
     } catch (e) { console.error(e); return null; }
-  }, []);
+  }, [abandonUnknown]);
 
   useEffect(() => {
     if (!state.running) { stuck.current = false; return; }
@@ -502,7 +531,7 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
   }, [state.running, resync]);
 
   const call = useCallback((method: string, params: object) => {
-    rpcRef.current?.request(method, params).catch((e) => dispatch({ t: "event", ev: { type: "error", payload: { message: e instanceof Error ? e.message : String(e) } } }));
+    rpcRef.current?.request(method, params).catch((e) => dispatch({ t: "localError", text: e instanceof Error ? e.message : String(e) }));
   }, []);
   const base = () => ({ session_id: stateRef.current.sessionId, execution_generation: stateRef.current.executionGeneration });
   // The prompt carries its own generation. Success or any error (already_resolved) means it is gone either way.
@@ -515,7 +544,10 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
 
   /** `qid` set = queued behind a running turn: the entry is dropped again when the gateway refuses it. */
   const submit = (sid: string, text: string, attachments?: { path: string; mime: string }[], qid?: string, submissionId = qid ?? crypto.randomUUID()) => {
-    const fail = (message: string) => { if (qid) dispatch({ t: "unqueue", id: qid }); dispatch({ t: "event", ev: { type: "error", payload: { message } } }); };
+    const fail = (message: string) => {
+      if (qid) { dispatch({ t: "unqueue", id: qid }); setDraft((x) => ({ text, n: x.n + 1 })); dispatch({ t: "localError", text: message }); } // queued: the turn still runs; give the text back
+      else dispatch({ t: "event", ev: { type: "error", payload: { message } } });
+    };
     return rpcRef.current?.request<{ admission_id?: string; status?: string }>("prompt.submit", { session_id: sid, text, submission_id: submissionId, ...(attachments?.length ? { attachments } : {}) }).then(
       (r) => { const f = submitFailure(r); if (f) fail(f); else if (qid) dispatch({ t: "receipt", id: qid, admissionId: r?.admission_id, status: r?.status }); },
       (e) => fail(e instanceof Error ? e.message : String(e)));

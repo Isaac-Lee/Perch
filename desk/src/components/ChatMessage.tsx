@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { openUrl } from "../lib/backend";
 import { fmtSec, type ChatItem, type SubagentLive, type ToolGroup, type ToolItem } from "../lib/chatSession";
@@ -49,7 +49,7 @@ function BackgroundRow({ item }: { item: Extract<ChatItem, { kind: "background" 
   );
 }
 
-export default function ChatMessage({ item, subagents }: { item: ChatItem | ToolGroup; subagents?: Record<string, SubagentLive> }) {
+function ChatMessage({ item, subagents }: { item: ChatItem | ToolGroup; subagents?: Record<string, SubagentLive> }) {
   const [open, setOpen] = useState(false);
   switch (item.kind) {
     case "user":
@@ -108,3 +108,5 @@ export default function ChatMessage({ item, subagents }: { item: ChatItem | Tool
       return <div className="chat-system"><Markdown text={item.text} onLink={(u) => { openUrl(u).catch(console.error); }} /></div>;
   }
 }
+
+export default memo(ChatMessage);

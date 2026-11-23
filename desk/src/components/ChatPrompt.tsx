@@ -13,6 +13,7 @@ export function splitChoice(c: string): [string, string] {
 export default function ChatPrompt({ prompt, onApproval, onClarify }: { prompt: Prompt; onApproval: (choice: string) => void; onClarify: (answer: string) => void }) {
   const [sent, setSent] = useState(false); // one answer per prompt; the card disappears when settled
   const [text, setText] = useState("");
+  const [picked, setPicked] = useState<string[]>([]);
   const answer = (fn: () => void) => { if (!sent) { setSent(true); fn(); } };
 
   if (prompt.kind === "approval") {
@@ -37,7 +38,7 @@ export default function ChatPrompt({ prompt, onApproval, onClarify }: { prompt: 
       {prompt.choices.length > 0 && (
         <div className="chat-prompt-options">
           {prompt.choices.map((c, i) => { const [label, detail] = splitChoice(c); return (
-            <button key={c} className="chat-prompt-option" disabled={sent} onClick={() => answer(() => onClarify(c))}>
+            <button key={c} className="chat-prompt-option" disabled={sent} aria-pressed={prompt.multiSelect ? picked.includes(c) : undefined} style={prompt.multiSelect && picked.includes(c) ? { borderColor: "var(--accent)" } : undefined} onClick={() => (prompt.multiSelect ? setPicked((p) => (p.includes(c) ? p.filter((x) => x !== c) : [...p, c])) : answer(() => onClarify(c)))}>
               <span className="chat-prompt-option-label">{i + 1}. {label}</span>
               {detail && <span className="chat-prompt-option-detail">{detail}</span>}
             </button>
@@ -52,6 +53,7 @@ export default function ChatPrompt({ prompt, onApproval, onClarify }: { prompt: 
             if (enterAction({ key: e.key, shiftKey: e.shiftKey, isComposing: e.nativeEvent.isComposing, keyCode: e.keyCode }) === "send" && text.trim()) { e.preventDefault(); answer(() => onClarify(text.trim())); }
           }}
         />
+        {prompt.multiSelect && <button className="btn primary" disabled={sent || !picked.length} onClick={() => answer(() => onClarify(JSON.stringify(picked.map((c) => c.replace(/s*(Recommended)$/, "")))))}>보내기</button>}
         <button className="btn" disabled={sent} onClick={() => answer(() => onClarify(""))}>건너뛰기</button>
       </div>
     </div>

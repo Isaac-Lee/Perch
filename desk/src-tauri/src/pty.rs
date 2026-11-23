@@ -42,7 +42,7 @@ pub fn spawn(
     cols: u16,
     rows: u16,
     mut on_data: impl FnMut(&[u8]) + Send + 'static,
-    on_exit: impl FnOnce() + Send + 'static,
+    on_exit: impl FnOnce(u32, std::time::Duration) + Send + 'static,
 ) -> Result<Pty, String> {
     if !std::path::Path::new(cwd).is_dir() {
         return Err(format!("폴더가 없습니다: {cwd}"));
@@ -87,9 +87,10 @@ pub fn spawn(
         }
     });
     // ConPTY may never send read EOF, so exit is detected by wait().
+    let started = std::time::Instant::now();
     std::thread::spawn(move || {
-        let _ = child.wait();
-        on_exit();
+        let code = child.wait().map(|s| s.exit_code()).unwrap_or(1);
+        on_exit(code, started.elapsed());
     });
     Ok(Pty { master: Some(pair.master), writer, killer })
 }
@@ -142,7 +143,7 @@ mod tests {
         let (tx, rx) = mpsc::channel();
         let mut p = spawn(prog, &args, &tmp(), &[], 80, 24,
             move |b| o.lock().unwrap().extend_from_slice(b),
-            move || { let _ = tx.send(()); }).unwrap();
+            move |_, _| { let _ = tx.send(()); }).unwrap();
         // ConPTY asks for the cursor position (ESC[6n) and stalls until answered; xterm does this in the app.
         let (t, mut replied, mut exited) = (Instant::now(), false, false);
         loop {
@@ -165,7 +166,7 @@ mod tests {
         let (prog, args): (&str, Vec<String>) =
             if cfg!(windows) { ("powershell.exe", vec!["-NoLogo".into()]) } else { ("sh", vec![]) };
         let (tx, rx) = mpsc::channel();
-        let mut p = spawn(prog, &args, &tmp(), &[], 80, 24, |_| {}, move || { let _ = tx.send(()); }).unwrap();
+        let mut p = spawn(prog, &args, &tmp(), &[], 80, 24, |_| {}, move |_, _| { let _ = tx.send(()); }).unwrap();
         std::thread::sleep(Duration::from_millis(300));
         p.kill();
         rx.recv_timeout(Duration::from_secs(3)).expect("on_exit after kill");
@@ -191,7 +192,7 @@ mod tests {
 
     #[test]
     fn missing_cwd_errs() {
-        assert!(spawn("x", &[], "Z:\\no\\such\\dir", &[], 80, 24, |_| {}, || {}).is_err());
+        assert!(spawn("x", &[], "Z:\\no\\such\\dir", &[], 80, 24, |_| {}, |_, _| {}).is_err());
     }
 
     #[test]
@@ -202,7 +203,7 @@ mod tests {
         let out = Arc::new(Mutex::new((Vec::new(), 0usize)));
         let o = out.clone();
         let mut p = spawn("powershell.exe", &args, &tmp(), &[], 80, 24,
-            move |b| { let mut g = o.lock().unwrap(); g.0.extend_from_slice(b); g.1 += 1; }, || {}).unwrap();
+            move |b| { let mut g = o.lock().unwrap(); g.0.extend_from_slice(b); g.1 += 1; }, |_, _| {}).unwrap();
         let (t, mut replied) = (Instant::now(), false);
         loop {
             let (text, calls) = { let g = out.lock().unwrap(); (String::from_utf8_lossy(&g.0).into_owned(), g.1) };
