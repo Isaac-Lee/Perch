@@ -3,7 +3,7 @@ import turn from "./__fixtures__/turn.jsonl?raw";
 import background from "./__fixtures__/background.jsonl?raw";
 import delegate from "./__fixtures__/delegate.jsonl?raw";
 import { RpcError } from "./gateway";
-import { STUCK_MSG, annotateRows, forThisPane, pendingToQueued, WATCHDOG_MS, activityLabel, canSend, submitFailure, watchdogDue, chatReducer, forkBoundary, rewindFailure, rewindText, userActions, fmtSec, groupItems, staleRetry, initialChat, shouldAutoReconnect, toDirective, toModelProviders, transcriptToItems, type ChatAction } from "./chatSession";
+import { STUCK_MSG, annotateRows, forThisPane, pendingToQueued, WATCHDOG_MS, activityLabel, canSend, submitFailure, watchdogDue, whileRunning, chatReducer, forkBoundary, rewindFailure, rewindText, userActions, fmtSec, groupItems, staleRetry, initialChat, shouldAutoReconnect, toDirective, toModelProviders, transcriptToItems, type ChatAction } from "./chatSession";
 
 const ev = (type: string, payload: object = {}): ChatAction => ({ t: "event", ev: { type, payload } });
 
@@ -840,5 +840,19 @@ describe("rewind helpers", () => {
     expect(rewindFailure(new RpcError("session_busy", 4001, { reason: "session_busy" }))).toBe("작업 중에는 쓸 수 없습니다");
     expect(rewindFailure(new RpcError("runtime_draining", 4001, { reason: "runtime_draining" }))).toBe("runtime_draining");
     expect(rewindFailure(new Error("연결되지 않았습니다"))).toBe("연결되지 않았습니다");
+  });
+});
+
+describe("whileRunning", () => {
+  it("asks again while the gateway still reports running, then stops", async () => {
+    const answers = [true, true, false, true];
+    let n = 0;
+    await whileRunning(() => answers[n++], 5, 0);
+    expect(n).toBe(3);
+  });
+  it("gives up after the given tries", async () => {
+    let n = 0;
+    await whileRunning(() => { n++; return true; }, 3, 0);
+    expect(n).toBe(3);
   });
 });
