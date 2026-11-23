@@ -26,8 +26,9 @@ export default function ChatView({ paneId, cwd, sessionId, focused, session }: {
       m.set(item.id, {
         state: userActions(state, item),
         onRewind: () => { if (item.rowId !== undefined) void rewindTo(item.rowId, item.text); },
-        onOverwrite: (t) => { if (item.rowId !== undefined) void overwrite(item.rowId, t); },
-        onFork: (t, now) => { void fork(item, t, now); },
+        onOverwrite: (t, a) => { if (item.rowId !== undefined) void overwrite(item.rowId, t, a); },
+        onFork: (t, now, a) => { void fork(item, t, now, a); },
+        onAttach: attachImage,
       });
     }
     return m;

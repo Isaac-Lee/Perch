@@ -22,6 +22,18 @@ export function stripImageNotes(text: string): string {
   return t.trim() ? t : "[이미지]";
 }
 
+/** Trailing `@image:<path>` lines Hermes' display projection appends to a user row: the caption and the local paths. */
+export function splitImageRefs(text: string): { text: string; images: string[] } {
+  const lines = text.split("\n"), images: string[] = [];
+  while (lines.length) {
+    const m = /^@image:(`[^`]+`|"[^"]+"|'[^']+'|\S+)$/.exec(lines[lines.length - 1]);
+    if (!m) break;
+    images.unshift(/^[`"']/.test(m[1]) ? m[1].slice(1, -1) : m[1]);
+    lines.pop();
+  }
+  return images.length ? { text: lines.join("\n").trimEnd(), images } : { text, images };
+}
+
 /** What to show for a user row, or null to hide it. */
 export function userText(text: string): string | null {
   const steer = unwrapSteer(text);

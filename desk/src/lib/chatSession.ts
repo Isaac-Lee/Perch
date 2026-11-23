@@ -3,10 +3,12 @@ import { chatClose, chatConnect, chatSend, paneCreate, paneSetSession, sessionFo
 import { BLOCKED_SLASH, imageExt, isSlashCommand, parseModelArg, parseSlash, toBase64 } from "./composer";
 import { FOCUS_PANE_EVENT, setPrefill, takePrefill } from "./forkPrefill";
 import { createRpc, type Rpc, type RpcError } from "./gateway";
-import { userText } from "./hermesFrames";
+import { splitImageRefs, userText } from "./hermesFrames";
 import { activityOf } from "./orbState";
 import type { GatewayEvent, SessionSnapshot } from "./gatewayTypes";
 
+/** An uploaded image ready to send. */
+export type Att = { path: string; mime: string };
 export type ChatItem =
   | { kind: "user"; id: string; text: string; images?: string[]; /** id sent as prompt.submit submission_id (idle path): its pending row is this bubble */ submissionId?: string; /** its own Hermes row (display_messages row_id) */ rowId?: number; /** nearest earlier row with a row_id, any role */ prevRowId?: number }
   | { kind: "assistant"; id: string; text: string; streaming: boolean }
@@ -98,7 +100,8 @@ export function transcriptToItems(messages: any[]): ChatItem[] {
       // display_messages rows: steer / skill_invocation carry the user's own words; other kinds (auto_continue, delegation notices, ...) are gateway-made: hidden
       if (k && k !== "steer" && k !== "skill_invocation") continue;
       const shown = userText(text);
-      if (shown !== null) out.push({ kind: "user", id, text: shown, ...(typeof m.row_id === "number" ? { rowId: m.row_id } : {}), ...(prev !== undefined ? { prevRowId: prev } : {}) });
+      const split = shown !== null && k !== "steer" ? splitImageRefs(shown) : null; // paths the display projection kept for attached images
+      if (shown !== null) out.push({ kind: "user", id, text: split ? split.text : shown, ...(split?.images.length ? { images: split.images } : {}), ...(typeof m.row_id === "number" ? { rowId: m.row_id } : {}), ...(prev !== undefined ? { prevRowId: prev } : {}) });
     }
     else if (m.role === "assistant") {
       calls = Array.isArray(m.tool_calls) ? m.tool_calls : [];
@@ -497,8 +500,8 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
   const turnStarts = useRef(0); // message.start frames seen and local submits: a resync that began before one must not apply its stale snapshot
   const stuck = useRef(false); // Stop did not end the turn and Hermes still says it runs
   const [draft, setDraft] = useState({ text: "", n: 0 }); // /undo-style prefill; the composer applies it when n changes
-  const sendRef = useRef<(text: string) => void>(() => {});
-  const autoSend = useRef<string | null>(null); // a fork's text to send once this child pane's session is ready
+  const sendRef = useRef<(text: string, attachments?: Att[]) => void>(() => {});
+  const autoSend = useRef<{ text: string; attachments?: Att[] } | null>(null); // a fork's text to send once this child pane's session is ready
 
   // An `unknown` admission (turn lost to a gateway restart) pauses the gateway's FIFO until acknowledged; the input is discarded, never requeued.
   const handled = useRef(new Set<string>());
@@ -561,7 +564,7 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
         dispatch({ t: "snapshot", snap, at: Date.now() });
         abandonUnknown((snap as any).pending, snap.session_id);
         const pre = takePrefill(rid ?? snap.session_id) ?? takePrefill(snap.stored_session_id ?? snap.session_id); // text a fork left for this child pane
-        if (pre) { if (pre.send) autoSend.current = pre.text; else setDraft((x) => ({ text: pre.text, n: x.n + 1 })); }
+        if (pre) { if (pre.send) autoSend.current = { text: pre.text, attachments: pre.attachments }; else setDraft((x) => ({ text: pre.text, n: x.n + 1 })); }
         if (!snap.info?.reasoning_effort) // the snapshot may not carry it; failure just leaves the label generic
           rpc.request<{ value?: string }>("config.get", { key: "reasoning", session_id: snap.session_id }).then((r) => { if (!dead && r?.value) dispatch({ t: "effort", effort: r.value }); }, () => {});
         autoUsed.current = 0; // connected: re-arm
@@ -614,7 +617,7 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
   };
 
   /** `qid` set = queued behind a running turn: the entry is dropped again when the gateway refuses it. */
-  useEffect(() => { const t = autoSend.current; if (t !== null && state.sessionId) { autoSend.current = null; sendRef.current(t); } }, [state.sessionId]);
+  useEffect(() => { const t = autoSend.current; if (t !== null && state.sessionId) { autoSend.current = null; sendRef.current(t.text, t.attachments); } }, [state.sessionId]);
 
   const submit = (sid: string, text: string, attachments?: { path: string; mime: string }[], qid?: string, submissionId = qid ?? crypto.randomUUID()) => {
     turnStarts.current++; // a resync already in flight must not wipe this send
@@ -816,9 +819,9 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
     /** Takes the conversation back to just before the user row and puts its bubble text in the composer. */
     rewindTo: (rowId: number, text: string): Promise<void> => guarded(null, () => rewind(rowId, text)),
     /** Rewinds, then sends `text` in place of that message. */
-    overwrite: (rowId: number, text: string): Promise<void> => guarded(text, async () => { await rewind(rowId); if (!canSend(stateRef.current)) throw new Error("연결되지 않았습니다"); api.send(text); }),
+    overwrite: (rowId: number, text: string, attachments?: Att[]): Promise<void> => guarded(text, async () => { await rewind(rowId); if (!canSend(stateRef.current)) throw new Error("연결되지 않았습니다"); api.send(text, attachments?.length ? attachments : undefined); }),
     /** Opens a child session (branch before the item, or a fresh one) in a new pane, carrying `text` to send or edit there. */
-    fork: (item: ChatItem, text: string, sendNow: boolean): Promise<void> => guarded(!sendNow && item.kind === "user" && text === item.text ? null : text, async () => { // a plain fork never writes this composer
+    fork: (item: ChatItem, text: string, sendNow: boolean, attachments?: Att[]): Promise<void> => guarded(!sendNow && item.kind === "user" && text === item.text ? null : text, async () => { // a plain fork never writes this composer
       const rpc = rpcRef.current, b = forkBoundary(item);
       if (!rpc) throw new Error("연결되지 않았습니다");
       let child: string;
@@ -829,7 +832,7 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
         child = c.stored_session_id ?? c.session_id;
       }
       if (!child) throw new Error("새 세션을 만들지 못했습니다");
-      setPrefill(child, { text, send: sendNow });
+      setPrefill(child, { text, send: sendNow, ...(attachments?.length ? { attachments } : {}) });
       let paneId: string;
       try { paneId = await paneCreate("hermes", cwd, child, "chat"); }
       catch (e) { takePrefill(child); throw e; } // no pane will take it: a later pane on this session must not auto-send

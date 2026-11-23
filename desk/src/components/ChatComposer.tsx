@@ -2,8 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { Check, ChevronDown, CornerDownLeft, Plus, Square } from "lucide-react";
 import { applyCompletion, EFFORT_LEVELS, enterAction, historyStep, modelLabel } from "../lib/composer";
 import { attachScrollReveal } from "../lib/useScrollReveal";
+import { useAttachments } from "../lib/useAttachments";
 
-type Attachment = { path: string; mime: string; url: string };
 type Providers = { provider: string; providerName: string; models: string[] }[];
 type SlashItem = { text: string; display?: string; meta?: string; kind?: string | null };
 type SlashResult = { items: SlashItem[]; replaceFrom: number };
@@ -29,11 +29,8 @@ export default function ChatComposer({ running, disabled, focused, model, effort
   onCompleteSlash?: (text: string) => Promise<SlashResult>;
 }) {
   const [text, setText] = useState("");
-  const [atts, setAtts] = useState<Attachment[]>([]);
-  const [err, setErr] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(0); // images still going to the gateway: sending now would leave them out
+  const { atts, uploading, err, setErr, remove, reset, onPaste, onPick } = useAttachments(onAttach);
   const ref = useRef<HTMLTextAreaElement>(null);
-  const live = useRef<Attachment[]>([]);
   // one menu at a time: the model menu (loading / ready / error) or the effort menu
   const [menu, setMenu] = useState<"closed" | "loading" | "ready" | "error" | "effort">("closed");
   const [slash, setSlash] = useState<(SlashResult & { typed: string }) | null>(null);
@@ -54,7 +51,6 @@ export default function ChatComposer({ running, disabled, focused, model, effort
   const modelRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  live.current = atts;
 
   // Grow with content up to 8 lines, then scroll.
   const fit = useCallback(() => {
@@ -85,7 +81,6 @@ export default function ChatComposer({ running, disabled, focused, model, effort
 
   // Focus only on mount and on the false -> true transition, so a selection elsewhere in the pane is not stolen.
   useEffect(() => { if (focused) ref.current?.focus(); }, [focused]);
-  useEffect(() => () => live.current.forEach((a) => URL.revokeObjectURL(a.url)), []);
 
   useEffect(() => {
     if (menu === "closed") return;
@@ -146,31 +141,7 @@ export default function ChatComposer({ running, disabled, focused, model, effort
   const send = () => {
     if (disabled || empty || uploading > 0) return;
     onSend(text.trim(), atts.map(({ path, mime }) => ({ path, mime })));
-    atts.forEach((a) => URL.revokeObjectURL(a.url));
-    hist.current = { index: -1, saved: "" }; setHistIdx(-1); setText(""); setAtts([]); setErr(null); setSlash(null);
-  };
-  const remove = (a: Attachment) => { URL.revokeObjectURL(a.url); setAtts((l) => l.filter((x) => x !== a)); };
-  const addFiles = (files: File[]) => files.forEach(async (f) => {
-    setUploading((n) => n + 1);
-    try {
-      const r = await onAttach(new Uint8Array(await f.arrayBuffer()), f.type);
-      setAtts((l) => [...l, { path: r.path, mime: r.mime, url: URL.createObjectURL(f) }]);
-      setErr(null);
-    } catch (x) {
-      setErr(msg(x));
-    } finally {
-      setUploading((n) => n - 1);
-    }
-  });
-  const onPaste = (e: React.ClipboardEvent) => {
-    const files = Array.from(e.clipboardData.items).filter((i) => i.kind === "file" && i.type.startsWith("image/")).map((i) => i.getAsFile()).filter((f): f is File => !!f);
-    if (!files.length) return; // plain text: browser default
-    if (!e.clipboardData.getData("text/plain")) e.preventDefault();
-    addFiles(files);
-  };
-  const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
-    addFiles(Array.from(e.target.files ?? []));
-    e.target.value = ""; // the same file can be chosen twice
+    hist.current = { index: -1, saved: "" }; setHistIdx(-1); setText(""); reset(); setSlash(null);
   };
 
   const stopMode = running && empty;
