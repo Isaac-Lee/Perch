@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
-import { chatClose, chatConnect, chatSend, paneSetSession, sessionForceIdle } from "./backend";
+import { chatClose, chatConnect, chatSend, paneCreate, paneSetSession, sessionForceIdle } from "./backend";
 import { BLOCKED_SLASH, imageExt, isSlashCommand, parseModelArg, parseSlash, toBase64 } from "./composer";
+import { FOCUS_PANE_EVENT, setPrefill, takePrefill } from "./forkPrefill";
 import { createRpc, type Rpc } from "./gateway";
 import { userText } from "./hermesFrames";
 import { activityOf } from "./orbState";
@@ -396,6 +397,14 @@ export function staleRetry(err: unknown): { revision: number; executionGeneratio
   const { revision, execution_generation: gen } = e.data ?? {};
   return typeof revision === "number" && typeof gen === "number" ? { revision, executionGeneration: gen } : null;
 }
+/** Typed text of a rewind receipt's target message: a string, or the text parts of a content array. */
+export const rewindText = (c: unknown): string =>
+  typeof c === "string" ? c : Array.isArray(c) ? c.map((x) => (typeof x === "string" ? x : isObj(x) && typeof x.text === "string" ? x.text : "")).filter(Boolean).join("\n") : "";
+/** Message for a failed rewind/branch: a stale or vanished target reads the same to the user. */
+export const rewindFailure = (e: unknown): string => {
+  const m = e instanceof Error ? e.message : String(e);
+  return /revision_conflict|stale_revision|stale_generation|no longer in session history|invalid_params/.test(m) && !/compacted:/.test(m) ? "대화가 바뀌어 되감지 못했습니다" : m;
+};
 export interface ModelProvider { provider: string; providerName: string; models: string[] }
 interface ModelOptions { model?: string; provider?: string; providers?: { slug: string; name?: string; models?: string[]; authenticated?: boolean; is_current?: boolean }[] }
 /** model.options rows -> picker groups. Unauthenticated providers stay (in-house models), and the session's current model is added when no row lists it. */
@@ -460,6 +469,8 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
   const turnStarts = useRef(0); // message.start frames seen: a resync that began before one must not apply its stale snapshot
   const stuck = useRef(false); // Stop did not end the turn and Hermes still says it runs
   const [draft, setDraft] = useState({ text: "", n: 0 }); // /undo-style prefill; the composer applies it when n changes
+  const sendRef = useRef<(text: string) => void>(() => {});
+  const autoSend = useRef<string | null>(null); // a fork's text to send once this child pane's session is ready
 
   // An `unknown` admission (turn lost to a gateway restart) pauses the gateway's FIFO until acknowledged; the input is discarded, never requeued.
   const handled = useRef(new Set<string>());
@@ -521,6 +532,8 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
         if (dead) return;
         dispatch({ t: "snapshot", snap, at: Date.now() });
         abandonUnknown((snap as any).pending, snap.session_id);
+        const pre = takePrefill(rid ?? snap.session_id) ?? takePrefill(snap.stored_session_id ?? snap.session_id); // text a fork left for this child pane
+        if (pre) { if (pre.send) autoSend.current = pre.text; else setDraft((x) => ({ text: pre.text, n: x.n + 1 })); }
         if (!snap.info?.reasoning_effort) // the snapshot may not carry it; failure just leaves the label generic
           rpc.request<{ value?: string }>("config.get", { key: "reasoning", session_id: snap.session_id }).then((r) => { if (!dead && r?.value) dispatch({ t: "effort", effort: r.value }); }, () => {});
         autoUsed.current = 0; // connected: re-arm
@@ -573,10 +586,12 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
   };
 
   /** `qid` set = queued behind a running turn: the entry is dropped again when the gateway refuses it. */
+  useEffect(() => { const t = autoSend.current; if (t !== null && state.sessionId) { autoSend.current = null; sendRef.current(t); } }, [state.sessionId]);
+
   const submit = (sid: string, text: string, attachments?: { path: string; mime: string }[], qid?: string, submissionId = qid ?? crypto.randomUUID()) => {
     const fail = (message: string) => {
       if (qid) { dispatch({ t: "unqueue", id: qid }); setDraft((x) => ({ text, n: x.n + 1 })); dispatch({ t: "localError", text: message }); } // queued: the turn still runs; give the text back
-      else dispatch({ t: "event", ev: { type: "error", payload: { message } } });
+      else { setDraft((x) => ({ text, n: x.n + 1 })); dispatch({ t: "event", ev: { type: "error", payload: { message } } }); }
     };
     return rpcRef.current?.request<{ admission_id?: string; status?: string }>("prompt.submit", { session_id: sid, text, submission_id: submissionId, ...(attachments?.length ? { attachments } : {}) }).then(
       (r) => { const f = submitFailure(r); if (f) fail(f); else if (qid) dispatch({ t: "receipt", id: qid, admissionId: r?.admission_id, status: r?.status }); },
@@ -642,7 +657,18 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
     dispatch({ t: "modelChanged", revision: r.revision, executionGeneration: r.execution_generation, model: r.model || model });
   }
 
-  return {
+  /** Runs a rewind/branch/create step; a failure shows the error and gives `text` back to this pane's composer. */
+  async function guarded(text: string | null, f: () => Promise<void>): Promise<void> {
+    try { await f(); }
+    catch (e) { if (text !== null) setDraft((x) => ({ text, n: x.n + 1 })); dispatch({ t: "localError", text: rewindFailure(e) }); }
+  }
+  async function rewind(rowId: number): Promise<string> {
+    const r = await mutate("rewind", { target_message_id: rowId }) as { target_message?: { content?: unknown } };
+    await resync();
+    return rewindText(r.target_message?.content);
+  }
+
+  const api = {
     state,
     retrying,
     draft,
@@ -747,5 +773,27 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
       dispatch({ t: "effortChanged", revision: r.revision, executionGeneration: r.execution_generation, effort: r.effort || effort });
     },
     reconnect() { setNonce((n) => n + 1); },
+    /** Takes the conversation back to just before the user row and puts its text in the composer. */
+    rewindTo: (rowId: number): Promise<void> => guarded(null, async () => { const t = await rewind(rowId); setDraft((x) => ({ text: t, n: x.n + 1 })); }),
+    /** Rewinds, then sends `text` in place of that message. */
+    overwrite: (rowId: number, text: string): Promise<void> => guarded(text, async () => { await rewind(rowId); api.send(text); }),
+    /** Opens a child session (branch before the item, or a fresh one) in a new pane, carrying `text` to send or edit there. */
+    fork: (item: ChatItem, text: string, sendNow: boolean): Promise<void> => guarded(text, async () => {
+      const rpc = rpcRef.current, b = forkBoundary(item);
+      if (!rpc) throw new Error("연결되지 않았습니다");
+      let child: string;
+      if ("through" in b) child = ((await mutate("branch", { through_message_id: b.through })) as { branched_session_id?: string }).branched_session_id ?? "";
+      else {
+        const s = stateRef.current;
+        const c = await rpc.request<SessionSnapshot>("session.create", { request_id: crypto.randomUUID(), source: "tui", cwd, model: s.model ?? undefined, reasoning: s.effort ?? undefined });
+        child = c.stored_session_id ?? c.session_id;
+      }
+      if (!child) throw new Error("새 세션을 만들지 못했습니다");
+      setPrefill(child, { text, send: sendNow });
+      const paneId = await paneCreate("hermes", cwd, child, "chat");
+      window.dispatchEvent(new CustomEvent(FOCUS_PANE_EVENT, { detail: paneId }));
+    }),
   };
+  sendRef.current = api.send;
+  return api;
 }
