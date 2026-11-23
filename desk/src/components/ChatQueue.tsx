@@ -9,7 +9,7 @@ function Card({ q, onSendNow }: { q: QueuedMsg; onSendNow: (id: string) => void 
     <div className="chat-queue-card">
       <div className="chat-queue-label">{q.steering ? "전달 중…" : "대기 중"}</div>
       <div ref={ref} className={`chat-queue-text${fade ? " fade" : ""}`} title={q.text}>{q.text}</div>
-      <button className="btn chat-queue-send" disabled={!q.admissionId || !q.canSteer || q.steering} title="실행 중인 작업에 바로 전달합니다" onClick={() => onSendNow(q.id)}>지금 보내기</button>
+      <button className="btn chat-queue-send" disabled={!q.admissionId || q.steering || (!q.canSteer && !!q.images?.length)} title={!q.canSteer && q.images?.length ? "이미지가 있는 메시지는 순서를 기다려야 합니다" : "실행 중인 작업에 바로 전달합니다"} onClick={() => onSendNow(q.id)}>지금 보내기</button>
     </div>
   );
 }

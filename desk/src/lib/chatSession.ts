@@ -30,7 +30,7 @@ export interface SubagentLive {
   durationSec?: number; summary?: string; tokens?: { in: number; out: number }; outputTail?: { tool: string; preview: string; isError: boolean }[];
 }
 /** A prompt the gateway holds behind the running turn; it becomes a user bubble only once it starts or is steered in. */
-export interface QueuedMsg { id: string /* submission_id */; admissionId?: string; text: string; images?: string[]; steering: boolean; canSteer: boolean; /** appeared in a gateway pending list */ seen: boolean }
+export interface QueuedMsg { id: string /* submission_id */; admissionId?: string; text: string; images?: string[]; steering: boolean; /** cancel+session.steer in flight: the row may vanish from pending without having been steered */ handoff?: boolean; canSteer: boolean; /** appeared in a gateway pending list */ seen: boolean }
 export interface ChatState { conn: "connecting" | "ready" | "closed" | "error"; error?: string; sessionId: string | null; executionGeneration: number; revision: number; running: boolean; items: ChatItem[]; prompts: ChatPrompt[]; model: string | null; effort: string | null; /** ms epoch the current turn began; set from timestamps the dispatcher passes in (the reducer stays pure) */ turnStart: number | null; /** Hermes status line (thinking.delta) */ status: string; /** tool named by tool.generating, before its tool.start */ generating: string;
   /** prompts waiting behind the running turn (not in `items` yet) */ queued: QueuedMsg[];
   /** `at` of a local prompt that has not seen message.start yet (the optimistic window); null otherwise */ sentAt: number | null;
@@ -54,7 +54,9 @@ export type ChatAction =
   | { t: "queued"; id: string; text: string; images?: string[] }
   | { t: "receipt"; id: string; admissionId?: string; status?: string }
   | { t: "unqueue"; id: string }
-  | { t: "steering"; id: string; on: boolean }
+  | { t: "steering"; id: string; on: boolean; handoff?: boolean }
+  /** a handoff entry's text was delivered to the running turn: it becomes a user bubble */
+  | { t: "steered"; id: string }
   | { t: "userSent"; id: string; text: string; images?: string[]; submissionId?: string; /** set for a real prompt (not a slash command): starts the turn clock at once */ at?: number }
   | { t: "event"; ev: GatewayEvent; at?: number };
 
@@ -125,8 +127,9 @@ export function toPrompt(p: any, kind: string): ChatPrompt | null {
 const waitingRows = (pending: unknown): any[] => (Array.isArray(pending) ? pending : []).filter((r) => isObj(r) && (r.status === "queued" || r.steering === true));
 const toQueued = (r: any): QueuedMsg => ({ id: str(r.input_id) || str(r.admission_id), admissionId: str(r.admission_id) || undefined, text: str(r.text), steering: !!r.steering, canSteer: r.controls == null ? true : Array.isArray(r.controls) && r.controls.includes("steer"), seen: true });
 /** Waiting rows of a gateway `pending` list as queue entries (input_id is the submission_id we sent). */
-// The gateway lists its own admissions (e.g. background-task notifications) with controls []; those are not user prompts.
-const userRow = (r: any) => r.steering === true || r.controls == null || (Array.isArray(r.controls) && r.controls.length > 0);
+// The gateway lists its own admissions (async-delegation completions: input_id is a JSON-array identity like `["async_delegation","deleg_x",""]`; bot rooms: `bot:`); user prompts carry a UUID submission_id.
+// Not `controls`: owner-local sessions are stored with source 'local', so the user's own queued rows have controls [] too.
+const userRow = (r: any) => r.steering === true || !/^(\[|bot:)/.test(str(r.input_id));
 export const pendingToQueued = (pending: unknown): QueuedMsg[] => waitingRows(pending).filter(userRow).map(toQueued);
 /** Moves entries out of the queue and into the transcript as user bubbles. */
 function leave(s: ChatState, gone: QueuedMsg[]): ChatState {
@@ -141,7 +144,8 @@ function reconcileQueue(s: ChatState, pending: unknown): ChatState {
   const rows = waitingRows(pending).filter((r) => !sent.has(str(r.input_id))), used = new Set<any>(), gone: QueuedMsg[] = [];
   const kept = s.queued.flatMap((q) => {
     const row = rows.find((r) => !used.has(r) && (str(r.input_id) === q.id || (!!q.admissionId && str(r.admission_id) === q.admissionId)));
-    if (row) { used.add(row); return [{ ...q, ...toQueued(row), id: q.id, text: q.text, images: q.images }]; }
+    if (row) { used.add(row); return [{ ...q, ...toQueued(row), id: q.id, text: q.text, images: q.images, ...(q.handoff ? { steering: true } : {}) }]; }
+    if (q.handoff) return [q]; // cancelled by sendNow: settled by its own steer result, not by leaving pending
     if (q.seen || q.admissionId) { gone.push(q); return []; }
     return [q]; // optimistic: the receipt is still on its way
   });
@@ -174,7 +178,8 @@ export function chatReducer(s: ChatState, a: ChatAction): ChatState {
     case "promptDone": return dropPrompt(s, a.promptId);
     case "queued": return { ...s, queued: [...s.queued, { id: a.id, text: a.text, images: a.images, steering: false, canSteer: true, seen: false }] };
     case "unqueue": return s.queued.some((q) => q.id === a.id) ? { ...s, queued: s.queued.filter((q) => q.id !== a.id) } : s;
-    case "steering": return { ...s, queued: s.queued.map((q) => (q.id === a.id ? { ...q, steering: a.on } : q)) };
+    case "steering": return { ...s, queued: s.queued.map((q) => (q.id === a.id ? { ...q, steering: a.on, handoff: a.on && a.handoff } : q)) };
+    case "steered": { const q = s.queued.find((x) => x.id === a.id); return q ? leave(s, [q]) : s; }
     case "receipt": {
       const q = s.queued.find((x) => x.id === a.id);
       if (!q) return s;
@@ -632,16 +637,44 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
       if (slash) runSlash(sid, text).catch((e) => say(e instanceof Error ? e.message : String(e)));
       else submit(sid, text, attachments, undefined, submissionId);
     },
-    /** 지금 보내기: hands a queued prompt to the running turn. session.info then reports it as steering and later drops it. */
+    /** 지금 보내기: hands a queued prompt to the running turn. With a steer control the gateway moves it (prompt.steer_queued; session.info
+     *  then reports it as steering and later drops it). Perch's own rows have no control (the gateway only offers it for source tui/cli/...,
+     *  Perch sessions are stored as 'local'), so there it cancels the queued admission and session.steer's the text itself. */
     sendNow(id: string) {
       const rpc = rpcRef.current, sid = stateRef.current.sessionId, q = stateRef.current.queued.find((x) => x.id === id);
-      if (!rpc || !sid || !q?.admissionId || !q.canSteer || q.steering) return;
-      dispatch({ t: "steering", id, on: true });
-      rpc.request("prompt.steer_queued", { session_id: sid, admission_id: q.admissionId }).catch((e) => {
+      if (!rpc || !sid || !q?.admissionId || q.steering) return;
+      const fail = (e: unknown) => {
         dispatch({ t: "steering", id, on: false });
         const m = e instanceof Error ? e.message : String(e);
         say(m === "session_idle" ? "작업이 이미 끝나 곧 순서대로 실행됩니다" : m === "admission_started" ? "이미 실행이 시작됐습니다" : `지금 보내지 못했습니다: ${m}`);
-      });
+      };
+      if (q.canSteer) {
+        dispatch({ t: "steering", id, on: true });
+        rpc.request("prompt.steer_queued", { session_id: sid, admission_id: q.admissionId }).catch(fail);
+        return;
+      }
+      if (!stateRef.current.running) return say("작업이 이미 끝나 곧 순서대로 실행됩니다");
+      if (q.images?.length) return say("이미지가 있는 메시지는 바로 보낼 수 없습니다. 순서를 기다려 주세요");
+      dispatch({ t: "steering", id, on: true, handoff: true });
+      const text = q.text, gen = stateRef.current.executionGeneration;
+      // The cancel is committed: from here the text must end up delivered, re-queued, or back in the composer, never lost.
+      const readmit = (why: string) => {
+        dispatch({ t: "unqueue", id });
+        const nid = crypto.randomUUID();
+        dispatch({ t: "queued", id: nid, text });
+        submit(sid, text, undefined, nid);
+        say(why);
+      };
+      rpc.request<{ status?: string; outcome?: string }>("prompt.cancel", { session_id: sid, admission_id: q.admissionId }).then((c) => {
+        if (c?.outcome !== "cancelled") return fail(new Error(c?.status === "started" ? "admission_started" : `cancel ${c?.outcome ?? c?.status ?? "?"}`)); // never steer text that may also run on its own
+        return rpc.request<{ status?: string; delivered?: boolean }>("session.steer", { session_id: sid, execution_generation: gen, text }).then(
+          (r) => {
+            if (r?.status === "queued" || r?.status === "redirected") dispatch({ t: "steered", id });
+            else if (r?.delivered === false) readmit("작업이 이미 끝나 메시지를 다음 순서로 다시 넣었습니다");
+            else { dispatch({ t: "unqueue", id }); setDraft((x) => ({ text, n: x.n + 1 })); say("전달됐는지 확인되지 않아 입력창에 돌려놓았습니다"); } // delivery unknown: re-sending could duplicate
+          },
+          (e) => readmit(`바로 전달하지 못해 다시 대기열에 넣었습니다: ${e instanceof Error ? e.message : String(e)}`));
+      }, fail);
     },
     async completeSlash(text: string): Promise<{ items: { text: string; display?: string; meta?: string; kind?: string | null }[]; replaceFrom: number }> {
       const rpc = rpcRef.current, sid = stateRef.current.sessionId;

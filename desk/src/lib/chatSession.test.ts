@@ -625,12 +625,30 @@ describe("queued messages", () => {
     expect(chatReducer(queued(), { t: "snapshot", snap: { session_id: "s", pending: "bad" } }).queued).toEqual([]);
     expect(pendingToQueued(undefined)).toEqual([]);
   });
-  it("does not adopt a foreign row with controls [] but adopts one with controls", () => {
-    expect(chatReducer(initialChat, info([row({ input_id: "x", controls: [] })])).queued).toEqual([]);
-    expect(chatReducer(initialChat, info([row({ input_id: "x", controls: ["steer", "replace"] })])).queued).toMatchObject([{ id: "x" }]);
+  const gw = { input_id: '["async_delegation","deleg_1",""]', controls: [] };
+  it("hides gateway-made rows but adopts foreign user rows even with controls []", () => {
+    expect(chatReducer(initialChat, info([row(gw)])).queued).toEqual([]);
+    expect(chatReducer(initialChat, info([row({ input_id: "bot:k" })])).queued).toEqual([]);
+    expect(chatReducer(initialChat, info([row({ input_id: "x", controls: [] })])).queued).toMatchObject([{ id: "x", canSteer: false }]);
   });
-  it("a snapshot drops pending rows with controls []", () => {
-    expect(pendingToQueued([row({ controls: [] })])).toEqual([]);
+  it("a snapshot keeps own queued rows with controls [] and drops gateway-made ones", () => {
+    expect(pendingToQueued([row({ controls: [] }), row({ ...gw, admission_id: "a2" })]).map((q) => q.id)).toEqual(["q1"]);
+  });
+  it("a handoff entry survives pending without its row and becomes one bubble once steered", () => {
+    let s = chatReducer(queued(), { t: "receipt", id: "q1", admissionId: "a1", status: "queued" });
+    s = chatReducer(s, { t: "steering", id: "q1", on: true, handoff: true });
+    s = chatReducer(s, info([]));
+    expect(s.queued).toHaveLength(1);
+    expect(users(s)).toHaveLength(0);
+    s = chatReducer(s, { t: "steered", id: "q1" });
+    expect(s.queued).toEqual([]);
+    expect(users(s)).toMatchObject([{ text: "hi" }]);
+    expect(users(chatReducer(s, info([]))).length).toBe(1);
+  });
+  it("a failed handoff can be unqueued without a bubble", () => {
+    const s = chatReducer(chatReducer(queued(), { t: "steering", id: "q1", on: true, handoff: true }), { t: "unqueue", id: "q1" });
+    expect(s.queued).toEqual([]);
+    expect(users(s)).toHaveLength(0);
   });
   it("a local entry still matches its row when controls is []", () => {
     const s = chatReducer(queued(), info([row({ controls: [] })]));
