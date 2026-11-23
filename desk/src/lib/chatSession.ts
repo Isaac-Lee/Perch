@@ -2,6 +2,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { chatClose, chatConnect, chatSend, paneSetSession, sessionForceIdle } from "./backend";
 import { BLOCKED_SLASH, imageExt, isSlashCommand, parseModelArg, parseSlash, toBase64 } from "./composer";
 import { createRpc, type Rpc } from "./gateway";
+import { userText } from "./hermesFrames";
 import { activityOf } from "./orbState";
 import type { GatewayEvent, SessionSnapshot } from "./gatewayTypes";
 
@@ -89,8 +90,10 @@ export function transcriptToItems(messages: any[]): ChatItem[] {
     if (m.role === "user") {
       const k = str(m.display_kind);
       if (!text.trim() || k === "hidden") continue;
-      // display_messages rows: steer / skill_invocation carry the user's own words; other kinds (auto_continue, delegation notices, ...) are gateway-made
-      out.push(k && k !== "steer" && k !== "skill_invocation" ? { kind: "system", id, text } : { kind: "user", id, text });
+      // display_messages rows: steer / skill_invocation carry the user's own words; other kinds (auto_continue, delegation notices, ...) are gateway-made: hidden
+      if (k && k !== "steer" && k !== "skill_invocation") continue;
+      const shown = userText(text);
+      if (shown !== null) out.push({ kind: "user", id, text: shown });
     }
     else if (m.role === "assistant") {
       calls = Array.isArray(m.tool_calls) ? m.tool_calls : [];

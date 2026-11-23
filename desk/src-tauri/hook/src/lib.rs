@@ -65,6 +65,40 @@ pub fn ends_with_question(text: &str) -> bool {
     last_question(text).is_some()
 }
 
+// Mirrors CONTROL_FRAME_OPENERS in hermes agent/prompt_builder.py (text after "["); "/?" there means an optional "/".
+const FRAME_OPENERS: [&str; 11] = ["OUT-OF-BAND USER MESSAGE", "/OUT-OF-BAND USER MESSAGE", "CONTEXT COMPACTION", "CONTEXT SUMMARY]", "PRIOR CONTEXT", "Runtime note:",
+    "System note:", "System:", "SYSTEM]", "IMPORTANT:", "ASYNC DELEGATION"];
+
+const IMAGE_NOTE: &str = "[The user sent an image";
+
+/// The prompt to show for a user message: a steer wrapper is unwrapped; None = a Hermes control frame (keep the old prompt).
+fn user_prompt(msg: &str) -> Option<String> {
+    let t = msg.trim();
+    if let Some(a) = t.find("[OUT-OF-BAND USER MESSAGE") {
+        let rest = &t[a..];
+        if let (Some(close), Some(end)) = (rest.find(']'), rest.find("[/OUT-OF-BAND USER MESSAGE]")) {
+            if close < end {
+                let inner = rest[close + 1..end].trim();
+                return Some(inner.to_string()).filter(|s| !s.is_empty());
+            }
+        }
+    }
+    if t.starts_with(IMAGE_NOTE) {
+        // gateway _enrich_message_with_vision: per image a note (success: description + "[If you need a closer look ...]"), then "\n\n" + typed text
+        let mut r = t;
+        while r.starts_with(IMAGE_NOTE) {
+            let end = match r.find("\n[If you need a closer look") {
+                Some(i) if r.starts_with("[The user sent an image~") => r[i + 1..].find(']').map(|j| i + 1 + j),
+                _ => r.find(']'),
+            };
+            r = end.map_or("", |e| r[e + 1..].trim_start());
+        }
+        return Some(if r.is_empty() { "[이미지]".to_string() } else { r.to_string() });
+    }
+    let frame = t.strip_prefix('[').is_some_and(|r| FRAME_OPENERS.iter().any(|o| r.starts_with(o)) || r.starts_with("Planning state preserved"));
+    if frame { None } else { Some(t.to_string()) }
+}
+
 fn tool_detail(input: &Value) -> String {
     for k in ["command", "path", "file_path", "query", "url"] {
         if let Some(t) = input.get(k).and_then(Value::as_str) {
@@ -104,7 +138,9 @@ pub fn apply(state: Value, event: &Value, now: u64) -> Option<Value> {
         "pre_llm_call" => {
             st["turnStart"] = json!(now);
             st["steps"] = json!(0);
-            st["prompt"] = json!(cut(ex["user_message"].as_str().unwrap_or("")));
+            if let Some(p) = user_prompt(ex["user_message"].as_str().unwrap_or("")) {
+                st["prompt"] = json!(cut(&p));
+            }
             st["pending"] = Value::Null;
             st["asks"] = json!(false);
             st["ask"] = json!("");

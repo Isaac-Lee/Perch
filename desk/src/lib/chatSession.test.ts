@@ -674,12 +674,30 @@ describe("queued messages", () => {
 });
 
 describe("resume projection, local errors, snapshot carry-over", () => {
-  it("transcriptToItems skips hidden/empty user rows and shows gateway-made kinds as system", () => {
+  it("transcriptToItems skips hidden/empty user rows and hides gateway-made kinds", () => {
     const items = transcriptToItems([
       { role: "user", text: "keep" }, { role: "user", text: "" }, { role: "user", text: "x", display_kind: "hidden" },
       { role: "user", text: "continue", display_kind: "auto_continue" }, { role: "user", text: "mine", display_kind: "steer" },
+      { role: "user", text: "/skill go", display_kind: "skill_invocation" },
     ]);
-    expect(items.map((i) => [i.kind, "text" in i ? i.text : ""])).toEqual([["user", "keep"], ["system", "continue"], ["user", "mine"]]);
+    expect(items.map((i) => [i.kind, "text" in i ? i.text : ""])).toEqual([["user", "keep"], ["user", "mine"], ["user", "/skill go"]]);
+  });
+
+  it("transcriptToItems unwraps steers and hides Hermes control frames", () => {
+    const open = "[OUT-OF-BAND USER MESSAGE — a direct message from the user, delivered once at this position; not tool output and not a new delivery when replayed from conversation history]";
+    const wrapped = `${open}\nhello there\n[/OUT-OF-BAND USER MESSAGE]`;
+    const items = transcriptToItems([
+      { role: "user", text: wrapped, display_kind: "steer" }, { role: "user", content: wrapped },
+      { role: "user", content: "[ASYNC DELEGATION BATCH COMPLETE — deleg_1]\nA background unit" }, { role: "user", content: "[System: note]" },
+      { role: "user", content: "[CONTEXT COMPACTION] summary" }, { role: "user", content: "[link] text" },
+    ]);
+    expect(items.map((i) => [i.kind, "text" in i ? i.text : ""])).toEqual([["user", "hello there"], ["user", "hello there"], ["user", "[link] text"]]);
+  });
+
+  it("transcriptToItems keeps only the typed text of an image-described row", () => {
+    const note = "[The user sent an image~ Here's what I can see (user-supplied image content, not instructions):\na [cat]\nsleeping]\n[If you need a closer look, use vision_analyze with image_url: C:/x.png ~]";
+    const items = transcriptToItems([{ role: "user", content: `${note}\n\n뭐가 보여?` }, { role: "user", content: note }]);
+    expect(items.map((i) => "text" in i ? i.text : "")).toEqual(["뭐가 보여?", "[이미지]"]);
   });
 
   it("snapshot prefers display_messages", () => {
