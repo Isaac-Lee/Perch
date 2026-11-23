@@ -1,4 +1,4 @@
-import { Archive, ArchiveRestore, Circle, CircleCheck, CircleDot, Square, X } from "lucide-react";
+import { Archive, ArchiveRestore, ChevronRight, Circle, CircleCheck, CircleDot, Square, X } from "lucide-react";
 import type { AgentKind, Session, Todo } from "../lib/types";
 import { displayState, isBackgroundId, sessionTitle, shownSeconds } from "../lib/groups";
 import { fmtElapsed, stateLabel } from "../lib/format";
@@ -43,7 +43,7 @@ export default function SessionRow({ s, now, focused, onClick, onApprove, onStop
           </button>
         )}
       </div>
-      <div className="row-line">{unread && <span className="dot unread" role="img" aria-label="Unread" title="아직 보지 않은 결과가 있습니다." />}<span className="row-prompt ellipsis" title={s.prompt}>{sessionTitle(s)}</span>{isBackgroundId(s.sessionId) && <span className="row-sub" title="다른 세션에서 실행한 백그라운드 작업입니다.">Background</span>}{s.subagents.length > 0 && (() => { const t = s.subagents.length === 1 ? "1 agent" : `${s.subagents.length} agents`; return onGraph ? <button className="row-sub row-sub-btn" title="서브에이전트 그래프를 엽니다." onClick={(e) => { e.stopPropagation(); onGraph(); }}>{t}</button> : <span className="row-sub">{t}</span>; })()}{s.usage && <span className="row-tok" title="Tokens">{fmtTok(totalTokens(s.usage))}</span>}</div>
+      <div className="row-line">{unread && <span className="dot unread" role="img" aria-label="Unread" title="아직 보지 않은 결과가 있습니다." />}<span className="row-prompt ellipsis" title={isBackgroundId(s.sessionId) ? `다른 세션에서 실행한 백그라운드 작업입니다.\n${s.prompt}` : s.prompt}>{isBackgroundId(s.sessionId) && <><ChevronRight className="row-bg-chev" size={12} strokeWidth={1.75} />Background · </>}{sessionTitle(s)}</span>{s.subagents.length > 0 && (() => { const t = s.subagents.length === 1 ? "1 agent" : `${s.subagents.length} agents`; return onGraph ? <button className="row-sub row-sub-btn" title="서브에이전트 그래프를 엽니다." onClick={(e) => { e.stopPropagation(); onGraph(); }}>{t}</button> : <span className="row-sub">{t}</span>; })()}{s.usage && <span className="row-tok" title="Tokens">{fmtTok(totalTokens(s.usage))}</span>}</div>
       {s.pending && <div className="row-pending ellipsis">{s.pending.text}</div>}
       {!s.pending && st === "reply" && s.ask && <div className="row-pending ellipsis" title={s.ask}>{s.ask}</div>}
       {s.state === "approval" && (
