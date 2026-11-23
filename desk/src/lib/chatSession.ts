@@ -135,7 +135,7 @@ export const pendingToQueued = (pending: unknown): QueuedMsg[] => waitingRows(pe
 function leave(s: ChatState, gone: QueuedMsg[]): ChatState {
   if (!gone.length) return s;
   const items = [...settle(s.items)];
-  for (const q of gone) items.push({ kind: "user", id: `u${items.length}`, text: q.text, images: q.images });
+  for (const q of gone) items.push({ kind: "user", id: `u${items.length}`, text: q.text, images: q.images, submissionId: q.id }); // submissionId: reconcileQueue must not re-adopt the row the gateway still lists (steering) until the turn ends
   return { ...s, queued: s.queued.filter((q) => !gone.includes(q)), items };
 }
 /** session.info `pending` is the full queue: match local entries, bubble the ones that left it, adopt foreign rows. */
@@ -650,7 +650,7 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
       };
       if (q.canSteer) {
         dispatch({ t: "steering", id, on: true });
-        rpc.request("prompt.steer_queued", { session_id: sid, admission_id: q.admissionId }).catch(fail);
+        rpc.request("prompt.steer_queued", { session_id: sid, admission_id: q.admissionId }).then(() => dispatch({ t: "steered", id }), fail); // the receipt means delivered; pending still lists the row as steering until the turn ends
         return;
       }
       if (!stateRef.current.running) return say("작업이 이미 끝나 곧 순서대로 실행됩니다");

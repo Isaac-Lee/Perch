@@ -645,6 +645,19 @@ describe("queued messages", () => {
     expect(users(s)).toMatchObject([{ text: "hi" }]);
     expect(users(chatReducer(s, info([]))).length).toBe(1);
   });
+  it("a steered entry is one bubble even while pending still lists its steering row", () => {
+    let s = chatReducer(queued(), { t: "receipt", id: "q1", admissionId: "a1", status: "queued" });
+    s = chatReducer(s, { t: "steering", id: "q1", on: true });
+    s = chatReducer(s, { t: "steered", id: "q1" });
+    expect(s.queued).toEqual([]);
+    expect(users(s)).toHaveLength(1);
+    s = chatReducer(s, info([row({ status: "started", steering: true })]));
+    expect(s.queued).toEqual([]);
+    expect(users(s)).toHaveLength(1);
+    s = chatReducer(s, info([]));
+    expect(s.queued).toEqual([]);
+    expect(users(s)).toHaveLength(1);
+  });
   it("a failed handoff can be unqueued without a bubble", () => {
     const s = chatReducer(chatReducer(queued(), { t: "steering", id: "q1", on: true, handoff: true }), { t: "unqueue", id: "q1" });
     expect(s.queued).toEqual([]);
