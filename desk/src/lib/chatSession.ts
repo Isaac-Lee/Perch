@@ -2,13 +2,15 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { chatClose, chatConnect, chatSend, paneCreate, paneSetSession, sessionForceIdle } from "./backend";
 import { BLOCKED_SLASH, imageExt, isSlashCommand, parseModelArg, parseSlash, toBase64 } from "./composer";
 import { FOCUS_PANE_EVENT, setPrefill, takePrefill } from "./forkPrefill";
+import { readImage } from "./backend";
 import { createRpc, type Rpc, type RpcError } from "./gateway";
 import { splitImageRefs, userText } from "./hermesFrames";
 import { activityOf } from "./orbState";
 import type { GatewayEvent, SessionSnapshot } from "./gatewayTypes";
 
 /** An uploaded image ready to send. */
-export type Att = { path: string; mime: string };
+/** `kept`: an image of an earlier message, whose gateway path is gone: re-upload before use. */
+export type Att = { path: string; mime: string; kept?: boolean };
 export type ChatItem =
   | { kind: "user"; id: string; text: string; images?: string[]; /** id sent as prompt.submit submission_id (idle path): its pending row is this bubble */ submissionId?: string; /** its own Hermes row (display_messages row_id) */ rowId?: number; /** nearest earlier row with a row_id, any role */ prevRowId?: number }
   | { kind: "assistant"; id: string; text: string; streaming: boolean }
@@ -84,7 +86,8 @@ const toolExtra = (p: any) => ({
 });
 
 // Rows are session.resume `display_messages` (cleaned, display_kind-tagged) or, from an older gateway, raw model-API messages (user / assistant+tool_calls / tool).
-export function transcriptToItems(messages: any[]): ChatItem[] {
+/** `projected`: rows are display_messages, whose user rows end with `@image:` refs for attached images (raw rows keep the user's own text). */
+export function transcriptToItems(messages: any[], projected = false): ChatItem[] {
   const out: ChatItem[] = [];
   let calls: any[] = [];
   let last: number | undefined; // latest row_id seen, skipped rows included
@@ -100,7 +103,7 @@ export function transcriptToItems(messages: any[]): ChatItem[] {
       // display_messages rows: steer / skill_invocation carry the user's own words; other kinds (auto_continue, delegation notices, ...) are gateway-made: hidden
       if (k && k !== "steer" && k !== "skill_invocation") continue;
       const shown = userText(text);
-      const split = shown !== null && k !== "steer" ? splitImageRefs(shown) : null; // paths the display projection kept for attached images
+      const split = shown !== null && projected && k !== "steer" ? splitImageRefs(shown) : null; // paths the display projection kept for attached images
       if (shown !== null) out.push({ kind: "user", id, text: split ? split.text : shown, ...(split?.images.length ? { images: split.images } : {}), ...(typeof m.row_id === "number" ? { rowId: m.row_id } : {}), ...(prev !== undefined ? { prevRowId: prev } : {}) });
     }
     else if (m.role === "assistant") {
@@ -180,7 +183,7 @@ const dropPrompt = (s: ChatState, id: string): ChatState =>
 /** Live items with row ids copied from a snapshot's user rows, matched one to one in order by shown text; null when they do not line up. Other items stay as they are. */
 export function annotateRows(items: ChatItem[], rows: unknown): ChatItem[] | null {
   if (!Array.isArray(rows)) return null;
-  const snap = transcriptToItems(rows).filter((i): i is Extract<ChatItem, { kind: "user" }> => i.kind === "user");
+  const snap = transcriptToItems(rows, true).filter((i): i is Extract<ChatItem, { kind: "user" }> => i.kind === "user");
   const live = items.flatMap((i, k) => (i.kind === "user" ? [k] : []));
   if (live.length !== snap.length) return null;
   const out = [...items];
@@ -205,7 +208,7 @@ export function chatReducer(s: ChatState, a: ChatAction): ChatState {
       ...s, conn: "ready", error: undefined, sessionId: a.snap.session_id ?? null,
       executionGeneration: typeof a.snap.execution_generation === "number" ? a.snap.execution_generation : s.executionGeneration,
       revision: typeof a.snap.revision === "number" ? a.snap.revision : 0,
-      sentAt: null, cleared: false, rowIds: Array.isArray(a.snap.display_messages), running: !!a.snap.running, turnStart: a.snap.running ? s.turnStart ?? a.at ?? null : null, model: a.snap.info?.model || s.model, effort: str(a.snap.info?.reasoning_effort) || s.effort, items: [...transcriptToItems(a.snap.display_messages ?? a.snap.messages ?? []), ...(a.keepLocal ? s.items.filter((i) => i.kind === "error" || i.kind === "system").map((i) => ({ ...i, id: `k${i.id}` })) /* re-keyed: a later local row's e<n>/s<n> must not collide */ : []), ...s.items.filter((i) => i.kind === "background" && i.status === "running")], prompts: (Array.isArray(a.snap.prompts) ? a.snap.prompts : []).map((p: any) => toPrompt(p, p?.kind)).filter((p: ChatPrompt | null): p is ChatPrompt => !!p), queued: pendingToQueued(a.snap.pending),
+      sentAt: null, cleared: false, rowIds: Array.isArray(a.snap.display_messages), running: !!a.snap.running, turnStart: a.snap.running ? s.turnStart ?? a.at ?? null : null, model: a.snap.info?.model || s.model, effort: str(a.snap.info?.reasoning_effort) || s.effort, items: [...transcriptToItems(a.snap.display_messages ?? a.snap.messages ?? [], Array.isArray(a.snap.display_messages)), ...(a.keepLocal ? s.items.filter((i) => i.kind === "error" || i.kind === "system").map((i) => ({ ...i, id: `k${i.id}` })) /* re-keyed: a later local row's e<n>/s<n> must not collide */ : []), ...s.items.filter((i) => i.kind === "background" && i.status === "running")], prompts: (Array.isArray(a.snap.prompts) ? a.snap.prompts : []).map((p: any) => toPrompt(p, p?.kind)).filter((p: ChatPrompt | null): p is ChatPrompt => !!p), queued: pendingToQueued(a.snap.pending),
       // children still "running" belong to a connection that is gone; no frame will ever finish them
       subagents: Object.fromEntries(Object.entries(s.subagents).map(([k, v]) => [k, v.status === "starting" || v.status === "running" ? { ...v, status: "failed" as const } : v])),
       };
@@ -705,6 +708,17 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
     finally { busy.current = false; }
   }
   /** `draft` set: that text goes to the composer (the receipt's raw content if it is empty). */
+  /** Fresh gateway paths for kept images (their old ones are consumed by the first send); runs before anything destructive. */
+  async function restage(atts?: Att[]): Promise<Att[] | undefined> {
+    if (!atts?.some((a) => a.kept)) return atts;
+    const out: Att[] = [];
+    for (const a of atts) {
+      if (!a.kept) { out.push(a); continue; }
+      try { out.push(await api.attachImage(await readImage(a.path), a.mime)); }
+      catch (e) { throw new Error(`이미지를 다시 올리지 못했습니다: ${e instanceof Error ? e.message : String(e)}`); }
+    }
+    return out;
+  }
   async function rewind(rowId: number, draft?: string): Promise<void> {
     const r = await mutate("rewind", { target_message_id: rowId }) as { target_message?: { content?: unknown } };
     if (draft !== undefined) { const t = draft || rewindText(r.target_message?.content); setDraft((x) => ({ text: t, n: x.n + 1 })); } // before the resync: the text must never be lost
@@ -819,11 +833,12 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
     /** Takes the conversation back to just before the user row and puts its bubble text in the composer. */
     rewindTo: (rowId: number, text: string): Promise<void> => guarded(null, () => rewind(rowId, text)),
     /** Rewinds, then sends `text` in place of that message. */
-    overwrite: (rowId: number, text: string, attachments?: Att[]): Promise<void> => guarded(text, async () => { await rewind(rowId); if (!canSend(stateRef.current)) throw new Error("연결되지 않았습니다"); api.send(text, attachments?.length ? attachments : undefined); }),
+    overwrite: (rowId: number, text: string, attachments?: Att[]): Promise<void> => guarded(text, async () => { const fresh = await restage(attachments); await rewind(rowId); if (!canSend(stateRef.current)) throw new Error("연결되지 않았습니다"); api.send(text, fresh?.length ? fresh : undefined); }),
     /** Opens a child session (branch before the item, or a fresh one) in a new pane, carrying `text` to send or edit there. */
     fork: (item: ChatItem, text: string, sendNow: boolean, attachments?: Att[]): Promise<void> => guarded(!sendNow && item.kind === "user" && text === item.text ? null : text, async () => { // a plain fork never writes this composer
       const rpc = rpcRef.current, b = forkBoundary(item);
       if (!rpc) throw new Error("연결되지 않았습니다");
+      const fresh = sendNow ? await restage(attachments) : undefined; // before the branch is made
       let child: string;
       if ("through" in b) child = ((await mutate("branch", { through_message_id: b.through })) as { branched_session_id?: string }).branched_session_id ?? "";
       else {
@@ -832,7 +847,7 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
         child = c.stored_session_id ?? c.session_id;
       }
       if (!child) throw new Error("새 세션을 만들지 못했습니다");
-      setPrefill(child, { text, send: sendNow, ...(attachments?.length ? { attachments } : {}) });
+      setPrefill(child, { text, send: sendNow, ...(fresh?.length ? { attachments: fresh } : {}) });
       let paneId: string;
       try { paneId = await paneCreate("hermes", cwd, child, "chat"); }
       catch (e) { takePrefill(child); throw e; } // no pane will take it: a later pane on this session must not auto-send

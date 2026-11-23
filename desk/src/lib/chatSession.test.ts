@@ -76,7 +76,8 @@ describe("chatReducer", () => {
     const items = transcriptToItems([
       { role: "user", row_id: 1, text: "look\n\n@image:C:/a/b.png\n@image:`C:/a b/c.jpg`" },
       { role: "user", row_id: 2, text: "plain" },
-    ]);
+    ], true);
+    expect(transcriptToItems([{ role: "user", text: "see\n\n@image:/x.png" }])[0]).toMatchObject({ text: "see\n\n@image:/x.png" }); // raw rows: user text untouched
     expect(items[0]).toMatchObject({ text: "look", images: ["C:/a/b.png", "C:/a b/c.jpg"] });
     expect(items[1]).not.toHaveProperty("images");
   });

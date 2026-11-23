@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { ChevronRight, Plus } from "lucide-react";
 import { openUrl } from "../lib/backend";
-import { fmtSec, type ChatItem, type SubagentLive, type ToolGroup, type ToolItem } from "../lib/chatSession";
+import { fmtSec, type Att, type ChatItem, type SubagentLive, type ToolGroup, type ToolItem } from "../lib/chatSession";
 import { imageMime } from "../lib/composer";
 import { highlight } from "../lib/highlight";
 import { useAttachments } from "../lib/useAttachments";
@@ -12,8 +12,8 @@ import { kvRows, resultCount, resultView, thoughtTitle, toolTitle } from "../lib
 export type ChatActions = {
   state: { show: boolean; enabled: boolean; reason?: string };
   onRewind: () => void;
-  onOverwrite: (text: string, attachments: { path: string; mime: string }[]) => void;
-  onFork: (text: string, sendNow: boolean, attachments: { path: string; mime: string }[]) => void;
+  onOverwrite: (text: string, attachments: Att[]) => void;
+  onFork: (text: string, sendNow: boolean, attachments: Att[]) => void;
   onAttach: (bytes: Uint8Array, mime: string) => Promise<{ path: string; mime: string }>;
 };
 
@@ -43,13 +43,13 @@ function UserBubble({ item, actions }: { item: Extract<ChatItem, { kind: "user" 
   const off = !a?.enabled, why = a?.reason;
   const att = useAttachments(actions?.onAttach ?? (() => Promise.reject(new Error("연결되지 않았습니다"))));
   const fileRef = useRef<HTMLInputElement>(null);
-  const atts = att.atts.map(({ path, mime }) => ({ path, mime }));
+  const atts = att.atts.map(({ path, mime, kept }) => ({ path, mime, ...(kept ? { kept } : {}) }));
   const busy = (!draft.trim() && !att.atts.length) || att.uploading > 0 || off;
   const done = () => { setMode(""); att.reset(); };
   const confirm = (go: () => void) => (
     <div className="chat-act-confirm" role="alert">
       <span>이 메시지와 그 뒤 대화가 지워집니다. 되돌릴 수 없습니다</span>
-      <button className="btn" disabled={off} title={off ? why : undefined} onClick={() => { done(); go(); }}>확인</button>
+      <button className="btn" disabled={off || att.uploading > 0} title={off ? why : att.uploading > 0 ? "이미지를 올리는 중입니다" : undefined} onClick={() => { done(); go(); }}>확인</button>
       <button className="btn" onClick={() => setMode(mode === "ask-overwrite" ? "edit" : "")}>취소</button>
     </div>
   );
@@ -61,7 +61,7 @@ function UserBubble({ item, actions }: { item: Extract<ChatItem, { kind: "user" 
             <textarea className="chat-edit-text" value={draft} autoFocus rows={Math.min(8, draft.split("\n").length + 1)} onChange={(e) => setDraft(e.target.value)} onPaste={att.onPaste} onKeyDown={(e) => { if (e.key === "Escape") done(); }} />
             {(att.atts.length > 0 || att.uploading > 0 || att.err) && <div className="chat-thumbs">
               {att.atts.map((a) => (
-                <div className="chat-thumb" key={a.path}>
+                <div className="chat-thumb" key={a.key}>
                   {a.url ? <img src={a.url} alt="" /> : <span className="chat-thumb-name" title={a.path}>{a.path.split(/[\\/]/).pop()}</span>}
                   <button className="chat-thumb-x" aria-label="첨부 제거" onClick={() => att.remove(a)}>×</button>
                 </div>
@@ -83,7 +83,7 @@ function UserBubble({ item, actions }: { item: Extract<ChatItem, { kind: "user" 
         )}
         {a?.show && mode === "" && <div className="chat-acts">
           <button className="chat-act" disabled={off} title={off ? why : "이 메시지 직전으로 되감기"} onClick={() => setMode("ask-rewind")}>⟲ 되감기</button>
-          <button className="chat-act" disabled={off} title={off ? why : "메시지 편집"} onClick={() => { setDraft(item.text); att.reset((item.images ?? []).map((path) => ({ path, mime: imageMime(path) })), true); setMode("edit"); }}>✎ 편집</button>
+          <button className="chat-act" disabled={off} title={off ? why : "메시지 편집"} onClick={() => { setDraft(item.text); att.reset((item.images ?? []).map((path) => ({ path, mime: imageMime(path), kept: true })), true); setMode("edit"); }}>✎ 편집</button>
           <button className="chat-act" disabled={off} title={off ? why : "여기서 새 세션으로 포크"} onClick={() => actions?.onFork(item.text, false, [])}>⑂ 포크</button>
         </div>}
         {mode === "ask-rewind" && confirm(() => actions?.onRewind())}

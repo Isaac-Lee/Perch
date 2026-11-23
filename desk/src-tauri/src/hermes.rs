@@ -298,6 +298,27 @@ pub async fn hermes_disconnect() -> Result<Status, String> {
     Ok(status())
 }
 
+/// Canonical path of an image file under `home`, or an error: only image extensions, only inside the Hermes home.
+pub fn image_under(path: &Path, home: &Path) -> Result<PathBuf, String> {
+    let ext = path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).unwrap_or_default();
+    if !["png", "jpg", "jpeg", "gif", "webp"].contains(&ext.as_str()) {
+        return Err("이미지 파일이 아닙니다".into());
+    }
+    let p = path.canonicalize().map_err(|e| e.to_string())?;
+    let h = home.canonicalize().map_err(|e| e.to_string())?;
+    if !p.starts_with(&h) || !p.is_file() {
+        return Err("허용되지 않는 경로입니다".into());
+    }
+    Ok(p)
+}
+
+/// Raw bytes of an earlier attached image (kept when a message is edited, then re-uploaded to the gateway).
+#[tauri::command]
+pub async fn read_image(path: String) -> Result<tauri::ipc::Response, String> {
+    let p = image_under(Path::new(&path), &home())?;
+    std::fs::read(p).map(tauri::ipc::Response::new).map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -465,5 +486,20 @@ mod tests {
         assert_eq!(home_from(Some("X".into()), true, None, None), PathBuf::from("X"));
         assert_eq!(home_from(None, true, Some("L".into()), Some("U".into())), PathBuf::from("L").join("hermes"));
         assert_eq!(home_from(None, false, None, Some("U".into())), PathBuf::from("U").join(".hermes"));
+    }
+
+    #[test]
+    fn image_under_guards_extension_and_home() {
+        let home = tempfile::tempdir().unwrap();
+        let out = tempfile::tempdir().unwrap();
+        let ok = home.path().join("a.PNG");
+        std::fs::write(&ok, b"x").unwrap();
+        std::fs::write(home.path().join("a.txt"), b"x").unwrap();
+        std::fs::write(out.path().join("b.png"), b"x").unwrap();
+        assert!(image_under(&ok, home.path()).is_ok());
+        assert!(image_under(&home.path().join("a.txt"), home.path()).is_err());
+        assert!(image_under(&out.path().join("b.png"), home.path()).is_err());
+        assert!(image_under(&home.path().join("missing.png"), home.path()).is_err());
+        assert!(image_under(&home.path().join("../x.png"), home.path()).is_err());
     }
 }
