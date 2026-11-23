@@ -2,118 +2,104 @@
 
 <img src="desk/public/icon.svg" alt="Perch 아이콘" width="72" align="left" />
 
-CLI 코딩 에이전트(Hermes, OpenCode)를 여러 개 띄워 한 화면에서 지켜보는 가벼운 데스크톱 앱이다. 세션은 분할 터미널로 띄우고, 옆 패널에서 모든 세션 상태를 한눈에 본다. 이름은 높은 곳에서 전체를 내려다보는 자리인 횃대(perch)에서 따왔다.
+Perch는 CLI 코딩 에이전트(Hermes, OpenCode)를 여러 개 띄워 놓고 한 화면에서 지켜보는 가벼운 데스크톱 앱이다. 세션은 분할된 칸에 띄우고, 옆 패널에서 모든 세션의 상태를 한눈에 본다. 이름은 높은 곳에서 전체를 내려다보는 자리인 횃대(perch)에서 따왔다.
 
-Hermes GUI는 창을 여러 개 띄우면 느려지고 버그가 많았다. 그래서 에이전트는 CLI 그대로 쓰고, 여러 세션을 띄우고 지켜보는 일만 이 앱이 맡는다. 칸이 늘어도 느려지지 않는 것이 목표다.
+에이전트는 CLI 그대로 쓰고, 여러 세션을 띄우고 지켜보는 일만 Perch가 맡는다. 칸이 늘어도 느려지지 않는 것이 목표다. 실행 중에는 네트워크에 접속하지 않아서 오프라인 PC에서도 쓸 수 있다.
 
 <br clear="left" />
 
 ![Perch 화면](docs/images/perch-grid.png)
 
-![토큰 사용량](docs/images/perch-usage.png)
-
-## 현재 상태
-
-Hermes 연결까지 동작한다. 분할 터미널에서 Hermes, OpenCode, 셸을 실행하고, 패널에서 Hermes 세션의 상태·제목·토큰을 본다.
-
-| 단계 | 내용 | 상태 |
-|---|---|---|
-| 1 | UI 시제품 | 완료 |
-| 2 | Tauri 셸 + 실제 터미널, 여러 창, 설치 파일(Windows·macOS) | 완료. [v0.1.0](https://github.com/Isaac-Lee/Perch/releases) |
-| 3 | Hermes 연결 (상태 표시, 제목, resume, 토큰 사용량) | 완료. 패널의 승인 버튼은 실제 승인 화면으로 확인하지 못했다 |
-| 4 | OpenCode 연결 | 하지 않음. 칸에서 실행은 되고 상태 표시는 없다 ([붙이는 방법](docs/ADAPTERS.md)) |
-| 5 | 오프라인 Windows 10 설치 검증 | 설치 파일은 만들어진다. 깨끗한 PC에서의 검증은 아직 |
-| 6 | Hermes 채팅 보기 (마크다운 답변, 도구 호출 줄, 승인·질문 버튼, 이미지 첨부, 모델 선택, resume). 터미널(TUI)도 그대로 고를 수 있다 | 완료. v0.3.0 |
-| 7 | 세션 추적 (읽음 표시, Needs you, 상태별 보기, 서브에이전트, 백그라운드 작업) | 완료. v0.6.0 |
-
 ## 설치
 
-[Releases](https://github.com/Isaac-Lee/Perch/releases)에서 설치 파일을 받는다.
+[Releases](https://github.com/Isaac-Lee/Perch/releases/latest)에서 설치 파일을 받는다.
 
 | OS | 파일 | 참고 |
 |---|---|---|
-| Windows 10/11 (x64) | `Perch_<버전>_x64-setup.exe` | 관리자 권한 없이 사용자별로 설치한다. WebView2 오프라인 설치본이 들어 있어 인터넷 없이 설치된다 (약 216MB) |
+| Windows 10/11 (x64) | `Perch_<버전>_x64-setup.exe` | 관리자 권한 없이 사용자별로 설치한다. WebView2 오프라인 설치본이 들어 있어 인터넷 없이 설치된다 |
 | macOS (Apple Silicon) | `Perch_<버전>_aarch64.dmg` | Intel 맥용은 아직 없다 |
 
-설치 파일에 코드 서명이 없다.
+설치 파일에는 코드 서명이 없다.
 - Windows: SmartScreen 경고가 나오면 "추가 정보 → 실행"을 누른다.
 - macOS: 처음 실행할 때 막히면 시스템 설정 → 개인정보 보호 및 보안에서 "확인 없이 열기"를 누른다.
 
 ### Hermes 연결
 
-1. Perch의 설정(톱니바퀴) → Hermes → **Connect**를 누른다. Hermes의 `config.yaml`에 훅 블록이 추가되고, 원본은 `config.yaml.perch-backup`으로 남는다.
+1. Perch 설정(톱니바퀴) → Hermes → **Connect**를 누른다. Hermes의 `config.yaml`에 훅 블록이 추가되고, 원본은 `config.yaml.perch-backup`으로 남는다.
 2. 이어서 나오는 **Restart gateway**를 누른다. Hermes gateway는 시작할 때만 훅을 읽는다. 실행 중인 Hermes 작업은 중단된다.
-3. New session으로 Hermes를 연다.
+3. **New session**으로 Hermes를 연다.
 
-Hermes는 기본으로 채팅 보기로 열린다. 마크다운 답변, 도구 호출 줄, 승인·질문 버튼, 이미지 붙여넣기를 지원한다. 입력 상자의 `+` 버튼으로 이미지를 붙이고, 모델 칩을 누르면 모델 메뉴가 열리며, 오른쪽 엔터 아이콘이나 Enter로 보낸다. 터미널(TUI) 화면이 필요하면 New session 메뉴의 **Hermes (TUI)**를 고른다. 채팅 칸을 닫아도 Hermes 작업은 계속 돌고, 같은 세션을 다시 열면 이어서 볼 수 있다. 세션 패널의 행에 있는 X는 열린 칸을 닫고(작업은 계속된다), 열린 칸이 없는 세션은 목록에서 숨긴다. 연결이 끊기면 한 번 자동으로 다시 연결하고, 안 되면 "다시 연결" 버튼이 나온다.
+되돌리려면 같은 자리의 **Disconnect**를 누른다. 훅은 Hermes를 막지 않는다. 훅 파일이 없거나 실패해도 Hermes는 그대로 동작한다.
 
-되돌리려면 같은 자리의 Disconnect를 누른다. 훅은 Hermes를 막지 않는다. 훅 파일이 없거나 실패해도 Hermes는 그대로 동작한다.
+## 기능
 
-## 소스에서 실행
+**세션 패널**
+- 승인 요청, 질문, 답을 기다리는 세션을 맨 위 **Needs you**에 모은다. 승인은 [Allow] / [Deny]로 바로 처리한다.
+- 세션마다 상태, 걸린 시간, git 브랜치, 토큰 수, 서브에이전트, todo가 보인다.
+- 아직 보지 않은 결과에는 파란 점이 붙는다.
+- 폴더별 또는 상태별로 묶고, 끌어서 순서를 바꾸고, 제목·폴더·브랜치로 검색한다.
+
+![상태별 세션 패널](docs/images/perch-status.png)
+
+**칸 격자**
+- 세션 수에 따라 격자가 바뀌고 개수 제한은 없다. 칸 머리줄을 끌어 배치를 바꾸면 배치가 저장된다.
+- 칸마다 상태와 진행 줄(지금 하는 일, 단계 수, 경과 시간)이 있다.
+- Hermes는 채팅 보기와 터미널(TUI) 중에서 고른다. OpenCode와 셸은 터미널 칸으로 연다. 상태 표시는 아직 Hermes만 된다.
+- 단축키는 `Ctrl+Shift` 조합, `Ctrl+Tab`, `Ctrl+1~9`만 써서 터미널 입력과 겹치지 않는다.
+
+**Hermes 채팅 보기**
+- 답변은 마크다운으로 그리고 코드 블록은 구문 강조한다. 도구 호출은 한 줄로 접히고, 누르면 인자와 결과가 펼쳐진다.
+- 승인과 질문은 칸 안의 버튼으로 답한다.
+- 이미지 첨부, 모델과 추론 강도 선택, `/` 슬래시 명령, `↑` / `↓` 입력 기록을 지원한다.
+- 작업 중에 보낸 메시지는 대기 카드로 뜨고, "지금 보내기"로 실행 중인 작업에 바로 넘길 수 있다.
+- 내 메시지에서 **되감기**, **편집**, **포크**를 한다. 포크는 그 지점까지의 대화를 새 칸으로 연다.
+- 칸을 닫아도 Hermes 작업은 계속 돈다. 같은 세션을 다시 열면 이어서 본다.
+
+**서브에이전트와 백그라운드 작업**
+- `delegate_task`로 띄운 서브에이전트가 목표, 지금 쓰는 도구, 경과 시간과 함께 트리로 보인다.
+- 칸 머리줄의 그래프 버튼을 누르면 서브에이전트와 백그라운드 작업이 그래프로 열린다. 끝난 작업은 숨기거나 다시 볼 수 있다.
+- `/background`로 띄운 작업은 부모 세션 아래 한 줄로 보이고, 눌러서 결과를 본다.
+
+![서브에이전트 트리](docs/images/perch-subagents.png)
+
+**토큰 사용량**
+- 기간별 합계와 추이 차트, 프로젝트·모델·에이전트·세션별 표를 보여준다.
+- 가격표는 넣지 않았다. 비용은 에이전트가 기록한 값이 있을 때만 표시한다.
+
+![토큰 사용량](docs/images/perch-usage.png)
+
+**설정**
+- 테마(Light, Dark, Midnight, Black), 터미널 글꼴과 크기, 새 세션의 기본 에이전트와 폴더를 고른다.
+
+## 기여하기
+
+버그 제보, 기능 제안, PR 모두 환영한다.
+
+- 버그와 제안은 [Issues](https://github.com/Isaac-Lee/Perch/issues/new/choose)에서 템플릿을 골라 올린다.
+- PR은 `main`을 대상으로 연다. PR 템플릿의 확인 항목을 채운다.
+- 화면에 보이는 동작을 바꾸면 이 README의 기능 설명도 같은 PR에서 고친다.
+
+### 소스에서 실행
 
 ```bash
 git clone https://github.com/Isaac-Lee/Perch.git
 cd Perch/desk
 npm install
 npm run dev          # 브라우저에서 가짜 데이터로 화면만 본다 (http://localhost:5173)
-npm run tauri dev    # 앱 창. 실제 터미널
-npm run tauri build  # 설치 파일
+npm run tauri dev    # 앱 창과 실제 터미널
 npm test
+npm run lint
+npm run tauri build  # 설치 파일
 ```
 
-Node 20 이상이 필요하다. 앱 창과 빌드에는 Rust와 OS별 빌드 도구(Windows: VS Build Tools C++, macOS: Xcode Command Line Tools)가 필요하다. 설치 파일은 GitHub Actions(`.github/workflows/build.yml`)가 두 OS용으로 만든다.
+Node 20 이상이 필요하다. 앱 창과 빌드에는 Rust와 OS별 빌드 도구(Windows: VS Build Tools C++, macOS: Xcode Command Line Tools)가 필요하다. PR을 열면 GitHub Actions가 Windows와 macOS 설치 파일을 빌드한다.
 
-## 화면 구성
+### 지켜야 할 것
 
-**세션 패널 (Sessions)**
-- 맨 위 **Needs you** 블록에 지금 내 답이 필요한 세션(승인 요청, 질문, 답을 기다리는 세션)을 모은다. 그 아래는 작업 디렉토리(git 저장소)별 묶음이고, 묶음은 접을 수 있다.
-- 아직 안 본 `Done`과 답변이 온 세션에는 파란 점이 붙고 제목이 굵게 보인다. 세션을 열면 읽은 것으로 처리된다.
-- 정렬 버튼 메뉴의 **Group by**에서 **Folder**와 **Status**를 고른다. **Status**는 Needs you, Working, Unread, Done, Idle 순으로 묶는다.
-- 세션마다 상태(`Working`, `Thinking`, `Running`, `Needs approval`, `Question`, `Done`, `Closed`), 걸린 시간(요청부터 턴 종료까지), git 브랜치, 토큰 수, 서브에이전트, todo가 표시된다.
-- `/background`로 띄운 작업은 따로 목록에 흩어지지 않고 부모 세션 아래 `└ Background ·` 줄로 보인다.
-- 세션을 클릭하면 그 세션으로 이동한다. 닫힌 세션이면 새로 연다.
-- 승인 요청은 [Allow] / [Deny]로 바로 처리한다.
-- 패널 폭은 경계를 끌어서 조절한다.
-- 검색은 세션 제목, 폴더, 브랜치만 본다.
-
-![상태별 세션 패널](docs/images/perch-status.png)
-
-**세션 격자**
-- 세션 수에 따라 자동으로 격자가 바뀐다. 개수 제한은 없다.
-- `+ New session`은 기본 에이전트와 폴더로 바로 세션을 연다. 오른쪽 `▾`에서 에이전트와 폴더를 고른다.
-- 단축키는 `Ctrl+Shift` 조합과 `Ctrl+Tab`, `Ctrl+1~9`만 쓴다 (도움말에서 목록 확인). 터미널 입력과 겹치지 않게 했다.
-- 세션마다 헤더(에이전트, 폴더, 브랜치, 상태 점, `Thinking` 표시, [Stop])와 하단 진행 줄(지금 하는 일 · 단계 수 · 경과시간)이 있다.
-- 터미널(TUI) 칸에서는 승인·질문 내용, 입력창, 모델 표시를 에이전트의 자체 화면에 맡긴다. 채팅 칸은 Perch가 직접 그린다.
-
-**채팅 보기**
-- Hermes는 기본으로 채팅 칸으로 열린다. 답변은 마크다운으로 그리고, 도구 호출은 한 줄로 접어 보여준다. 줄을 누르면 인자와 결과가 펼쳐진다.
-- 승인과 질문은 칸 안의 버튼으로 답한다.
-- 입력 상자에서 `+`로 이미지를 붙이고, 모델 칩으로 모델을 바꾸고, `/`로 슬래시 명령을 고른다. `↑` / `↓`로 이전에 보낸 프롬프트를 불러온다.
-- `delegate_task`를 쓰면 호출 줄 아래에 서브에이전트가 트리로 나온다. 하위 작업마다 목표, 지금 쓰는 도구, 도구 수, 경과시간이 보이고, 누르면 요약이 펼쳐진다. 실행 중인 서브에이전트는 세션 패널에도 표시된다.
-
-![서브에이전트 트리](docs/images/perch-subagents.png)
-
-- `/background`(또는 `/bg`)로 보낸 작업은 별도 세션에서 돈다. 채팅에는 `Background · …` 줄 하나로 남고, 끝나면 `Done`으로 바뀌며 눌러서 결과를 본다. 부모 턴에는 섞이지 않는다.
-
-![백그라운드 작업](docs/images/perch-background.png)
-
-**토큰 사용량 (Token usage)**
-- 기간별 합계, 토큰 추이 차트(`14d` / `30d` / `1y`, `1y`는 `Daily` / `Weekly`), 프로젝트·모델·에이전트·세션별 표를 보여준다.
-- 표의 세션을 클릭하면 그 세션으로 이동하고, 기록에만 남은 세션은 resume으로 다시 연다.
-- 가격표는 넣지 않았다. 비용은 에이전트가 기록한 값이 있을 때만 표시한다.
-
-**설정 (Settings)**
-- 터미널 글꼴과 크기, 새 세션의 기본 에이전트와 폴더를 바꿀 수 있다.
-
-## 문서
-
-| 문서 | 내용 |
-|---|---|
-| [docs/HANDOFF.md](docs/HANDOFF.md) | 이어서 작업할 때 먼저 읽는 문서. 현재 상태, 결정 사항, 지킬 규칙, 다음 할 일 |
-| [설계 문서](docs/superpowers/specs/2026-11-17-perch-design.md) | 전체 5단계의 설계 |
-| [단계별 계획](docs/superpowers/plans/) | 1단계(UI 시제품), 2단계(Tauri + 터미널), 3단계(Hermes, 확인된 Hermes 동작 포함) |
-| [docs/ADAPTERS.md](docs/ADAPTERS.md) | 다른 에이전트(OpenCode 등)를 붙이는 계약과 손댈 곳 |
-| [desk/HERMES_UI_NOTES.md](desk/HERMES_UI_NOTES.md) | Hermes CLI가 자체적으로 그리는 화면 요소 정리 |
+- 에이전트 훅은 어떤 경우에도 에이전트 작업을 막으면 안 된다. 항상 exit 0으로 끝내고 stdout에는 아무것도 쓰지 않는다.
+- 실행 중에는 네트워크에 접속하지 않는다. 자동 업데이트, 텔레메트리, CDN 글꼴을 쓰지 않는다.
+- 디자인은 [unslop](https://github.com/heydamir/unslop) 규칙을 따른다. 중립 회색에 강조색 하나만 쓰고, 그라데이션·글로우·이모지 아이콘은 쓰지 않는다.
+- 다른 에이전트를 붙이는 방법은 [docs/ADAPTERS.md](docs/ADAPTERS.md), 버전 규칙은 [docs/VERSIONING.md](docs/VERSIONING.md)에 있다.
 
 ## 사용한 것
 
@@ -130,6 +116,6 @@ Node 20 이상이 필요하다. 앱 창과 빌드에는 Rust와 OS별 빌드 도
 ## 라이선스
 
 [MIT + Commons Clause](LICENSE).
-- 개인과 회사가 무료로 쓰고, 고치고, 내부에 배포할 수 있다. 회사 업무에 쓰는 것도 된다.
-- Perch 자체 또는 Perch가 주된 가치인 제품·서비스(호스팅, 유료 지원 포함)를 돈을 받고 파는 것은 안 된다.
+- 개인과 회사가 무료로 쓰고, 고치고, 내부에 배포할 수 있다. 회사 업무에 써도 된다.
+- Perch 자체나 Perch가 주된 가치인 제품·서비스(호스팅, 유료 지원 포함)를 돈을 받고 파는 것은 안 된다.
 - 포함된 글꼴(`desk/public/fonts/`)과 의존 라이브러리는 각자의 라이선스를 따른다.
