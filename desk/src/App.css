@@ -36,6 +36,7 @@ body.row-dragging, body.row-dragging * { cursor: grabbing !important; user-selec
 .row-time { margin-left: auto; color: var(--text-3); font-size: 12px; white-space: nowrap; }
 .row-top .row-time { margin-left: auto; }
 .row-sub { margin-left: auto; padding-left: 8px; flex: none; color: var(--text-3); font-size: 12px; white-space: nowrap; }
+.row-bg-chev { display: inline-block; vertical-align: -2px; margin-right: 2px; }
 .row-prompt { color: var(--text-2); font-size: 12px; line-height: 16px; }
 .row.unread .row-prompt { font-weight: 500; color: var(--text); }
 .row-pending { color: var(--text); font-size: 12px; line-height: 16px; }

@@ -90,6 +90,12 @@
 .chat-prompt-text { overflow-wrap: anywhere; line-height: 1.55; white-space: pre-wrap; }
 .chat-prompt .chat-tool-result { margin: 0; }
 .chat-prompt-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.chat-prompt-options { display: flex; flex-direction: column; gap: 4px; }
+.chat-prompt-option { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; padding: 6px 10px; text-align: left; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; font: inherit; cursor: pointer; }
+.chat-prompt-option:hover:not(:disabled) { border-color: var(--accent); background: var(--surface-2); }
+.chat-prompt-option:disabled { opacity: 0.5; cursor: default; }
+.chat-prompt-option-label { font-weight: 600; font-size: 12px; overflow-wrap: anywhere; }
+.chat-prompt-option-detail { color: var(--text-3); font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; white-space: pre-wrap; }
 .chat-prompt-input { flex: 1; min-width: 160px; box-sizing: border-box; padding: 5px 8px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; font: inherit; }
 .chat-prompt .btn:disabled { opacity: 0.5; }
 .chat-prompt .btn.danger { color: var(--warn); }
