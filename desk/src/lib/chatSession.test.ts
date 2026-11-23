@@ -751,3 +751,16 @@ describe("row ids", () => {
     expect(userActions({ running: false, queued: [], rowIds: true }, { kind: "system", id: "s", text: "x" }).show).toBe(false);
   });
 });
+
+describe("snapshot keepLocal", () => {
+  const snap = { session_id: "s", display_messages: [{ role: "user", text: "a", row_id: 1 }] };
+  let st = chatReducer(initialChat, { t: "snapshot", snap });
+  st = chatReducer(chatReducer(st, { t: "localError", text: "boom" }), { t: "system", text: "note" });
+  it("keeps local error/system rows after the transcript", () => {
+    const n = chatReducer(st, { t: "snapshot", snap, keepLocal: true });
+    expect(n.items.map((i) => i.kind)).toEqual(["user", "error", "system"]);
+  });
+  it("drops them without keepLocal", () => {
+    expect(chatReducer(st, { t: "snapshot", snap }).items.map((i) => i.kind)).toEqual(["user"]);
+  });
+});

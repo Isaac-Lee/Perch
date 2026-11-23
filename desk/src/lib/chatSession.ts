@@ -41,7 +41,7 @@ export interface ChatState { conn: "connecting" | "ready" | "closed" | "error"; 
 export const initialChat: ChatState = { conn: "connecting", sessionId: null, executionGeneration: 0, revision: 0, running: false, items: [], prompts: [], queued: [], model: null, effort: null, turnStart: null, status: "", generating: "", sentAt: null, cleared: false, rowIds: false, subagents: {} };
 export type ChatAction =
   | { t: "conn"; conn: ChatState["conn"]; error?: string }
-  | { t: "snapshot"; snap: any; at?: number }
+  | { t: "snapshot"; snap: any; at?: number; /** carry the current local error/system rows over (post-turn resync) */ keepLocal?: boolean }
   | { t: "modelChanged"; revision: number; executionGeneration: number; model: string }
   | { t: "effortChanged"; revision: number; executionGeneration: number; effort: string }
   | { t: "effort"; effort: string }
@@ -180,7 +180,7 @@ export function chatReducer(s: ChatState, a: ChatAction): ChatState {
       ...s, conn: "ready", error: undefined, sessionId: a.snap.session_id ?? null,
       executionGeneration: typeof a.snap.execution_generation === "number" ? a.snap.execution_generation : s.executionGeneration,
       revision: typeof a.snap.revision === "number" ? a.snap.revision : 0,
-      sentAt: null, cleared: false, rowIds: Array.isArray(a.snap.display_messages), running: !!a.snap.running, turnStart: a.snap.running ? s.turnStart ?? a.at ?? null : null, model: a.snap.info?.model || s.model, effort: str(a.snap.info?.reasoning_effort) || s.effort, items: [...transcriptToItems(a.snap.display_messages ?? a.snap.messages ?? []), ...s.items.filter((i) => i.kind === "background" && i.status === "running")], prompts: (Array.isArray(a.snap.prompts) ? a.snap.prompts : []).map((p: any) => toPrompt(p, p?.kind)).filter((p: ChatPrompt | null): p is ChatPrompt => !!p), queued: pendingToQueued(a.snap.pending),
+      sentAt: null, cleared: false, rowIds: Array.isArray(a.snap.display_messages), running: !!a.snap.running, turnStart: a.snap.running ? s.turnStart ?? a.at ?? null : null, model: a.snap.info?.model || s.model, effort: str(a.snap.info?.reasoning_effort) || s.effort, items: [...transcriptToItems(a.snap.display_messages ?? a.snap.messages ?? []), ...(a.keepLocal ? s.items.filter((i) => i.kind === "error" || i.kind === "system") : []), ...s.items.filter((i) => i.kind === "background" && i.status === "running")], prompts: (Array.isArray(a.snap.prompts) ? a.snap.prompts : []).map((p: any) => toPrompt(p, p?.kind)).filter((p: ChatPrompt | null): p is ChatPrompt => !!p), queued: pendingToQueued(a.snap.pending),
       // children still "running" belong to a connection that is gone; no frame will ever finish them
       subagents: Object.fromEntries(Object.entries(s.subagents).map(([k, v]) => [k, v.status === "starting" || v.status === "running" ? { ...v, status: "failed" as const } : v])),
     };
@@ -456,6 +456,8 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
   const [retrying, setRetrying] = useState(false);
   const lastFrame = useRef(Date.now()); // time of the last gateway frame (a ref: no render per frame)
   const lastResync = useRef(0);
+  const resyncRef = useRef<(keepLocal?: boolean) => unknown>(() => {}); // the event handler lives in an effect declared before resync
+  const turnStarts = useRef(0); // message.start frames seen: a resync that began before one must not apply its stale snapshot
   const stuck = useRef(false); // Stop did not end the turn and Hermes still says it runs
   const [draft, setDraft] = useState({ text: "", n: 0 }); // /undo-style prefill; the composer applies it when n changes
 
@@ -490,7 +492,8 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
           if (dead) return;
           lastFrame.current = Date.now();
           dispatch({ t: "event", ev, at: lastFrame.current });
-          if (ev.type === "message.complete") void resync(); // adopt row ids once the turn is saved (a queued next turn keeps running: resync leaves it)
+          if (ev.type === "message.start") turnStarts.current++;
+          if (ev.type === "message.complete") void resyncRef.current(true); // adopt row ids once the turn is saved (a queued next turn keeps running: resync leaves it)
           if (ev.type === "session.info") abandonUnknown(ev.payload?.pending, ev.session_id ?? stateRef.current.sessionId);
           if (ev.type === "session.replay_gap" && stateRef.current.sessionId) // events were lost: re-read the whole session
             rpc.request<SessionSnapshot>("session.resume", { session_id: stateRef.current.sessionId, display_projection: true }).then((snap) => { if (!dead) { dispatch({ t: "snapshot", snap, at: Date.now() }); abandonUnknown((snap as any).pending, snap.session_id); } }, console.error);
@@ -533,19 +536,23 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
 
   /** Asks the gateway whether the turn still runs. Only a finished turn is adopted (history is authoritative then, which
    *  also drops local system lines); a running turn keeps its live rows. Returns the gateway's `running`, null if unknown. */
-  const resync = useCallback(async (): Promise<boolean | null> => {
+  const resync = useCallback(async (keepLocal = false): Promise<boolean | null> => {
     const rpc = rpcRef.current, rid = stateRef.current.sessionId ?? resumeRef.current;
     if (!rpc || !rid) return null;
     lastResync.current = Date.now();
+    const starts = turnStarts.current;
     try {
       const snap = await rpc.request<SessionSnapshot>("session.resume", { session_id: rid, display_projection: true });
       if (snap.running) return true;
-      dispatch({ t: "snapshot", snap, at: Date.now() });
+      if (turnStarts.current !== starts) return true; // a turn started while we asked: the snapshot is stale
+      dispatch({ t: "snapshot", snap, at: Date.now(), keepLocal });
       abandonUnknown((snap as any).pending, snap.session_id);
       sessionForceIdle(resumeRef.current ?? rid, 0).catch(console.error); // sidebar and pane header follow the chat row
       return false;
     } catch (e) { console.error(e); return null; }
   }, [abandonUnknown]);
+
+  useEffect(() => { resyncRef.current = resync; }, [resync]);
 
   useEffect(() => {
     if (!state.running) { stuck.current = false; return; }
