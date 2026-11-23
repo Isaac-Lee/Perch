@@ -21,10 +21,10 @@ export default function PaneHeader({ pane, session, now, focused, onClose, onSto
       <span className="pane-title">{agentName(pane.agent)} · {pane.title}</span>
       {pane.branch && <span className="branch"><GitBranch size={13} strokeWidth={1.5} /><span className="ellipsis">{pane.branch}</span></span>}
       <span className="grow" />
-      {(st === "running" || st === "thinking" || st === "tool") && session && (() => { const a = activityOf(st, session.tool); return (
-        <span className="think">
+      {(st === "running" || st === "thinking" || st === "tool") && session && (() => { const a = activityOf(st, session.tool); const turn = shownSeconds(session, now) ?? 0; return (
+        <span className="think" title={`${a.label}${session.toolDetail ? ` · ${session.toolDetail}` : ""} — 현재 단계 / 이번 턴 / 세션 누적`}>
           <ThinkingOrb state={a.orb} size={20} theme={light ? "light" : "dark"} />
-          <span title={session.toolDetail || undefined}>{a.label} {fmtElapsed(shownSeconds(session, now) ?? 0)}</span>
+          {fmtElapsed(Math.max(0, now - session.since))} / {fmtElapsed(turn)} / {fmtElapsed((session.busyTotal ?? 0) + turn)}
         </span>
       ); })()}
       {graph && <button className={`stop-btn${graph.open ? " on" : ""}`} aria-label="Subagents" aria-pressed={graph.open} title="서브에이전트·백그라운드 작업 보기" onMouseDown={(e) => { if (e.button !== 0) return; e.preventDefault(); graph.onToggle(); }} onClick={(e) => { e.stopPropagation(); if (e.detail === 0) graph.onToggle(); }}><Network size={14} strokeWidth={1.5} />{graph.running > 0 && graph.running}</button>}

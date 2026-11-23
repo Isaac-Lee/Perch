@@ -82,7 +82,7 @@ fn set_state(st: &mut Value, name: &str, now: u64) {
 }
 
 fn new_state(sid: &str, now: u64) -> Value {
-    json!({"agent":"hermes","sessionId":sid,"state":"idle","since":now,"turnStart":null,"lastTurn":null,"steps":0,
+    json!({"agent":"hermes","sessionId":sid,"state":"idle","since":now,"turnStart":null,"lastTurn":null,"busyTotal":0,"steps":0,
         "tool":"","toolDetail":"","prompt":"","pending":null,"asks":false,"ask":"","subagents":{},"todos":[],"seen":now})
 }
 
@@ -162,7 +162,9 @@ pub fn apply(state: Value, event: &Value, now: u64) -> Option<Value> {
         "on_session_end" => {
             st["pending"] = Value::Null;
             if let Some(t) = st["turnStart"].as_u64() {
-                st["lastTurn"] = json!(now.saturating_sub(t));
+                let turn = now.saturating_sub(t);
+                st["lastTurn"] = json!(turn);
+                st["busyTotal"] = json!(st["busyTotal"].as_u64().unwrap_or(0) + turn);
             }
             st["turnStart"] = Value::Null;
             st["tool"] = json!("");
@@ -282,6 +284,9 @@ pub fn force_idle(dir: &Path, id: &str, now: u64) -> bool {
     let mut st = read(&file);
     if !matches!(st["state"].as_str(), Some("running" | "thinking" | "tool")) {
         return false;
+    }
+    if let Some(t) = st["turnStart"].as_u64() {
+        st["busyTotal"] = json!(st["busyTotal"].as_u64().unwrap_or(0) + now.saturating_sub(t));
     }
     st["turnStart"] = Value::Null;
     st["tool"] = json!("");

@@ -16,7 +16,7 @@ export async function pickFolder(): Promise<string | null> {
 export type PaneInfo = { id: string; agent: AgentKind; cwd: string; repoRoot: string | null; branch: string | null; window: string; createdAt: number; sessionId: string | null; view: PaneView };
 
 export type SessionInfo = {
-  agent: AgentKind; sessionId: string; state: string; since: number; turnStart: number | null; lastTurn: number | null; steps: number;
+  agent: AgentKind; sessionId: string; state: string; since: number; turnStart: number | null; lastTurn: number | null; busyTotal?: number; steps: number;
   tool: string; toolDetail: string; prompt: string; pending: { kind: string; id: string; text: string } | null;
   asks?: boolean; ask?: string;
   subagents: { id: string; role: string; goal: string; start: number; tool?: string }[];
