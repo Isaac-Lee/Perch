@@ -312,11 +312,21 @@ pub fn image_under(path: &Path, home: &Path) -> Result<PathBuf, String> {
     Ok(p)
 }
 
+const MAX_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
+
+/// Bytes of an image under `home`, at most 20 MB (checked before reading).
+pub fn read_image_in(path: &Path, home: &Path) -> Result<Vec<u8>, String> {
+    let p = image_under(path, home)?;
+    if std::fs::metadata(&p).map_err(|e| e.to_string())?.len() > MAX_IMAGE_BYTES {
+        return Err("이미지가 너무 큽니다 (20MB 제한)".into());
+    }
+    std::fs::read(p).map_err(|e| e.to_string())
+}
+
 /// Raw bytes of an earlier attached image (kept when a message is edited, then re-uploaded to the gateway).
 #[tauri::command]
 pub async fn read_image(path: String) -> Result<tauri::ipc::Response, String> {
-    let p = image_under(Path::new(&path), &home())?;
-    std::fs::read(p).map(tauri::ipc::Response::new).map_err(|e| e.to_string())
+    read_image_in(Path::new(&path), &home()).map(tauri::ipc::Response::new)
 }
 
 #[cfg(test)]
@@ -501,5 +511,16 @@ mod tests {
         assert!(image_under(&out.path().join("b.png"), home.path()).is_err());
         assert!(image_under(&home.path().join("missing.png"), home.path()).is_err());
         assert!(image_under(&home.path().join("../x.png"), home.path()).is_err());
+    }
+
+    #[test]
+    fn read_image_refuses_over_20mb() {
+        let home = tempfile::tempdir().unwrap();
+        let big = home.path().join("big.png");
+        std::fs::File::create(&big).unwrap().set_len(MAX_IMAGE_BYTES + 1).unwrap();
+        let small = home.path().join("s.png");
+        std::fs::write(&small, b"abc").unwrap();
+        assert!(read_image_in(&big, home.path()).is_err());
+        assert_eq!(read_image_in(&small, home.path()).unwrap(), b"abc");
     }
 }

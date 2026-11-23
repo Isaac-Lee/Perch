@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
-import { chatClose, chatConnect, chatSend, paneCreate, paneSetSession, sessionForceIdle } from "./backend";
+import { chatClose, chatConnect, chatSend, paneCreate, paneSetSession, readImage, sessionForceIdle } from "./backend";
 import { BLOCKED_SLASH, imageExt, isSlashCommand, parseModelArg, parseSlash, toBase64 } from "./composer";
 import { FOCUS_PANE_EVENT, setPrefill, takePrefill } from "./forkPrefill";
-import { readImage } from "./backend";
 import { createRpc, type Rpc, type RpcError } from "./gateway";
 import { splitImageRefs, userText } from "./hermesFrames";
 import { activityOf } from "./orbState";
@@ -707,7 +706,6 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
     catch (e) { if (text !== null) setDraft((x) => ({ text, n: x.n + 1 })); dispatch({ t: "localError", text: rewindFailure(e) }); }
     finally { busy.current = false; }
   }
-  /** `draft` set: that text goes to the composer (the receipt's raw content if it is empty). */
   /** Fresh gateway paths for kept images (their old ones are consumed by the first send); runs before anything destructive. */
   async function restage(atts?: Att[]): Promise<Att[] | undefined> {
     if (!atts?.some((a) => a.kept)) return atts;
@@ -719,6 +717,7 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
     }
     return out;
   }
+  /** `draft` set: that text goes to the composer (the receipt's raw content if it is empty). */
   async function rewind(rowId: number, draft?: string): Promise<void> {
     const r = await mutate("rewind", { target_message_id: rowId }) as { target_message?: { content?: unknown } };
     if (draft !== undefined) { const t = draft || rewindText(r.target_message?.content); setDraft((x) => ({ text: t, n: x.n + 1 })); } // before the resync: the text must never be lost
