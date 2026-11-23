@@ -2,6 +2,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { chatClose, chatConnect, chatSend, paneSetSession, sessionForceIdle } from "./backend";
 import { BLOCKED_SLASH, imageExt, isSlashCommand, parseModelArg, parseSlash, toBase64 } from "./composer";
 import { createRpc, type Rpc } from "./gateway";
+import { activityOf } from "./orbState";
 import type { GatewayEvent, SessionSnapshot } from "./gatewayTypes";
 
 export type ChatItem =
@@ -335,16 +336,16 @@ export function groupItems(items: ChatItem[]): (ChatItem | ToolGroup)[] {
   return out;
 }
 
-/** Text of the live status row: prompt, running tool (+ progress), tool being drafted, Hermes status text, thought, answer. */
+/** Text of the live status row. Starts with the pane header's word (activityOf label), then detail: prompt, running tool (+ context/progress), tool being drafted, Hermes status text, thought, answer. */
 export function activityLabel(s: Pick<ChatState, "items" | "prompts" | "status" | "generating">): string {
-  if (s.prompts.length) return "응답 대기 중";
+  if (s.prompts.length) return "Waiting for you";
   const tool = [...s.items].reverse().find((i): i is ToolItem => i.kind === "tool" && i.status === "running");
-  if (tool) return [tool.name, tool.context, tool.progress].filter(Boolean).join(" · ");
-  if (s.generating) return `${s.generating} 준비 중`;
-  if (s.status) return s.status;
+  if (tool) return [activityOf("tool", tool.name).label, tool.name, tool.context, tool.progress].filter(Boolean).join(" · ");
+  if (s.generating) return `Thinking · preparing ${s.generating}`;
+  if (s.status) return `Thinking · ${s.status}`;
   const last = s.items[s.items.length - 1];
-  if (last?.kind === "thought" && last.streaming) return "생각 중";
-  return last?.kind === "assistant" && last.streaming ? "답변 작성 중" : "생각 중";
+  if (last?.kind === "thought" && last.streaming) return "Thinking";
+  return last?.kind === "assistant" && last.streaming ? "Thinking · writing reply" : "Thinking";
 }
 
 /** 7초, 1분 12초 */

@@ -288,14 +288,15 @@ describe("activityLabel / fmtSec", () => {
   const base = { prompts: [], status: "", generating: "" };
   it("prompt, running tool, generating, status, thought, answer, thinking", () => {
     const prompt = [{ kind: "approval" as const, promptId: "p", executionGeneration: 1, choices: [] }];
-    expect(activityLabel({ ...base, items: [tool("running")], prompts: prompt })).toBe("응답 대기 중");
-    expect(activityLabel({ ...base, items: [tool("running", "a", ""), tool("running")] })).toBe("terminal · npm test");
-    expect(activityLabel({ ...base, items: [tool("running", "mcp", "x", "42%")] })).toBe("mcp · x · 42%");
-    expect(activityLabel({ ...base, items: [tool("done")], generating: "terminal", status: "pondering..." })).toBe("terminal 준비 중");
-    expect(activityLabel({ ...base, items: [tool("done")], status: "pondering..." })).toBe("pondering...");
-    expect(activityLabel({ ...base, items: [{ kind: "thought", id: "r", text: "x", streaming: true }] })).toBe("생각 중");
-    expect(activityLabel({ ...base, items: [tool("done"), { kind: "assistant", id: "m", text: "x", streaming: true }] })).toBe("답변 작성 중");
-    expect(activityLabel({ ...base, items: [tool("done")] })).toBe("생각 중");
+    expect(activityLabel({ ...base, items: [tool("running")], prompts: prompt })).toBe("Waiting for you");
+    expect(activityLabel({ ...base, items: [tool("running", "a", ""), tool("running")] })).toBe("Running · terminal · npm test");
+    expect(activityLabel({ ...base, items: [tool("running", "mcp", "x", "42%")] })).toBe("Working · mcp · x · 42%");
+    expect(activityLabel({ ...base, items: [tool("running", "mcp__srv", "x")] })).toBe("Connecting · mcp__srv · x");
+    expect(activityLabel({ ...base, items: [tool("done")], generating: "terminal", status: "pondering..." })).toBe("Thinking · preparing terminal");
+    expect(activityLabel({ ...base, items: [tool("done")], status: "pondering..." })).toBe("Thinking · pondering...");
+    expect(activityLabel({ ...base, items: [{ kind: "thought", id: "r", text: "x", streaming: true }] })).toBe("Thinking");
+    expect(activityLabel({ ...base, items: [tool("done"), { kind: "assistant", id: "m", text: "x", streaming: true }] })).toBe("Thinking · writing reply");
+    expect(activityLabel({ ...base, items: [tool("done")] })).toBe("Thinking");
   });
   it("fmtSec", () => { expect(fmtSec(7)).toBe("7초"); expect(fmtSec(72)).toBe("1분 12초"); expect(fmtSec(60)).toBe("1분 0초"); });
 });
