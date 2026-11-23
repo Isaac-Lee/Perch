@@ -477,6 +477,11 @@ export function submitFailure(receipt: unknown): string | null {
   return `메시지가 접수되지 않았습니다 (${r.status}${typeof r.outcome === "string" ? `: ${r.outcome}` : ""})`;
 }
 export const WATCHDOG_MS = 45_000;
+/** Calls `f` until it stops answering `true` (still running), at most `tries` times, `ms` apart. */
+export async function whileRunning(f: () => unknown, tries = 5, ms = 300): Promise<void> {
+  for (let i = 0; i < tries && (await f()) === true; i++) if (i < tries - 1) await new Promise((r) => setTimeout(r, ms));
+}
+
 /** Running, connected, and neither a gateway frame nor a resync for 45 s. */
 export const watchdogDue = (now: number, lastFrame: number, lastResync: number, running: boolean, conn: ChatState["conn"]) =>
   running && conn === "ready" && now - lastFrame >= WATCHDOG_MS && now - lastResync >= WATCHDOG_MS;
@@ -537,7 +542,9 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
           lastFrame.current = Date.now();
           dispatch({ t: "event", ev, at: lastFrame.current });
           if (ev.type === "message.start") turnStarts.current++;
-          if (ev.type === "message.complete") void resyncRef.current(true); // adopt row ids once the turn is saved (a queued next turn keeps running: resync leaves it)
+          // adopt row ids once the turn is saved (a queued next turn keeps running: resync leaves it). The gateway emits
+          // message.complete before it clears `running`, so a resync that still sees it running asks again shortly.
+          if (ev.type === "message.complete") void whileRunning(() => resyncRef.current(true));
           if (ev.type === "session.info") abandonUnknown(ev.payload?.pending, ev.session_id ?? stateRef.current.sessionId);
           if (ev.type === "session.replay_gap" && stateRef.current.sessionId) // events were lost: re-read the whole session
             rpc.request<SessionSnapshot>("session.resume", { session_id: stateRef.current.sessionId, display_projection: true }).then((snap) => { if (!dead) { dispatch({ t: "snapshot", snap, at: Date.now() }); abandonUnknown((snap as any).pending, snap.session_id); } }, console.error);
