@@ -80,6 +80,10 @@ describe("chatReducer", () => {
     expect(transcriptToItems([{ role: "user", text: "see\n\n@image:/x.png" }])[0]).toMatchObject({ text: "see\n\n@image:/x.png" }); // raw rows: user text untouched
     expect(items[0]).toMatchObject({ text: "look", images: ["C:/a/b.png", "C:/a b/c.jpg"] });
     expect(items[1]).not.toHaveProperty("images");
+    // a text-only stored row keeps the model-facing hints; they are images, not the user's words
+    const hint = transcriptToItems([{ role: "user", row_id: 3, text: "F: color?\n\n[Image attached at: /Users/u/.hermes/cache/a b.png]\n[screenshot]" }], true);
+    expect(hint[0]).toMatchObject({ text: "F: color?", images: ["/Users/u/.hermes/cache/a b.png"] });
+    expect(transcriptToItems([{ role: "user", row_id: 4, text: "just [screenshot]" }], true)[0]).toMatchObject({ text: "just [screenshot]" });
   });
 
   it("transcriptToItems drops system/empty rows and keeps order", () => {

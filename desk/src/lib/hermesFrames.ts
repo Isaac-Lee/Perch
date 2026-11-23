@@ -22,16 +22,20 @@ export function stripImageNotes(text: string): string {
   return t.trim() ? t : "[이미지]";
 }
 
-/** Trailing `@image:<path>` lines Hermes' display projection appends to a user row: the caption and the local paths. */
+/** Trailing image lines of a user row: the caption and the local paths. Lines are `@image:<path>` from Hermes' display
+ *  projection, or, in a row the projection leaves alone (stored text-only), `[Image attached at: <path>]` hints and
+ *  `[screenshot]` placeholders (agent/image_routing.py). */
 export function splitImageRefs(text: string): { text: string; images: string[] } {
   const lines = text.split("\n"), images: string[] = [];
-  while (lines.length) {
-    const m = /^@image:(`[^`]+`|"[^"]+"|'[^']+'|\S+)$/.exec(lines[lines.length - 1]);
-    if (!m) break;
-    images.unshift(/^[`"']/.test(m[1]) ? m[1].slice(1, -1) : m[1]);
-    lines.pop();
+  let k = lines.length;
+  while (k) {
+    const l = lines[k - 1].trim();
+    const m = /^@image:(`[^`]+`|"[^"]+"|'[^']+'|\S+)$/.exec(l) ?? /^\[Image attached at: (.+)\]$/.exec(l);
+    if (m) images.unshift(/^[`"']/.test(m[1]) && m[1].length > 1 && m[1].at(-1) === m[1][0] ? m[1].slice(1, -1) : m[1]);
+    else if (l !== "[screenshot]" && l !== "") break;
+    k--;
   }
-  return images.length ? { text: lines.join("\n").trimEnd(), images } : { text, images };
+  return images.length ? { text: lines.slice(0, k).join("\n").trimEnd(), images } : { text, images };
 }
 
 /** What to show for a user row, or null to hide it. */
