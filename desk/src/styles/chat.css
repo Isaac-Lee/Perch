@@ -4,6 +4,16 @@
 .chat-empty, .chat-status { color: var(--text-3); text-align: center; padding: 24px 0; font-size: 13px; }
 .chat-user { display: flex; justify-content: flex-end; }
 .chat-bubble { max-width: 85%; padding: 8px 12px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px 12px 2px 12px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; }
+.chat-bubble-wrap { position: relative; max-width: 85%; min-width: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.chat-bubble-wrap > .chat-bubble { max-width: 100%; }
+.chat-acts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 2px; opacity: 0; transition: opacity 0.12s; }
+.chat-bubble-wrap:hover .chat-acts, .chat-bubble-wrap:focus-within .chat-acts { opacity: 1; }
+.chat-act { padding: 0 6px; border: 0; border-radius: 4px; background: transparent; color: var(--text-3); font-size: 11.5px; line-height: 20px; cursor: pointer; }
+.chat-act:hover:not(:disabled) { background: var(--hover-strong); color: var(--text); }
+.chat-act:disabled { opacity: 0.45; cursor: default; }
+.chat-edit { width: 100%; display: flex; flex-direction: column; gap: 6px; }
+.chat-edit-text { width: 100%; box-sizing: border-box; resize: vertical; padding: 8px 12px; background: var(--surface-2); color: var(--text); border: 1px solid var(--line); border-radius: 12px 12px 2px 12px; font: inherit; line-height: 1.55; }
+.chat-act-row, .chat-act-confirm { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
 .chat-assistant { line-height: 1.65; overflow-wrap: anywhere; }
 .chat-live { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; line-height: 20px; }
 .chat-live-label { min-width: 0; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

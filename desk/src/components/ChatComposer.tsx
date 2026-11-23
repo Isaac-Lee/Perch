@@ -8,11 +8,13 @@ type Providers = { provider: string; providerName: string; models: string[] }[];
 type SlashItem = { text: string; display?: string; meta?: string; kind?: string | null };
 type SlashResult = { items: SlashItem[]; replaceFrom: number };
 
-export default function ChatComposer({ running, disabled, focused, model, effort, draft, history, onSend, onStop, onAttach, onListModels, onSetModel, onSetEffort, onCompleteSlash }: {
+export default function ChatComposer({ running, disabled, focused, model, effort, draft, onDraftReplaced, history, onSend, onStop, onAttach, onListModels, onSetModel, onSetEffort, onCompleteSlash }: {
   model?: string;
   effort?: string;
   /** text handed back by a prefill directive; applied whenever `n` changes */
   draft?: { text: string; n: number };
+  /** a draft arrived over unsent text: the text it replaced */
+  onDraftReplaced?: (old: string) => void;
   /** earlier prompts, newest first */
   history: string[];
   running: boolean;
@@ -94,7 +96,7 @@ export default function ChatComposer({ running, disabled, focused, model, effort
     return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", esc); };
   }, [menu]);
   useEffect(() => { if ((running || disabled) && menu !== "closed") setMenu("closed"); }, [running, disabled, menu]);
-  useEffect(() => { if (draft?.n) { hist.current = { index: -1, saved: "" }; setHistIdx(-1); setText(draft.text); ref.current?.focus(); } }, [draft?.n]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (draft?.n) { if (text.trim() && text !== draft.text) onDraftReplaced?.(text); hist.current = { index: -1, saved: "" }; setHistIdx(-1); setText(draft.text); ref.current?.focus(); } }, [draft?.n]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Slash popup: only for a single line starting with "/" and the caret at its end; debounced, stale answers dropped.
   useEffect(() => {
