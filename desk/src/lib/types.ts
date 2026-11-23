@@ -6,7 +6,7 @@ export interface Pending { kind: "approval" | "question"; id: string; text: stri
 export interface Usage { model: string; input: number; output: number; cacheRead: number; cacheWrite: number; reasoning: number; apiCalls: number; costUsd: number | null; startedAt: number }
 export interface Session {
   agent: AgentKind; sessionId: string; cwd: string; repoRoot: string | null; branch: string | null;
-  state: SessionStateName; since: number; turnStart: number | null; lastTurn?: number | null; steps: number;
+  state: SessionStateName; since: number; turnStart: number | null; lastTurn?: number | null; /** seconds of all finished turns (hook-tracked) */ busyTotal?: number; steps: number;
   tool: string; toolDetail: string; prompt: string; title?: string; pending: Pending | null;
   /** the last reply ended with a question (heuristic); `ask` is its one-line preview */
   asks?: boolean; ask?: string;

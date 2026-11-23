@@ -170,12 +170,23 @@ fn force_idle_only_clears_working_files() {
     assert!(perch_hook::force_idle(&dir, "local-a", 20));
     let st = read();
     assert_eq!((st["state"].as_str(), st["turnStart"].is_null(), st["tool"].as_str(), st["since"].as_u64()), (Some("idle"), true, Some(""), Some(20)));
+    assert_eq!(st["busyTotal"], 10);
     assert!(!perch_hook::force_idle(&dir, "local-a", 30), "idle is a no-op");
     assert_eq!(read()["since"], 20);
     go(ev("on_session_finalize", json!({})), 31);
     assert!(!perch_hook::force_idle(&dir, "local-a", 32), "closed is a no-op");
     assert_eq!(read()["state"], "closed");
     assert!(!perch_hook::force_idle(&dir, "../x", 33));
+}
+
+#[test]
+fn busy_total_accumulates_finished_turns() {
+    let mut st = step(json!({}), ev("pre_llm_call", json!({"user_message": "x"})), 10);
+    st = step(st, ev("on_session_end", json!({})), 13);
+    assert_eq!(st["busyTotal"], 3);
+    st = step(st, ev("pre_llm_call", json!({"user_message": "y"})), 20);
+    st = step(st, ev("on_session_end", json!({})), 25);
+    assert_eq!(st["busyTotal"], 8);
 }
 
 #[test]

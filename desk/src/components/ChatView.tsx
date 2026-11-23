@@ -5,13 +5,14 @@ import { onChatApprove, onChatStop } from "../lib/backend";
 import ChatComposer from "./ChatComposer";
 import ChatPrompt from "./ChatPrompt";
 import ChatMessage from "./ChatMessage";
+import type { Session } from "../lib/types";
 import ChatLive from "./ChatLive";
 import ChatQueue from "./ChatQueue";
 import { setLiveSubagents } from "../lib/liveSubagents";
 import { setBackgroundTasks } from "../lib/liveBackground";
 import { setPaneGraph } from "../lib/paneGraph";
 
-export default function ChatView({ paneId, cwd, sessionId, focused }: { paneId: string; cwd: string; sessionId: string | null; focused: boolean }) {
+export default function ChatView({ paneId, cwd, sessionId, focused, session }: { paneId: string; cwd: string; sessionId: string | null; focused: boolean; session?: Session }) {
   // Session id at first render only (equal to the pane id means none yet); a later paneSetSession must not reconnect.
   const [resumeId] = useState(() => (sessionId && sessionId !== paneId ? sessionId : null));
   const { state, retrying, draft, send, stop, reconnect, attachImage, listModels, setModel, setEffort, completeSlash, sendNow, answerApproval, answerClarify } = useChatSession(paneId, cwd, resumeId);
@@ -59,7 +60,7 @@ export default function ChatView({ paneId, cwd, sessionId, focused }: { paneId: 
         <div className="chat-col">
           {state.items.length === 0 && state.conn === "ready" && <div className="chat-empty">메시지를 입력해 대화를 시작하세요</div>}
           {groupItems(state.items).map((i) => <ChatMessage key={i.id} item={i} subagents={state.subagents} />)}
-          {state.running && <ChatLive state={state} />}
+          {state.running && <ChatLive state={state} session={session} />}
           {state.prompts.map((p) => <ChatPrompt key={p.promptId} prompt={p} onApproval={(c) => answerApproval(p.promptId, c)} onClarify={(a) => answerClarify(p.promptId, a)} />)}
           {down && retrying && <div className="chat-status">다시 연결하는 중…</div>}
           {down && !retrying && <div className="chat-status">{state.error ?? "연결이 끊어졌습니다"} <button className="btn" onClick={reconnect}>다시 연결</button></div>}
