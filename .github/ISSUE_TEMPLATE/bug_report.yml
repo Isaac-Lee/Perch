@@ -1,0 +1,59 @@
+name: 버그 제보
+description: Perch가 예상과 다르게 동작할 때
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: 무슨 일이 있었나
+      description: 본 것과 기대한 것을 적는다.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 재현 방법
+      placeholder: |
+        1. Hermes 채팅 칸을 연다
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Perch 버전
+      placeholder: 0.10.2
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: OS
+      options:
+        - macOS (Apple Silicon)
+        - Windows 10
+        - Windows 11
+        - 기타
+    validations:
+      required: true
+  - type: dropdown
+    id: agent
+    attributes:
+      label: 에이전트
+      options:
+        - Hermes (채팅 보기)
+        - Hermes (TUI)
+        - OpenCode
+        - 셸
+        - 상관없음
+  - type: input
+    id: agent-version
+    attributes:
+      label: 에이전트 버전
+      description: 예를 들어 `hermes --version`의 출력
+  - type: textarea
+    id: extra
+    attributes:
+      label: 스크린샷이나 로그
+      description: 경로, 토큰, 개인 정보는 지우고 올린다.
