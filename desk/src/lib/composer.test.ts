@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyCompletion, BLOCKED_SLASH, enterAction, historyStep, promptHistory, imageExt, isSlashCommand, modelLabel, parseModelArg, parseSlash, toBase64 } from "./composer";
+import { applyCompletion, BLOCKED_SLASH, enterAction, historyStep, promptHistory, imageExt, imageMime, isSlashCommand, modelLabel, parseModelArg, parseSlash, toBase64 } from "./composer";
 
 describe("composer", () => {
   it("enter rules incl. Korean IME", () => {
@@ -9,6 +9,12 @@ describe("composer", () => {
     expect(k({ isComposing: true })).toBe("none");
     expect(k({ keyCode: 229 })).toBe("none");
     expect(k({ key: "a", keyCode: 65 })).toBe("none");
+  });
+
+  it("imageMime is the inverse of imageExt", () => {
+    expect(imageMime("C:\\x\\a.JPG")).toBe("image/jpeg");
+    expect(imageMime("/t/a.webp")).toBe("image/webp");
+    expect(imageMime("/t/a")).toBe("image/png");
   });
 
   it("imageExt allow-list and toBase64", () => {

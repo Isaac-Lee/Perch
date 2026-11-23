@@ -43,7 +43,8 @@ pub fn run() {
       hermes::hermes_status,
       hermes::hermes_connect,
       hermes::hermes_disconnect,
-      hermes::hermes_gateway_stop
+      hermes::hermes_gateway_stop,
+      hermes::read_image
     ])
     .on_window_event(|window, event| {
       if let tauri::WindowEvent::Destroyed = event {

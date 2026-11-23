@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import turn from "./__fixtures__/turn.jsonl?raw";
 import background from "./__fixtures__/background.jsonl?raw";
 import delegate from "./__fixtures__/delegate.jsonl?raw";
-import { STUCK_MSG, pendingToQueued, WATCHDOG_MS, activityLabel, canSend, submitFailure, watchdogDue, chatReducer, fmtSec, groupItems, staleRetry, initialChat, shouldAutoReconnect, toDirective, toModelProviders, transcriptToItems, type ChatAction } from "./chatSession";
+import { RpcError } from "./gateway";
+import { STUCK_MSG, annotateRows, forThisPane, pendingToQueued, WATCHDOG_MS, activityLabel, canSend, submitFailure, watchdogDue, chatReducer, forkBoundary, rewindFailure, rewindText, userActions, fmtSec, groupItems, staleRetry, initialChat, shouldAutoReconnect, toDirective, toModelProviders, transcriptToItems, type ChatAction } from "./chatSession";
 
 const ev = (type: string, payload: object = {}): ChatAction => ({ t: "event", ev: { type, payload } });
 
@@ -69,6 +70,16 @@ describe("chatReducer", () => {
     expect(items.map((i) => i.kind)).toEqual(["user", "tool", "assistant", "tool"]);
     expect(items[1]).toMatchObject({ name: "terminal", context: "echo hello", result: '{"output":"hello"}', status: "done" });
     expect(items[3]).toMatchObject({ name: "t", context: "" });
+  });
+
+  it("transcriptToItems parses @image refs of a display row into images", () => {
+    const items = transcriptToItems([
+      { role: "user", row_id: 1, text: "look\n\n@image:C:/a/b.png\n@image:`C:/a b/c.jpg`" },
+      { role: "user", row_id: 2, text: "plain" },
+    ], true);
+    expect(transcriptToItems([{ role: "user", text: "see\n\n@image:/x.png" }])[0]).toMatchObject({ text: "see\n\n@image:/x.png" }); // raw rows: user text untouched
+    expect(items[0]).toMatchObject({ text: "look", images: ["C:/a/b.png", "C:/a b/c.jpg"] });
+    expect(items[1]).not.toHaveProperty("images");
   });
 
   it("transcriptToItems drops system/empty rows and keeps order", () => {
@@ -719,5 +730,115 @@ describe("resume projection, local errors, snapshot carry-over", () => {
     s = chatReducer(s, { t: "snapshot", snap: { session_id: "a", messages: [] } });
     expect(s.items).toEqual([expect.objectContaining({ kind: "background", taskId: "b1", status: "running" })]);
     expect(s.subagents.c1.status).toBe("failed");
+  });
+});
+
+describe("row ids", () => {
+  const rows = [
+    { role: "user", text: "a", row_id: 1 }, { role: "assistant", text: "A", row_id: 2 },
+    { role: "user", text: "b", row_id: 4 }, { role: "user", text: "", row_id: 5 },
+  ];
+  it("user items carry their row id and the nearest earlier row id", () => {
+    const u = transcriptToItems(rows).filter((i) => i.kind === "user");
+    expect(u).toMatchObject([{ text: "a", rowId: 1 }, { text: "b", rowId: 4, prevRowId: 2 }]);
+    expect((u[0] as any).prevRowId).toBeUndefined();
+  });
+  it("forkBoundary: through the previous row, or fresh for the first message", () => {
+    const u = transcriptToItems(rows).filter((i) => i.kind === "user");
+    expect(forkBoundary(u[1])).toEqual({ through: 2 });
+    expect(forkBoundary(u[0])).toEqual({ fresh: true });
+  });
+  it("snapshot sets rowIds only when display_messages came", () => {
+    expect(chatReducer(initialChat, { t: "snapshot", snap: { session_id: "s", display_messages: rows } }).rowIds).toBe(true);
+    expect(chatReducer(initialChat, { t: "snapshot", snap: { session_id: "s", messages: rows } }).rowIds).toBe(false);
+  });
+  it("userActions: hidden without row ids, disabled while busy or unsaved", () => {
+    const item = { kind: "user", id: "u", text: "x", rowId: 3 } as const;
+    expect(userActions({ running: false, queued: [], rowIds: false }, item).show).toBe(false);
+    expect(userActions({ running: true, queued: [], rowIds: true }, item)).toEqual({ show: true, enabled: false, reason: "작업 중에는 쓸 수 없습니다" });
+    expect(userActions({ running: false, queued: [{} as any], rowIds: true }, item).reason).toBe("작업 중에는 쓸 수 없습니다");
+    expect(userActions({ running: false, queued: [], rowIds: true }, { ...item, rowId: undefined })).toEqual({ show: true, enabled: false, reason: "저장되는 중" });
+    expect(userActions({ running: false, queued: [], rowIds: true }, item)).toEqual({ show: true, enabled: true });
+    expect(userActions({ running: false, queued: [], rowIds: true }, { kind: "system", id: "s", text: "x" }).show).toBe(false);
+  });
+});
+
+describe("snapshot keepLocal", () => {
+  const snap = { session_id: "s", display_messages: [{ role: "user", text: "a", row_id: 1 }] };
+  let st = chatReducer(initialChat, { t: "snapshot", snap });
+  st = chatReducer(chatReducer(st, { t: "localError", text: "boom" }), { t: "system", text: "note" });
+  it("keeps local error/system rows after the transcript", () => {
+    const n = chatReducer(st, { t: "snapshot", snap, keepLocal: true });
+    expect(n.items.map((i) => i.kind)).toEqual(["user", "error", "system"]);
+  });
+  it("drops them without keepLocal", () => {
+    expect(chatReducer(st, { t: "snapshot", snap }).items.map((i) => i.kind)).toEqual(["user"]);
+  });
+});
+
+describe("post-turn resync annotates row ids", () => {
+  const rows = [
+    { role: "user", text: "a", row_id: 1 }, { role: "assistant", text: "A", row_id: 2 },
+    { role: "user", text: "b", row_id: 3 }, { role: "tool", content: "out", tool_name: "x", row_id: 4 }, { role: "assistant", text: "B", row_id: 5 },
+  ];
+  const base = chatReducer(initialChat, { t: "snapshot", snap: { session_id: "s", revision: 1, display_messages: rows.slice(0, 2) } });
+  let live = chatReducer(base, { t: "userSent", id: "u2", text: "b", submissionId: "q", at: 1 });
+  live = chatReducer(live, { t: "event", ev: { type: "tool.start", payload: { tool_id: "t1", name: "x", inline_diff: "+1" } } });
+  live = chatReducer(live, { t: "localError", text: "oops" });
+  live = chatReducer(live, { t: "event", ev: { type: "message.complete", payload: { text: "B" } } });
+  it("match: items identical except the new row ids; counters from the snapshot", () => {
+    const n = chatReducer(live, { t: "snapshot", snap: { session_id: "s", revision: 7, execution_generation: 3, display_messages: rows }, keepLocal: true });
+    expect(n.items.map((i) => i.id)).toEqual(live.items.map((i) => i.id));
+    n.items.forEach((i, k) => { if (k !== 2) expect(i).toBe(live.items[k]); });
+    expect(n.items[2]).toEqual({ ...live.items[2], rowId: 3, prevRowId: 2 });
+    expect(n.revision).toBe(7);
+    expect(n.executionGeneration).toBe(3);
+    expect(n.rowIds).toBe(true);
+  });
+  it("mismatch (text differs) falls back to the replace", () => {
+    const other = rows.map((r) => (r.row_id === 3 ? { ...r, text: "c" } : r));
+    const n = chatReducer(live, { t: "snapshot", snap: { session_id: "s", display_messages: other }, keepLocal: true });
+    expect(n.items.map((i) => i.kind)).toEqual(["user", "assistant", "user", "tool", "assistant", "error"]);
+    expect(n.items[2]).toMatchObject({ text: "c", rowId: 3 });
+  });
+  it("mismatch (user count differs) returns null", () => {
+    expect(annotateRows(live.items, rows.slice(0, 2))).toBeNull();
+    expect(annotateRows(live.items, undefined)).toBeNull();
+  });
+  it("fallback re-keys kept local rows so a later local row does not collide", () => {
+    let n = chatReducer(live, { t: "snapshot", snap: { session_id: "s", display_messages: [{ role: "user", text: "z", row_id: 9 }] }, keepLocal: true });
+    n = chatReducer(n, { t: "localError", text: "again" });
+    const ids = n.items.map((i) => i.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+describe("forThisPane", () => {
+  it("drops frames of another session, keeps own and unnamed ones", () => {
+    expect(forThisPane("child", ["parent", "parent"])).toBe(false);
+    expect(forThisPane("parent", [null, "parent"])).toBe(true);
+    expect(forThisPane(undefined, ["parent"])).toBe(true);
+    expect(forThisPane("", ["parent"])).toBe(true);
+    expect(forThisPane("x", [null, null])).toBe(true); // nothing known yet
+  });
+});
+
+describe("rewind helpers", () => {
+  it("rewindText reads string and array content", () => {
+    expect(rewindText("hi")).toBe("hi");
+    expect(rewindText([{ type: "text", text: "a" }, { type: "image_url" }, { type: "text", text: "b" }])).toBe("a\nb");
+    expect(rewindText(undefined)).toBe("");
+  });
+  it("rewindFailure reads the gateway's detail", () => {
+    const stale = "대화가 바뀌어 되감지 못했습니다";
+    const refusal = (reason: string, detail?: string) => new RpcError(reason, 4001, { reason, field: "target_message_id", ...(detail ? { detail } : {}) });
+    expect(rewindFailure(refusal("revision_conflict"))).toBe(stale);
+    expect(rewindFailure(refusal("stale_generation"))).toBe(stale);
+    expect(rewindFailure(refusal("invalid_params", "target user message is no longer in session history"))).toBe(stale);
+    expect(rewindFailure(refusal("invalid_params", "compacted: target user message was summarized when the session was compressed")))
+      .toBe("압축된 메시지라 되감을 수 없습니다: compacted: target user message was summarized when the session was compressed");
+    expect(rewindFailure(new RpcError("session_busy", 4001, { reason: "session_busy" }))).toBe("작업 중에는 쓸 수 없습니다");
+    expect(rewindFailure(new RpcError("runtime_draining", 4001, { reason: "runtime_draining" }))).toBe("runtime_draining");
+    expect(rewindFailure(new Error("연결되지 않았습니다"))).toBe("연결되지 않았습니다");
   });
 });

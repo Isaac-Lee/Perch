@@ -298,6 +298,37 @@ pub async fn hermes_disconnect() -> Result<Status, String> {
     Ok(status())
 }
 
+/// Canonical path of an image file under `home`, or an error: only image extensions, only inside the Hermes home.
+pub fn image_under(path: &Path, home: &Path) -> Result<PathBuf, String> {
+    let ext = path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).unwrap_or_default();
+    if !["png", "jpg", "jpeg", "gif", "webp"].contains(&ext.as_str()) {
+        return Err("이미지 파일이 아닙니다".into());
+    }
+    let p = path.canonicalize().map_err(|e| e.to_string())?;
+    let h = home.canonicalize().map_err(|e| e.to_string())?;
+    if !p.starts_with(&h) || !p.is_file() {
+        return Err("허용되지 않는 경로입니다".into());
+    }
+    Ok(p)
+}
+
+const MAX_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
+
+/// Bytes of an image under `home`, at most 20 MB (checked before reading).
+pub fn read_image_in(path: &Path, home: &Path) -> Result<Vec<u8>, String> {
+    let p = image_under(path, home)?;
+    if std::fs::metadata(&p).map_err(|e| e.to_string())?.len() > MAX_IMAGE_BYTES {
+        return Err("이미지가 너무 큽니다 (20MB 제한)".into());
+    }
+    std::fs::read(p).map_err(|e| e.to_string())
+}
+
+/// Raw bytes of an earlier attached image (kept when a message is edited, then re-uploaded to the gateway).
+#[tauri::command]
+pub async fn read_image(path: String) -> Result<tauri::ipc::Response, String> {
+    read_image_in(Path::new(&path), &home()).map(tauri::ipc::Response::new)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -465,5 +496,31 @@ mod tests {
         assert_eq!(home_from(Some("X".into()), true, None, None), PathBuf::from("X"));
         assert_eq!(home_from(None, true, Some("L".into()), Some("U".into())), PathBuf::from("L").join("hermes"));
         assert_eq!(home_from(None, false, None, Some("U".into())), PathBuf::from("U").join(".hermes"));
+    }
+
+    #[test]
+    fn image_under_guards_extension_and_home() {
+        let home = tempfile::tempdir().unwrap();
+        let out = tempfile::tempdir().unwrap();
+        let ok = home.path().join("a.PNG");
+        std::fs::write(&ok, b"x").unwrap();
+        std::fs::write(home.path().join("a.txt"), b"x").unwrap();
+        std::fs::write(out.path().join("b.png"), b"x").unwrap();
+        assert!(image_under(&ok, home.path()).is_ok());
+        assert!(image_under(&home.path().join("a.txt"), home.path()).is_err());
+        assert!(image_under(&out.path().join("b.png"), home.path()).is_err());
+        assert!(image_under(&home.path().join("missing.png"), home.path()).is_err());
+        assert!(image_under(&home.path().join("../x.png"), home.path()).is_err());
+    }
+
+    #[test]
+    fn read_image_refuses_over_20mb() {
+        let home = tempfile::tempdir().unwrap();
+        let big = home.path().join("big.png");
+        std::fs::File::create(&big).unwrap().set_len(MAX_IMAGE_BYTES + 1).unwrap();
+        let small = home.path().join("s.png");
+        std::fs::write(&small, b"abc").unwrap();
+        assert!(read_image_in(&big, home.path()).is_err());
+        assert_eq!(read_image_in(&small, home.path()).unwrap(), b"abc");
     }
 }

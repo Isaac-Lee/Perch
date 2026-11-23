@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { WINDOW, deskSnapshot, emitChatStop, onFocusPane, onPanes, onSessions, paneClose, paneCreate, paneFocus, paneWrite, sessionApprove, sessionForceIdle, sessionsSnapshot, windowFocus, type PaneInfo, type SessionInfo } from "./backend";
 import type { AgentKind, Pane, PaneView, Session } from "./types";
+import { FOCUS_PANE_EVENT } from "./forkPrefill";
 import { folderName } from "../mock/sessions";
 
 const sec = () => Math.floor(Date.now() / 1000);
@@ -55,6 +56,11 @@ export function useTauriDesk(hermesView: PaneView = "chat") {
     return [...linked, ...plain];
   }, [infos, sInfos]);
 
+  useEffect(() => {
+    const h = (e: Event) => setFocused((e as CustomEvent<string>).detail);
+    window.addEventListener(FOCUS_PANE_EVENT, h);
+    return () => window.removeEventListener(FOCUS_PANE_EVENT, h);
+  }, []);
   useEffect(() => { setFocused((f) => (f && !infos.some((i) => i.id === f) ? null : f)); }, [infos]);
 
   const addPane = useCallback((agent: AgentKind, cwd: string, view?: PaneView) => { paneCreate(agent, cwd, undefined, agent === "hermes" ? view : undefined).then(setFocused, console.error); }, []);

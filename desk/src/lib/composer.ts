@@ -6,6 +6,11 @@ export function enterAction(e: { key: string; shiftKey: boolean; isComposing: bo
 
 const EXT: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" };
 export const imageExt = (mime: string): string | null => EXT[mime] ?? null;
+/** Inverse of imageExt, from a file path; unknown extensions count as png. */
+export const imageMime = (path: string): string => {
+  const e = /\.([A-Za-z0-9]+)$/.exec(path)?.[1].toLowerCase();
+  return Object.keys(EXT).find((m) => EXT[m] === (e === "jpeg" ? "jpg" : e)) ?? "image/png";
+};
 
 // Chunked so a large image does not overflow the call stack.
 export function toBase64(bytes: Uint8Array): string {

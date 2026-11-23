@@ -1,10 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { promptHistory } from "../lib/composer";
-import { groupItems, useChatSession } from "../lib/chatSession";
+import { groupItems, useChatSession, userActions } from "../lib/chatSession";
 import { onChatApprove, onChatStop } from "../lib/backend";
 import ChatComposer from "./ChatComposer";
 import ChatPrompt from "./ChatPrompt";
-import ChatMessage from "./ChatMessage";
+import ChatMessage, { type ChatActions } from "./ChatMessage";
 import type { Session } from "../lib/types";
 import ChatLive from "./ChatLive";
 import ChatQueue from "./ChatQueue";
@@ -15,8 +15,24 @@ import { setPaneGraph } from "../lib/paneGraph";
 export default function ChatView({ paneId, cwd, sessionId, focused, session }: { paneId: string; cwd: string; sessionId: string | null; focused: boolean; session?: Session }) {
   // Session id at first render only (equal to the pane id means none yet); a later paneSetSession must not reconnect.
   const [resumeId] = useState(() => (sessionId && sessionId !== paneId ? sessionId : null));
-  const { state, retrying, draft, send, stop, reconnect, attachImage, listModels, setModel, setEffort, completeSlash, sendNow, answerApproval, answerClarify } = useChatSession(paneId, cwd, resumeId);
-  const history = useMemo(() => promptHistory(state.items), [state.items]);
+  const { state, retrying, draft, send, stop, reconnect, attachImage, listModels, setModel, setEffort, completeSlash, sendNow, answerApproval, answerClarify, rewindTo, overwrite, fork } = useChatSession(paneId, cwd, resumeId);
+  const [extra, setExtra] = useState<string[]>([]); // drafts a rewind replaced, newest first, recallable with up-arrow
+  const history = useMemo(() => [...extra, ...promptHistory(state.items)], [extra, state.items]);
+  // Per-bubble actions for user items. The hook's actions read live state through its own ref, so a closure from an earlier render is safe.
+  const actions = useMemo(() => {
+    const m = new Map<string, ChatActions>();
+    for (const item of state.items) {
+      if (item.kind !== "user") continue;
+      m.set(item.id, {
+        state: userActions(state, item),
+        onRewind: () => { if (item.rowId !== undefined) void rewindTo(item.rowId, item.text); },
+        onOverwrite: (t, a) => { if (item.rowId !== undefined) void overwrite(item.rowId, t, a); },
+        onFork: (t, now, a) => { void fork(item, t, now, a); },
+        onAttach: attachImage,
+      });
+    }
+    return m;
+  }, [state.items, state.running, state.queued, state.rowIds]); // eslint-disable-line react-hooks/exhaustive-deps
   const scrollRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const toBottom = () => { const el = scrollRef.current; if (el) el.scrollTop = el.scrollHeight; };
@@ -59,7 +75,8 @@ export default function ChatView({ paneId, cwd, sessionId, focused, session }: {
       <div className="chat-scroll" ref={scrollRef} onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight <= 40; }}>
         <div className="chat-col">
           {state.items.length === 0 && state.conn === "ready" && <div className="chat-empty">메시지를 입력해 대화를 시작하세요</div>}
-          {groupItems(state.items).map((i) => <ChatMessage key={i.id} item={i} subagents={state.subagents} />)}
+          {/* user rows keyed by their Hermes row: a re-indexed transcript (or a newly saved row) remounts the bubble, so an open editor never binds to another message */}
+          {groupItems(state.items).map((i) => <ChatMessage key={i.kind === "user" && i.rowId !== undefined ? `row${i.rowId}` : i.id} item={i} subagents={state.subagents} actions={actions.get(i.id)} />)}
           {state.running && <ChatLive state={state} session={session} />}
           {state.prompts.map((p) => <ChatPrompt key={p.promptId} prompt={p} onApproval={(c) => answerApproval(p.promptId, c)} onClarify={(a) => answerClarify(p.promptId, a)} />)}
           {down && retrying && <div className="chat-status">다시 연결하는 중…</div>}
@@ -68,7 +85,7 @@ export default function ChatView({ paneId, cwd, sessionId, focused, session }: {
         </div>
       </div>
       {state.queued.length > 0 && <ChatQueue queued={state.queued} onSendNow={sendNow} />}
-      <ChatComposer model={state.model ?? undefined} effort={state.effort ?? undefined} draft={draft} history={history} running={state.running} disabled={state.conn !== "ready"} focused={focused} onSend={(t, a) => { stick.current = true; send(t, a); }} onStop={stop} onAttach={attachImage} onListModels={listModels} onSetModel={setModel} onSetEffort={setEffort} onCompleteSlash={completeSlash} />
+      <ChatComposer model={state.model ?? undefined} effort={state.effort ?? undefined} draft={draft} onDraftReplaced={(old) => setExtra((e) => [old, ...e])} history={history} running={state.running} disabled={state.conn !== "ready"} focused={focused} onSend={(t, a) => { stick.current = true; send(t, a); }} onStop={stop} onAttach={attachImage} onListModels={listModels} onSetModel={setModel} onSetEffort={setEffort} onCompleteSlash={completeSlash} />
     </div>
   );
 }
