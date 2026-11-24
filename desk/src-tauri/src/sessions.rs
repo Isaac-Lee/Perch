@@ -104,14 +104,6 @@ impl Sessions {
     }
 }
 
-pub fn perch_home() -> PathBuf {
-    if let Some(h) = std::env::var_os("PERCH_HOME").filter(|h| !h.is_empty()) {
-        return h.into();
-    }
-    let u = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")).unwrap_or_default();
-    PathBuf::from(u).join(".perch")
-}
-
 pub(crate) fn parse_state(v: &Value) -> Option<SessionInfo> {
     let s = |k: &str| v[k].as_str().unwrap_or("").to_string();
     let n = |k: &str| v[k].as_u64().unwrap_or(0);
@@ -437,10 +429,35 @@ fn now_ms() -> u64 {
     SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
 
+/// App start: removes state files of closed/idle sessions not seen for `max_age` seconds, then `.children`
+/// entries whose parent file is gone. Files that cannot be parsed are left alone. Usage history lives in state.db.
+pub fn prune_state(dir: &Path, now: u64, max_age: u64) {
+    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    for e in rd.flatten() {
+        let p = e.path();
+        if p.extension().is_none_or(|x| x != "json") || !p.is_file() {
+            continue;
+        }
+        let Some(v) = std::fs::read_to_string(&p).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()) else { continue };
+        let seen = v["seen"].as_u64().unwrap_or(0);
+        if matches!(v["state"].as_str(), Some("closed" | "idle")) && seen > 0 && now.saturating_sub(seen) > max_age {
+            let _ = std::fs::remove_file(&p);
+        }
+    }
+    let Ok(rd) = std::fs::read_dir(dir.join(".children")) else { return };
+    for e in rd.flatten() {
+        let Ok(parent) = std::fs::read_to_string(e.path()) else { continue };
+        if !perch_hook::session_file(dir, parent.trim()).exists() {
+            let _ = std::fs::remove_file(e.path());
+        }
+    }
+}
+
 /// The only background thread: every 500ms it checks the status folder; it emits only on change.
 pub fn start(app: AppHandle) {
     std::thread::spawn(move || {
-        let mut poller = Poller::new(perch_home().join("sessions"), crate::hermes::home().join("state.db"));
+        prune_state(&perch_hook::home().join("sessions"), perch_hook::now(), 30 * 86400);
+        let mut poller = Poller::new(perch_hook::home().join("sessions"), crate::hermes::home().join("state.db"));
         loop {
             poller.scan(now_ms());
             let base = poller.snapshot();
@@ -508,7 +525,7 @@ pub async fn usage_history() -> Result<Vec<SessionInfo>, String> {
 pub async fn session_force_idle(session_id: String, delay_ms: Option<u64>) -> Result<bool, String> {
     tauri::async_runtime::spawn_blocking(move || {
         std::thread::sleep(Duration::from_millis(delay_ms.unwrap_or(1500)));
-        perch_hook::force_idle(&perch_home().join("sessions"), &session_id, perch_hook::now())
+        perch_hook::force_idle(&perch_hook::home().join("sessions"), &session_id, perch_hook::now())
     })
     .await
     .map_err(|e| e.to_string())
@@ -543,6 +560,23 @@ mod tests {
              VALUES (?1, 'T', '/w', '/r', 'main', 'm', 1700000000.5, 10, 20, 30, 40, 50, 6, 0.25)",
             [id],
         ).unwrap();
+    }
+
+    #[test]
+    fn prune_removes_only_old_finished() {
+        let t = tempfile::tempdir().unwrap();
+        let d = t.path();
+        let w = |n: &str, st: &str, seen: u64| std::fs::write(d.join(format!("hermes-{n}.json")), format!(r#"{{"sessionId":"{n}","state":"{st}","seen":{seen}}}"#)).unwrap();
+        let now = 100 * 86400;
+        w("old", "closed", 1000);
+        w("busy", "tool", 1000);
+        w("new", "closed", now - 86400);
+        std::fs::create_dir(d.join(".children")).unwrap();
+        std::fs::write(d.join(".children/orphan"), "old").unwrap();
+        std::fs::write(d.join(".children/kept"), "busy").unwrap();
+        prune_state(d, now, 30 * 86400);
+        assert!(!d.join("hermes-old.json").exists() && d.join("hermes-busy.json").exists() && d.join("hermes-new.json").exists());
+        assert!(!d.join(".children/orphan").exists() && d.join(".children/kept").exists());
     }
 
     #[test]
