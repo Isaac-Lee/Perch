@@ -1,0 +1,12 @@
+# 구현 서브에이전트 공통 규칙 (각 Sonnet 지시에서 이 파일을 읽게 한다)
+- You run in your own git worktree. First: `git fetch origin && git checkout -b <BRANCH> origin/main`.
+- Read each assigned issue with `gh issue view <n>`. Verify the problem against the code before fixing; if an issue turns out wrong, skip it and say why in the PR body and your report.
+- Read docs/HANDOFF.md section 4 and docs/VERSIONING.md for project rules. UI language: short labels/buttons English, explanatory sentences Korean; never write "pane" in UI text. Runtime must not add network access. The hook binary must always exit 0 and print nothing to stdout.
+- Other branches are being changed in parallel. Stay inside your listed files; if you must touch a shared file (Sidebar.tsx, SettingsMenu.tsx, uiSettings.ts, desk.rs, docs/HANDOFF.md, README.md), keep the hunk minimal and localized. No drive-by refactors or reformatting.
+- Smallest correct diff. Add one focused test for non-trivial logic (vitest next to the file, or Rust #[test]).
+- Checks (must pass, in desk/): `npm install` (worktree has no node_modules), `npm test`, `npm run lint` (0 errors), `npx tsc --noEmit -p .`. If you changed Rust: `export PATH="$HOME/.cargo/bin:$PATH"` then in desk/src-tauri `cargo check` and `cargo test` (and in desk/src-tauri/hook `cargo test` if hook changed). Do NOT run `npm run tauri build` or `tauri dev`.
+- If visible UI behavior changed, update README.md "기능" section accordingly.
+- Commit with conventional prefix (fix:/feat:/perf:/docs:/ci:), English message, ending with a blank line and `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
+- `git push -u origin <BRANCH>` then `gh pr create --base main --title "<title>" --body-file <file>`. Body follows .github/pull_request_template.md (Korean): 무엇을 바꿨나 (with one `Closes #n` line per fixed issue), 확인한 것 (the exact checks you ran and results), 체크리스트 (tick only what you actually verified). End the PR body with: `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
+- Never merge. Never touch main.
+- Final report: PR URL, issues fixed, issues skipped with reason, checks run with results, anything not verified (e.g. not tried in the running app).
