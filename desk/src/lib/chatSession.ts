@@ -410,9 +410,6 @@ export function activityLabel(s: Pick<ChatState, "items" | "prompts" | "status" 
   return last?.kind === "assistant" && last.streaming ? "Thinking · writing reply" : "Thinking";
 }
 
-/** 7초, 1분 12초 */
-export const fmtSec = (sec: number) => (sec >= 60 ? `${Math.floor(sec / 60)}분 ${sec % 60}초` : `${sec}초`);
-
 const closedMsg = "연결이 끊어졌습니다";
 
 /** One automatic reconnect per successful connection, and only once a session exists to resume. */

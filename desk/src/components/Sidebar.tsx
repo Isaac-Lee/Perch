@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUpDown, Check, ChevronDown, ChevronRight, PanelLeftClose, Plus, Search, X } from "lucide-react";
 import type { Group, Pane, Session } from "../lib/types";
 import { SESSION_SORTS, displayState, groupByStatus, nestBackground, groupSessions, groupSummary, isUnread, matchSession, moveInOrder, splitNeedsYou, waitingOnYou, type GroupBy, type SessionSort } from "../lib/groups";
@@ -7,6 +7,7 @@ import { openGraph } from "../lib/paneGraph";
 import { clampSidebarWidth, SIDEBAR_DEFAULT, MAX_ORDER, loadArchived, loadCollapsed, loadDismissed, saveDismissed, loadReadAt, saveReadAt, markRead, loadSessionOrder, loadSessionSort, loadGroupBy, saveGroupBy, saveArchived, saveCollapsed, saveSessionOrder, saveSessionSort } from "../lib/uiSettings";
 import { useScrollReveal } from "../lib/useScrollReveal";
 import { useRowDrag } from "../lib/useRowDrag";
+import { useDismiss } from "../lib/useDismiss";
 import { useLiveSubagents } from "../lib/liveSubagents";
 import { useBackgroundTasks } from "../lib/liveBackground";
 
@@ -70,19 +71,12 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
   const refocus = useRef<string | null>(null);
   const { drag: rowDrag, suppressClick, onPointerDown } = useRowDrag(!q && !byStatus, bodyRef, reorder);
   useEffect(() => { // React moves the row's DOM node on reorder, which drops focus
-    if (refocus.current) bodyRef.current?.querySelector<HTMLElement>(`[data-sid="${CSS.escape(refocus.current)}"]`)?.focus();
+    if (refocus.current) bodyRef.current?.querySelector<HTMLElement>(`[data-sid="${CSS.escape(refocus.current)}"] .row-prompt`)?.focus();
     refocus.current = null;
   });
   const [sortOpen, setSortOpen] = useState(false);
   const sortRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!sortOpen) return;
-    const h = (e: MouseEvent) => { if (!sortRef.current?.contains(e.target as Node)) setSortOpen(false); };
-    const k = (e: KeyboardEvent) => { if (e.key === "Escape") setSortOpen(false); };
-    document.addEventListener("mousedown", h);
-    document.addEventListener("keydown", k);
-    return () => { document.removeEventListener("mousedown", h); document.removeEventListener("keydown", k); };
-  }, [sortOpen]);
+  useDismiss(sortRef, sortOpen, useCallback(() => setSortOpen(false), []));
   const archivedList = useMemo(() => sessions.filter((s) => hiddenIn(archived, s) && (!q || matchSession(s, q))).sort((a, b) => b.seen - a.seen), [sessions, archived, q]);
   const [showArchived, setShowArchived] = useState(false);
   const [open, setOpen] = useState<Set<string>>(new Set());

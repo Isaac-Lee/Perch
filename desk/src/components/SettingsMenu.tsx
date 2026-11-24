@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Minus, Plus, Settings } from "lucide-react";
 import type { AgentKind } from "../lib/types";
 import { THEMES, sameFolder, type NewPaneDefaults, type ThemeId } from "../lib/uiSettings";
 import { isTauri, hermesStatus, hermesConnect, hermesDisconnect, hermesGatewayStop, type HermesStatus } from "../lib/backend";
+import { useDismiss } from "../lib/useDismiss";
 import { FONT_CHOICES, clampSize, type TermSettings } from "../lib/termSettings";
 
 const CUSTOM = "__custom";
@@ -13,6 +14,7 @@ export default function SettingsMenu({ theme, onTheme, value, onChange, pane, on
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => setOpen(false), []);
   const [hermes, setHermes] = useState<HermesStatus | null>(null);
   const [error, setError] = useState("");
   const [restart, setRestart] = useState<"" | "ask" | "busy" | "done">("");
@@ -23,10 +25,8 @@ export default function SettingsMenu({ theme, onTheme, value, onChange, pane, on
   useEffect(() => {
     if (!open) { setRestart(""); return; }
     if (isTauri) hermesCall(hermesStatus);
-    const h = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
   }, [open]);
+  useDismiss(ref, open, close);
   const preset = FONT_CHOICES.includes(value.fontFamily);
   const folderListed = folders.some((x) => sameFolder(x, pane.cwd));
   const [customFont, setCustomFont] = useState(!preset);
@@ -34,9 +34,9 @@ export default function SettingsMenu({ theme, onTheme, value, onChange, pane, on
   const size = (n: number) => onChange({ ...value, fontSize: clampSize(n) });
   return (
     <div className="menu-wrap" ref={ref}>
-      <button className="icon-btn" aria-label="Settings" aria-expanded={open} onClick={() => setOpen(!open)}><Settings size={16} strokeWidth={1.5} /></button>
+      <button className="icon-btn" aria-label="Settings" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(!open)}><Settings size={16} strokeWidth={1.5} /></button>
       {open && (
-        <div className="menu settings">
+        <div className="menu settings" role="dialog" aria-label="Settings">
           <div className="set-group">
             <div className="set-title">Appearance</div>
             <label className="set-row"><span>Theme</span>
@@ -111,7 +111,7 @@ export default function SettingsMenu({ theme, onTheme, value, onChange, pane, on
               {(restart === "ask" || restart === "busy") && <div className="menu-help">변경을 적용하려면 Hermes gateway를 다시 시작해야 합니다. 실행 중인 Hermes 작업은 중단됩니다.</div>}
               {(restart === "ask" || restart === "busy") && (
                 <div className="set-row"><span />
-                  <button className="btn" disabled={restart === "busy"} onClick={() => { setError(""); setRestart("busy"); hermesGatewayStop().then(() => setRestart("done"), (e) => { setError(String(e)); setRestart("ask"); }); }}>{restart === "busy" ? "멈추는 중…" : "Restart gateway"}</button>
+                  <button className="btn" disabled={restart === "busy"} onClick={() => { setError(""); setRestart("busy"); hermesGatewayStop().then(() => setRestart("done"), (e) => { setError(String(e)); setRestart("ask"); }); }}>{restart === "busy" ? "Stopping…" : "Restart gateway"}</button>
                 </div>
               )}
               {restart === "done" && <div className="menu-help">gateway를 멈췄습니다. 다음 Hermes 세션부터 적용됩니다.</div>}

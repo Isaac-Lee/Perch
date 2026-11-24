@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Check, ChevronDown, Folder, FolderOpen, Plus, X, type LucideIcon } from "lucide-react";
 import { paneIcon } from "../lib/paneIcon";
 import type { AgentKind, PaneView } from "../lib/types";
@@ -6,6 +6,7 @@ import { sameFolder, type NewPaneDefaults } from "../lib/uiSettings";
 import { attachScrollReveal } from "../lib/useScrollReveal";
 import { isTauri, pickFolder } from "../lib/backend";
 import { folderName } from "../mock/sessions";
+import { useDismiss } from "../lib/useDismiss";
 import { formatShortcut } from "../lib/shortcuts";
 
 type Entry = { agent: AgentKind; view: PaneView; name: string; Icon: LucideIcon };
@@ -21,12 +22,8 @@ export default function NewPaneMenu({ defaults, folders, onAdd, onDefaults, onCh
   const [open, setOpen] = useState(false);
   const [typing, setTyping] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const h = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, [open]);
+  const close = useCallback(() => setOpen(false), []);
+  useDismiss(ref, open, close);
   const list = folders.some((x) => sameFolder(x, defaults.cwd)) ? folders : [defaults.cwd, ...folders];
   const choose = async () => {
     const p = await pickFolder();
@@ -40,11 +37,11 @@ export default function NewPaneMenu({ defaults, folders, onAdd, onDefaults, onCh
       <button className="ns-open" title={`New session · ${formatShortcut("new")}`} onClick={() => onAdd(defaults.agent, defaults.cwd, defaults.view)}>
         <Plus size={16} strokeWidth={1.5} /><span>New session</span>
       </button>
-      <button className="ns-target" aria-label="New session target" aria-expanded={open} title={defaults.cwd} onClick={() => setOpen(!open)}>
+      <button className="ns-target" aria-label="New session target" aria-haspopup="menu" aria-expanded={open} title={defaults.cwd} onClick={() => setOpen(!open)}>
         <AgentIcon size={14} strokeWidth={1.5} /><span className="ellipsis">{cur.name} · {folderName(defaults.cwd)}</span><ChevronDown size={14} strokeWidth={1.5} />
       </button>
       {open && (
-        <div className="menu env-menu" ref={(el) => { if (el) attachScrollReveal(el); }}>
+        <div className="menu env-menu" role="menu" ref={(el) => { if (el) attachScrollReveal(el); }}>
           <div className="menu-label">Folder</div>
           {list.map((f) => (
             <div key={f} className="menu-row">
@@ -61,7 +58,7 @@ export default function NewPaneMenu({ defaults, folders, onAdd, onDefaults, onCh
           {typing ? (
             <input className="field" placeholder="Folder path" aria-label="Folder path" autoFocus
               onKeyDown={(e) => {
-                if (e.key === "Escape") setTyping(false);
+                if (e.key === "Escape") { e.preventDefault(); setTyping(false); }
                 else if (e.key === "Enter" && e.currentTarget.value.trim()) { onChooseFolder(e.currentTarget.value.trim()); setTyping(false); }
               }} />
           ) : (

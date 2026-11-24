@@ -65,7 +65,7 @@ npm run tauri build   # 릴리스 exe와 설치 파일
   - 훅 바이너리: `perch-hook.exe`
   - localStorage 키: `perch.*`
 - 아이콘은 `desk/public/icon.svg`다 (횃대 위의 새). 앱 아이콘(`.ico`/`.icns`/`.png`)은 `desk/src-tauri/icons/`에 있다.
-- 화면 언어: 짧은 라벨, 상태, 버튼은 영어로 쓴다. 설명 문장(안내, 툴팁, 설정 설명)은 한글로 쓴다. 사용자 내용은 그대로 둔다.
+- 화면 언어: 짧은 라벨, 상태, 버튼은 영어로 쓴다. 설명 문장(안내, 툴팁, 설정 설명)은 한글로 쓴다. 사용자 내용은 그대로 둔다. `aria-label`은 영어로 쓴다. 채팅 보기의 버튼(되감기, 편집, 포크 등)은 아직 한글이고, 영어로 바꿀지는 정해지지 않았다.
 - 화면에서는 "pane"이라는 말을 쓰지 않는다. 상단 바는 `N open`, 그 밖에는 "session"이라고 쓴다. 코드 안의 이름(Pane 컴포넌트 등)은 그대로 둔다.
 - 글꼴은 모두 OFL이고 `desk/public/fonts/`에 들어 있다.
   - UI: IBM Plex Sans(영어) + IBM Plex Sans KR(한글)
