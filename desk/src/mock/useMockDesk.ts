@@ -100,5 +100,5 @@ export function useMockDesk(_hermesView?: PaneView) {
     setStopped((m) => ({ ...m, [sessionId]: (m[sessionId] ?? 0) + 1 }));
   }, []);
 
-  return { now, sessions, panes, focusedPaneId, focusPane: setFocused, focusSession, addPane, closePane, approve, stop, stopped };
+  return { now, restored: true, sessions, panes, focusedPaneId, focusPane: setFocused, focusSession, addPane, closePane, approve, stop, stopped };
 }

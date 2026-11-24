@@ -1,3 +1,5 @@
+import { useMemo, useSyncExternalStore } from "react";
+import { WINDOW } from "./backend";
 import type { AgentKind, PaneView } from "./types";
 import { SESSION_SORTS, type GroupBy, type SessionSort } from "./groups";
 
@@ -5,7 +7,17 @@ import { SESSION_SORTS, type GroupBy, type SessionSort } from "./groups";
 const read = <T>(key: string, fallback: T): T => {
   try { const v = localStorage.getItem(key); return v === null ? fallback : (JSON.parse(v) as T); } catch { return fallback; }
 };
-const write = (key: string, v: unknown) => { try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* ignore */ } };
+// Windows share localStorage: other windows' writes arrive as `storage` events, this window's via `listeners`.
+const listeners = new Set<() => void>();
+if (typeof window !== "undefined") window.addEventListener("storage", () => listeners.forEach((f) => f()));
+const write = (key: string, v: unknown) => { try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* ignore */ } listeners.forEach((f) => f()); };
+export const subscribeStored = (f: () => void) => { listeners.add(f); return () => { listeners.delete(f); }; };
+/** Live value of a stored setting: follows writes from this and other windows. Writers must start from the
+ *  current stored value (`load*()`), not from a render's copy, so windows merge instead of overwriting. */
+export function useStored<T>(key: string, load: () => T): T {
+  const raw = useSyncExternalStore(subscribeStored, () => { try { return localStorage.getItem(key); } catch { return null; } });
+  return useMemo(load, [raw]); // eslint-disable-line react-hooks/exhaustive-deps
+}
 
 export const SIDEBAR_DEFAULT = 320;
 export const clampSidebarWidth = (w: number) => (Number.isFinite(w) ? Math.min(480, Math.max(200, Math.round(w))) : SIDEBAR_DEFAULT);
@@ -47,11 +59,13 @@ export type ThemeId = (typeof THEMES)[number][0];
 export const loadTheme = (): ThemeId => { const v = read<unknown>("perch.theme", "dark"); return THEMES.some(([id]) => id === v) ? (v as ThemeId) : "dark"; };
 export const saveTheme = (t: ThemeId) => write("perch.theme", t);
 
+// Pane ids restart at p1 every run, so the layout is stored as positions in the open-pane list ("0", "1", ...), one key per window.
+const layoutKey = () => `perch.paneLayout.${WINDOW}`;
 export const loadPaneLayout = (): string[][] => {
-  const v = read<unknown>("perch.paneLayout", []);
+  const v = read<unknown>(layoutKey(), []);
   return Array.isArray(v) && v.every((c) => Array.isArray(c) && c.length > 0 && c.every((x) => typeof x === "string")) ? (v as string[][]) : [];
 };
-export const savePaneLayout = (l: string[][]) => write("perch.paneLayout", l);
+export const savePaneLayout = (l: string[][]) => write(layoutKey(), l);
 
 export interface NewPaneDefaults { agent: AgentKind; cwd: string; view: PaneView }
 export const loadNewPane = (firstFolder: string): NewPaneDefaults => {
@@ -60,6 +74,19 @@ export const loadNewPane = (firstFolder: string): NewPaneDefaults => {
   const view: PaneView = v && v.view === "tui" ? "tui" : "chat";
   return { agent, view, cwd: v && typeof v.cwd === "string" && v.cwd.trim() ? v.cwd : firstFolder };
 };
+/** Reopen the panes that were open when the app closed. */
+export const loadRestorePanes = (): boolean => read<unknown>("perch.restorePanes", true) !== false;
+export const saveRestorePanes = (v: boolean) => write("perch.restorePanes", v);
+export interface OpenPane { agent: AgentKind; cwd: string; view: PaneView; sessionId: string | null }
+export const loadOpenPanes = (): OpenPane[] => {
+  const v = read<unknown>("perch.openPanes", []);
+  if (!Array.isArray(v)) return [];
+  return v.flatMap((p): OpenPane[] => {
+    const ok = p && typeof p === "object" && (p.agent === "hermes" || p.agent === "opencode" || p.agent === "shell") && typeof p.cwd === "string" && p.cwd.trim();
+    return ok ? [{ agent: p.agent, cwd: p.cwd, view: p.view === "chat" ? "chat" : "tui", sessionId: typeof p.sessionId === "string" && p.sessionId ? p.sessionId : null }] : [];
+  });
+};
+export const saveOpenPanes = (l: OpenPane[]) => write("perch.openPanes", l);
 // Windows paths: case-insensitive, / == \, trailing separator ignored (root like C:\ kept)
 const folderKey = (p: string) => { const s = p.replace(/\//g, "\\"); return (s.length > 3 ? s.replace(/\\+$/, "") : s).toLowerCase(); };
 export const sameFolder = (a: string, b: string) => folderKey(a) === folderKey(b);
@@ -68,7 +95,8 @@ export const pushRecent = (list: string[], f: string): string[] => [f, ...list.f
 export const removeRecent = (list: string[], f: string): string[] => list.filter((x) => !sameFolder(x, f));
 export const loadRecentFolders = (seed: string[]): string[] => {
   const v = read<unknown>("perch.recentFolders", null);
-  return Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === "string") ? dedupe(v) : seed;
+  const list = Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim() !== "") : [];
+  return list.length > 0 ? dedupe(list) : seed.filter((x) => x.trim() !== "");
 };
 export const saveRecentFolders = (list: string[]) => write("perch.recentFolders", list);
 export const saveNewPane =(v: NewPaneDefaults) => write("perch.newPane", v);
