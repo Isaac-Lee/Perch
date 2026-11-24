@@ -92,7 +92,7 @@ npm run lint
 npm run tauri build  # 설치 파일
 ```
 
-Node 20 이상이 필요하다. 앱 창과 빌드에는 Rust와 OS별 빌드 도구(Windows: VS Build Tools C++, macOS: Xcode Command Line Tools)가 필요하다. PR을 열면 GitHub Actions가 Windows와 macOS 설치 파일을 빌드한다.
+Node 22.12 이상이 필요하다 (CI는 24). 앱 창과 빌드에는 Rust와 OS별 빌드 도구(Windows: VS Build Tools C++, macOS: Xcode Command Line Tools)가 필요하다. PR을 열면 GitHub Actions가 Windows와 macOS 설치 파일을 빌드한다.
 
 ### 지켜야 할 것
 
