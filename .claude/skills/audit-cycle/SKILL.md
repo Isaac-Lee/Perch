@@ -61,8 +61,8 @@ description: Perch 개선 사이클 한 바퀴를 돈다. Fable 5.2가 저장소
 2. 버전: "새로 더한 것"이 하나라도 있으면 MINOR, 고친 것·다듬은 것만 있으면 PATCH, docs/CI/테스트만이면 릴리스하지 않는다.
 3. `release/<버전>` 브랜치에서 `desk/src-tauri/tauri.conf.json`, `desk/src-tauri/Cargo.toml`, `desk/src-tauri/hook/Cargo.toml`, `desk/package.json`, `desk/package-lock.json`, `desk/src-tauri/Cargo.lock`의 버전을 올린다. README를 변경과 대조해 고치고, `docs/releases/v<버전>.md`(새로 더한 것 / 다듬은 것 / 고친 것 / 설치 표)를 쓰고, `docs/HANDOFF.md`의 최신 릴리스 문장을 고친다. 지난 릴리스 커밋(`git show <Release 커밋>`)과 같은 파일들인지 대조한다.
 4. 커밋 `Release <버전>`, PR을 열고 사용자가 머지하길 기다린다.
-5. 머지 뒤 main에서 `git tag v<버전> && git push origin v<버전>`. 태그 빌드가 초안 릴리스에 설치 파일을 붙인다.
-6. 빌드가 끝나면 `gh release view v<버전>`으로 `.exe`와 `.dmg`가 붙었는지 보고, `gh release edit v<버전> --notes-file docs/releases/v<버전>.md --title "Perch v<버전>"` 뒤 `gh release edit v<버전> --draft=false --latest`로 게시한다.
+5. 머지 뒤 main에서 `git tag v<버전> && git push origin v<버전>`. 태그 빌드의 `release` job이 네 파일의 버전과 `docs/releases/v<버전>.md`를 확인하고, 그 노트를 본문으로 한 초안 릴리스에 설치 파일을 붙인다.
+6. 빌드가 끝나면 `gh release view v<버전>`으로 초안에 `.exe`와 `.dmg`가 붙었는지 보고 `gh release edit v<버전> --draft=false --latest`로 게시한다. 머지와 게시는 사용자가 맡긴 경우에만 한다.
 
 ## 반복
 
