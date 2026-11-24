@@ -10,7 +10,7 @@ use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindow, Webvi
 
 type Chan = Arc<Mutex<Option<Channel<InvokeResponseBody>>>>;
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct PaneInfo {
     pub id: String,

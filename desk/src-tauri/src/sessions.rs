@@ -454,20 +454,32 @@ pub fn prune_state(dir: &Path, now: u64, max_age: u64) {
 }
 
 /// The only background thread: every 500ms it checks the status folder; it emits only on change.
+/// A tick where no state file and no pane changed does nothing else. Old state files are pruned at start and hourly.
 pub fn start(app: AppHandle) {
     std::thread::spawn(move || {
-        prune_state(&perch_hook::home().join("sessions"), perch_hook::now(), 30 * 86400);
-        let mut poller = Poller::new(perch_hook::home().join("sessions"), crate::hermes::home().join("state.db"));
+        let dir = perch_hook::home().join("sessions");
+        let mut poller = Poller::new(dir.clone(), crate::hermes::home().join("state.db"));
+        let mut last_panes: Option<Vec<PaneInfo>> = None;
+        let mut next_prune = 0;
         loop {
-            poller.scan(now_ms());
-            let base = poller.snapshot();
-            let desk = app.state::<Desk>();
-            if desk.relink(&base, &poller.first_seen) {
-                desk::emit_snapshot(&app);
+            let now = perch_hook::now();
+            if now >= next_prune {
+                prune_state(&dir, now, 30 * 86400);
+                next_prune = now + 3600;
             }
-            let out = decorate(base, &desk.snapshot());
-            if app.state::<Sessions>().set_if_changed(&out) {
-                let _ = app.emit("desk://sessions", out);
+            let changed = poller.scan(now_ms());
+            let desk = app.state::<Desk>();
+            if changed || last_panes.as_ref() != Some(&desk.snapshot()) {
+                let base = poller.snapshot();
+                if desk.relink(&base, &poller.first_seen) {
+                    desk::emit_snapshot(&app);
+                }
+                let panes = desk.snapshot();
+                let out = decorate(base, &panes);
+                if app.state::<Sessions>().set_if_changed(&out) {
+                    let _ = app.emit("desk://sessions", out);
+                }
+                last_panes = Some(panes);
             }
             std::thread::sleep(Duration::from_millis(500));
         }
