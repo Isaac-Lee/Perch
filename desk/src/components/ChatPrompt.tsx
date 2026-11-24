@@ -1,14 +1,9 @@
 import { useState } from "react";
 import type { ChatPrompt as Prompt } from "../lib/chatSession";
 import { enterAction } from "../lib/composer";
+import { splitChoice, stripRecommended } from "../lib/choice";
 
 const LABEL: Record<string, string> = { once: "한 번 허용", session: "이 세션 동안 허용", always: "항상 허용", deny: "거부" };
-
-/** "Label — detail" / "Label: detail" / "Label - detail" → [label, detail]; no separator → whole text is the label. */
-export function splitChoice(c: string): [string, string] {
-  const m = c.match(/^(.{1,60}?)\s*(?:\s[—–-]\s|:\s|\n)\s*([\s\S]+)$/);
-  return m ? [m[1].trim(), m[2].trim()] : [c.trim(), ""];
-}
 
 export default function ChatPrompt({ prompt, onApproval, onClarify }: { prompt: Prompt; onApproval: (choice: string) => void; onClarify: (answer: string) => void }) {
   const [sent, setSent] = useState(false); // one answer per prompt; the card disappears when settled
@@ -53,7 +48,7 @@ export default function ChatPrompt({ prompt, onApproval, onClarify }: { prompt: 
             if (enterAction({ key: e.key, shiftKey: e.shiftKey, isComposing: e.nativeEvent.isComposing, keyCode: e.keyCode }) === "send" && text.trim()) { e.preventDefault(); answer(() => onClarify(text.trim())); }
           }}
         />
-        {prompt.multiSelect && <button className="btn primary" disabled={sent || !picked.length} onClick={() => answer(() => onClarify(JSON.stringify(picked.map((c) => c.replace(/s*(Recommended)$/, "")))))}>보내기</button>}
+        {prompt.multiSelect && <button className="btn primary" disabled={sent || !picked.length} onClick={() => answer(() => onClarify(JSON.stringify(picked.map((c) => stripRecommended(c)))))}>보내기</button>}
         <button className="btn" disabled={sent} onClick={() => answer(() => onClarify(""))}>건너뛰기</button>
       </div>
     </div>
