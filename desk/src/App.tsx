@@ -111,7 +111,7 @@ export default function App() {
             newSession={<NewPaneMenu variant="side" defaults={newPane} folders={folders} onAdd={open} onDefaults={setNewPane} onChooseFolder={chooseFolder} onRemoveFolder={(f) => setFolders((l) => removeRecent(l, f))} />} />
         )}
         <div className="stage" ref={stageRef} style={{ display: usage ? "none" : "flex" }}>
-        <PaneGrid panes={d.panes} layout={layout} onMove={movePaneTo} sessions={d.sessions} now={d.now} focusedPaneId={d.focusedPaneId}
+        <PaneGrid panes={d.panes} layout={layout} onMove={movePaneTo} sessions={d.sessions} focusedPaneId={d.focusedPaneId}
           onFocus={d.focusPane} onClose={d.closePane} stopped={d.stopped} onStop={d.stop} onFocusSession={d.focusSession} />
         </div>
         {usage && <UsageView sessions={usageSessions} now={d.now} onPick={(id) => { const h = d.sessions.some((x) => x.sessionId === id) ? null : history.find((x) => x.sessionId === id); if (h) paneCreate("hermes", h.cwd, id, newPane.view).then(d.focusPane, console.error); /* history-only session: resume it */ else d.focusSession(id); setUsage(false); }} onClose={() => setUsage(false)} />}

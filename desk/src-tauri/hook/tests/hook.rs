@@ -265,3 +265,17 @@ fn pane_env_is_written_only_when_safe() {
     }
     let _ = std::fs::remove_dir_all(&d);
 }
+
+#[test]
+fn empty_perch_home_falls_back_to_home() {
+    let (home, cwd) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let input = ev("on_session_open", json!({})).to_string();
+    let mut c = Command::new(env!("CARGO_BIN_EXE_perch-hook"))
+        .arg("hermes").env("PERCH_HOME", "").env("HOME", home.path()).env_remove("USERPROFILE").current_dir(cwd.path())
+        .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+    let _ = c.stdin.take().unwrap().write_all(input.as_bytes());
+    let o = c.wait_with_output().unwrap();
+    assert!(o.status.success() && o.stdout.is_empty());
+    assert!(!cwd.path().join("sessions").exists());
+    assert!(home.path().join(".perch/sessions/hermes-local-a.json").exists());
+}

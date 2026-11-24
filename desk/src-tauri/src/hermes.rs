@@ -97,7 +97,7 @@ fn quoted(hook: &Path) -> String {
 /// The marked block (markers included), if present.
 fn block_text(text: &str) -> Option<&str> {
     let a = text.find(BEGIN)?;
-    let b = text[a..].find(END).map_or(text.len(), |i| a + i + END.len());
+    let b = a + text[a..].find(END)? + END.len(); // no end marker: not a block (never treat the rest of the file as one)
     Some(&text[a..b])
 }
 
@@ -133,8 +133,9 @@ fn block(hook: &Path, nl: &str) -> String {
     s + END + nl
 }
 
-/// (text without the marked block, whether a block was present)
-fn split_block(text: &str) -> (String, bool) {
+/// (text without the marked block, whether a block was present). A start marker without an end marker is an error:
+/// the rest of the file is the user's, so nothing is removed.
+fn split_block(text: &str) -> Result<(String, bool), String> {
     let (mut out, mut inside, mut found) = (String::new(), false, false);
     for line in text.split_inclusive('\n') {
         let t = line.trim_end();
@@ -147,7 +148,10 @@ fn split_block(text: &str) -> (String, bool) {
             out += line;
         }
     }
-    (out, found)
+    if inside {
+        return Err(format!("perch 블록의 끝 표시({END})가 없습니다. config.yaml을 직접 확인하세요"));
+    }
+    Ok((out, found))
 }
 
 fn write_atomic(path: &Path, data: &str) -> Result<(), String> {
@@ -190,7 +194,7 @@ pub fn connect(home: &Path, hook: &Path) -> Result<(), String> {
         Err(e) => return Err(format!("config.yaml을 읽을 수 없습니다: {e}")),
     };
     let nl = if old.as_deref().is_some_and(|t| t.contains("\r\n")) { "\r\n" } else { "\n" };
-    let (base, had_block) = split_block(old.as_deref().unwrap_or(""));
+    let (base, had_block) = split_block(old.as_deref().unwrap_or(""))?;
     let blk = block(hook, nl);
     if base.lines().any(|l| l.starts_with("hooks:")) {
         return Err(format!("기존 hooks가 있어 자동으로 합치지 않습니다. config.yaml의 hooks에 직접 넣을 내용:\n{blk}"));
@@ -234,7 +238,7 @@ pub fn connect(home: &Path, hook: &Path) -> Result<(), String> {
 pub fn disconnect(home: &Path, hook: &Path) -> Result<(), String> {
     let cfg = home.join("config.yaml");
     if let Ok(t) = std::fs::read_to_string(&cfg) {
-        let (rest, found) = split_block(&t);
+        let (rest, found) = split_block(&t)?;
         if found {
             write_atomic(&cfg, &rest)?;
         }
@@ -385,6 +389,19 @@ mod tests {
         assert!(fs::read_to_string(home.join("config.yaml")).unwrap().contains("hooks:\r\n"));
         disconnect(&home, &hook).unwrap();
         assert_eq!(fs::read_to_string(home.join("config.yaml")).unwrap(), "a: 1\r\n");
+    }
+
+    #[test]
+    fn missing_end_marker_leaves_config_alone() {
+        let (_t, home, hook) = setup();
+        let orig = format!("{BEGIN}\nhooks:\n  on_session_open:\n    - command: 'x'\nmodel: x\n");
+        fs::write(home.join("config.yaml"), &orig).unwrap();
+        assert!(connect(&home, &hook).unwrap_err().contains("끝 표시"));
+        assert!(disconnect(&home, &hook).unwrap_err().contains("끝 표시"));
+        assert_eq!(fs::read_to_string(home.join("config.yaml")).unwrap(), orig);
+        let s = status_of(&home, &hook, None);
+        assert!(!s.outdated && !s.connected);
+        assert!(!home.join("config.yaml.perch-backup").exists() && !home.join("shell-hooks-allowlist.json").exists());
     }
 
     #[test]

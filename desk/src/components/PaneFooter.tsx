@@ -4,9 +4,11 @@ import type { Session } from "../lib/types";
 import { displayState, shownSeconds } from "../lib/groups";
 import { activityOf } from "../lib/orbState";
 import { fmtElapsed } from "../lib/format";
+import { tickMs, useNow } from "../lib/useNow";
 
-export default function PaneFooter({ session, now }: { session?: Session; now: number }) {
+export default function PaneFooter({ session }: { session?: Session }) {
   const light = useIsLight();
+  const now = useNow(tickMs(session?.state));
   if (!session) return null;
   const st = displayState(session, now);
   let t: number | null;

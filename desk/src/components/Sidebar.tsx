@@ -12,7 +12,7 @@ import { useLiveSubagents } from "../lib/liveSubagents";
 import { useBackgroundTasks } from "../lib/liveBackground";
 
 const SORT_LABEL: Record<SessionSort, string> = { status: "Status", recent: "Recent activity", name: "Name", manual: "Manual order" };
-import { fmtTok, summarize } from "../lib/usage";
+import { fmtTok, todayTotal } from "../lib/usage";
 
 import { formatShortcut } from "../lib/shortcuts";
 
@@ -39,22 +39,24 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
   const shown = useMemo(() => sessions.filter((s) => !hiddenIn(archived, s)).map((s) => (!s.subagents.length && s.paneId && liveSubs.has(s.paneId) ? { ...s, subagents: liveSubs.get(s.paneId)! } : s)), [sessions, archived, liveSubs]);
   // Background runs nest under their parent row (see nestBackground); the rest of the sidebar only sees `top`.
   const bgTasks = useBackgroundTasks();
-  const nest = useMemo(() => nestBackground(shown, bgTasks, now), [shown, bgTasks, now]);
+  // Grouping and sorting only cross age thresholds (10 min, 24 h, 7 d, midnight), so they take a minute-floored clock; only the rows show seconds.
+  const min = Math.floor(now / 60) * 60;
+  const nest = useMemo(() => nestBackground(shown, bgTasks, min), [shown, bgTasks, min]);
   const bodyRef = useRef<HTMLDivElement>(null);
   const [sort, setSort] = useState<SessionSort>(loadSessionSort);
   const [order, setOrder] = useState<string[]>(loadSessionOrder);
   const [readAt, setReadAt] = useState<Record<string, number>>(loadReadAt);
   const markSeen = (id: string) => setReadAt((m) => { const n = markRead(m, id, now); saveReadAt(n); return n; });
-  const allGroups = useMemo(() => groupSessions(nest.top, now, sort, order, dismissed, readAt), [nest, now, sort, order, dismissed, readAt]);
-  const allSplit = useMemo(() => splitNeedsYou(allGroups, now), [allGroups, now]);
+  const allGroups = useMemo(() => groupSessions(nest.top, min, sort, order, dismissed, readAt), [nest, min, sort, order, dismissed, readAt]);
+  const allSplit = useMemo(() => splitNeedsYou(allGroups, min), [allGroups, min]);
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
-  const split = useMemo(() => (q ? splitNeedsYou(groupSessions(nest.top.filter((s) => matchSession(s, q)), now, sort, order, dismissed, readAt), now) : allSplit), [q, nest, now, allSplit, sort, order, dismissed, readAt]);
+  const split = useMemo(() => (q ? splitNeedsYou(groupSessions(nest.top.filter((s) => matchSession(s, q)), min, sort, order, dismissed, readAt), min) : allSplit), [q, nest, min, allSplit, sort, order, dismissed, readAt]);
   const groups = split.groups;
   const [groupBy, setGroupBy] = useState<GroupBy>(loadGroupBy);
   const chooseGroupBy = (g: GroupBy) => { setGroupBy(g); saveGroupBy(g); };
   const byStatus = groupBy === "status";
-  const statusView = useMemo(() => groupByStatus(groups, now, readAt), [groups, now, readAt]);
+  const statusView = useMemo(() => groupByStatus(groups, min, readAt), [groups, min, readAt]);
   const chooseSort = (s: SessionSort) => { setSort(s); saveSessionSort(s); };
   // Reordering switches to manual; the saved order is the whole visible order so nothing jumps.
   const reorder = (gkey: string, id: string, to: number) => {
@@ -109,7 +111,7 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
   const live = allGroups.flatMap((g) => g.sessions);
   const working = live.filter((s) => ["running", "thinking", "tool"].includes(displayState(s, now))).length;
   const mine = live.filter((s) => waitingOnYou(s, now)).length;
-  const todayTok = useMemo(() => summarize(sessions, "today", now).total.total, [sessions, now]);
+  const todayTok = useMemo(() => todayTotal(sessions, min), [sessions, min]);
   const isFolded = (k: string) => !q && folded.has(k);
   const isOpen = (k: string) => !!q || open.has(k);
   const row = (s: Session, g?: Group, folder?: string) => (

@@ -1,23 +1,23 @@
-# 인수인계 — Perch (2026-11-18 기준)
+# 인수인계 — Perch
 
 다른 PC(주로 macOS)에서 이어서 작업하기 위한 문서다. 이 문서만 읽고 시작할 수 있게 썼다.
 
 ## 1. 한 줄 요약
 
-Perch는 여러 코딩 에이전트(Hermes, OpenCode)를 분할 터미널로 띄우고, 옆 패널에서 모든 세션 상태를 지켜보는 데스크톱 앱이다. **1~3단계(UI, Tauri + 실제 터미널, Hermes 연결)는 끝났다. 4단계(OpenCode)는 하지 않기로 했다. 5단계(오프라인 설치 검증)와 맥 앱 실행 확인은 사용자가 직접 한다.** 모든 작업은 `main`에 병합돼 있다. `v0.1.0`은 게시됐다 (6절).
+Perch는 여러 코딩 에이전트(Hermes, OpenCode)를 분할 터미널로 띄우고, 옆 패널에서 모든 세션 상태를 지켜보는 데스크톱 앱이다. **1~3단계(UI, Tauri + 실제 터미널, Hermes 연결)는 끝났다. 4단계(OpenCode)는 하지 않기로 했다. 5단계(오프라인 설치 검증)와 맥 앱 실행 확인은 사용자가 직접 한다.** 모든 작업은 `main`에 병합돼 있다. 최신 릴리스는 6절을 본다.
 
 ## 2. 지금 있는 것
 
 | 위치 | 내용 | 상태 |
 |---|---|---|
-| `desk/src/` | 화면 (React 19 + TypeScript). 브라우저에서는 가짜 데이터, Tauri 창에서는 실제 백엔드 | 테스트 176개 통과 |
-| `desk/src-tauri/src/` | Rust 백엔드: `pty.rs`(터미널), `desk.rs`(칸·창), `sessions.rs`(상태 수집, state.db 보강), `hermes.rs`(실행 파일 찾기, 연결) | 테스트 39개 통과 (1개는 무시) |
+| `desk/src/` | 화면 (React 19 + TypeScript). 브라우저에서는 가짜 데이터, Tauri 창에서는 실제 백엔드 | `npm test`로 확인 |
+| `desk/src-tauri/src/` | Rust 백엔드: `pty.rs`(터미널), `desk.rs`(칸·창), `sessions.rs`(상태 수집, state.db 보강), `hermes.rs`(실행 파일 찾기, 연결) | `cargo test --workspace`로 확인 |
 | `desk/src-tauri/src/gateway.rs` | Hermes gateway 중계. `hermes gateway attach`가 준 ws:// 주소에 loopback TcpStream으로 직접 WebSocket을 말하고 JSON 줄을 채팅 칸과 주고받는다 (gateway가 Origin 헤더를 거부해서 웹뷰가 직접 못 붙는다) | 테스트 포함 |
 | `desk/src/components/Chat*.tsx` | 채팅 보기. `ChatView`(전체), `ChatMessage`(마크다운 답변·도구 줄), `ChatPrompt`(승인·질문 버튼), `ChatComposer`(입력 상자: `+` 이미지, 모델 칩과 메뉴, 엔터 아이콘) | `chatSession`, `composer` 테스트 |
 | `desk/src/lib/chatSession.ts` | 채팅 상태 리듀서와 훅. gateway 이벤트를 항목으로 바꾸고 resume, 모델 변경, 한 번의 자동 재연결을 맡는다 | 녹화한 턴(`__fixtures__/turn.jsonl`)으로 재생 테스트 |
 | `desk/src/lib/gateway.ts`, `gatewayTypes.ts` | JSON-RPC 2.0 클라이언트와 손으로 옮겨 적은 wire 타입(hermes-gateway-v1) | 테스트 통과 |
 | `desk/src/lib/markdown.tsx` | 채팅용 마크다운 렌더러 | 테스트 통과 |
-| `desk/src-tauri/hook/` | `perch-hook`: Hermes 셸 훅이 부르는 작은 바이너리. 상태 파일을 쓴다 | 테스트 3개 통과 |
+| `desk/src-tauri/hook/` | `perch-hook`: Hermes 셸 훅이 부르는 작은 바이너리. 상태 파일을 쓴다 | `hook/tests/hook.rs` |
 | `desk/scripts/build-hook.mjs` | 훅을 빌드해 Tauri 사이드카 위치로 복사 (`npm run hook`) | `tauri dev`/`build`가 자동 실행 |
 | `.github/workflows/build.yml` | Windows 설치 파일과 macOS(Apple Silicon) dmg를 만든다. PR과 수동 실행은 결과물만 남기고, `v*` 태그는 초안 릴리스에 붙인다 | PR #1에서 두 OS 모두 통과 |
 | `docs/ADAPTERS.md` | 다른 에이전트를 붙일 때의 계약과 손댈 곳 | OpenCode는 하지 않음 |
@@ -26,7 +26,7 @@ Perch는 여러 코딩 에이전트(Hermes, OpenCode)를 분할 터미널로 띄
 
 결과물 (Windows, 이 PC에서 빌드):
 - `desk/src-tauri/target/release/perch.exe` — 설치 없이 실행. 같은 폴더의 `perch-hook.exe`가 필요하다.
-- `desk/src-tauri/target/release/bundle/nsis/Perch_0.1.0_x64-setup.exe` — 사용자별 설치 파일, WebView2 오프라인 설치본 포함 (216MB). 설치 시험은 아직 안 했다.
+- `desk/src-tauri/target/release/bundle/nsis/Perch_<버전>_x64-setup.exe` — 사용자별 설치 파일, WebView2 오프라인 설치본 포함 (216MB). 설치 시험은 아직 안 했다.
 
 ## 3. 새 PC에서 시작하기
 
@@ -34,13 +34,13 @@ Perch는 여러 코딩 에이전트(Hermes, OpenCode)를 분할 터미널로 띄
 git clone https://github.com/Isaac-Lee/Perch.git
 cd Perch/desk
 npm install
-npm test          # 66개 통과해야 한다
+npm test          # 모두 통과해야 한다
 npm run dev       # 브라우저 모드 (가짜 데이터) http://localhost:5173
 npm run tauri dev # 앱 창 (실제 터미널). Rust 필요
 npm run tauri build   # 릴리스 exe와 설치 파일
 ```
 
-- Node 20 이상이 필요하다 (개발은 Node 26에서 했다).
+- Node 22.12 이상이 필요하다 (CI는 24).
 - 화면을 주소로 바로 열 수 있다.
   - `#usage`: 토큰 사용량 화면
   - `#usage&chart=1y&bucket=week`: 1년 주별 차트 (`chart`는 `14d`/`30d`/`1y`, `bucket`은 `day`/`week`)
@@ -64,7 +64,7 @@ npm run tauri build   # 릴리스 exe와 설치 파일
   - 환경변수: `PERCH_HOME`, `PERCH_PANE`
   - 훅 바이너리: `perch-hook.exe`
   - localStorage 키: `perch.*`
-- 아이콘은 `desk/public/icon.svg`다 (횃대 위의 새). `.ico`/`.icns`/`.png`는 아직 없고, 2단계에서 이 SVG로 만든다.
+- 아이콘은 `desk/public/icon.svg`다 (횃대 위의 새). 앱 아이콘(`.ico`/`.icns`/`.png`)은 `desk/src-tauri/icons/`에 있다.
 - 화면 언어: 짧은 라벨, 상태, 버튼은 영어로 쓴다. 설명 문장(안내, 툴팁, 설정 설명)은 한글로 쓴다. 사용자 내용은 그대로 둔다. `aria-label`은 영어로 쓴다. 채팅 보기의 버튼(되감기, 편집, 포크 등)은 아직 한글이고, 영어로 바꿀지는 정해지지 않았다.
 - 화면에서는 "pane"이라는 말을 쓰지 않는다. 상단 바는 `N open`, 그 밖에는 "session"이라고 쓴다. 코드 안의 이름(Pane 컴포넌트 등)은 그대로 둔다.
 - 글꼴은 모두 OFL이고 `desk/public/fonts/`에 들어 있다.
@@ -175,7 +175,7 @@ npm run tauri build   # 릴리스 exe와 설치 파일
 
 ## 7. macOS에서 작업할 때 알아둘 점
 
-- 2026-11-18 맥(Node 26)에서 `npm install`과 `npm test`(33개)가 통과했다. 앱 창(`tauri dev`)은 이 맥에 Rust가 없어 아직 실행하지 못했다.
+- 2026-11-18 맥(Node 26)에서 `npm install`과 `npm test`가 통과했다. 앱 창(`tauri dev`)은 이 맥에 Rust가 없어 아직 실행하지 못했다.
 - 터미널 글꼴 대체 목록에 Menlo가 들어 있다. UI 글꼴 대체 목록에는 Apple SD Gothic Neo가 들어 있다.
 - Hermes 설치 경로가 다르다.
   - Windows 빌드 PC: `D:\hermes-cli`, `HERMES_HOME=D:\hermes-cli\home`
@@ -187,7 +187,7 @@ npm run tauri build   # 릴리스 exe와 설치 파일
 
 ## 8. 아직 확인하지 못한 것
 
-- **승인 버튼.** 패널의 Allow/Deny는 Hermes 승인 메뉴에 `1`/`4`를 보낸다. 이 PC의 Hermes가 승인 없이 실행하는 설정이라 승인 대기가 생기지 않아 확인하지 못했다. 승인 대기가 어떤 훅 이벤트로 오는지도 같은 이유로 미확인.
+- **승인 버튼.** 패널의 Allow/Deny는 Hermes 승인 메뉴에 `1`(Allow)과 Esc(Deny)를 보낸다. 이 PC의 Hermes가 승인 없이 실행하는 설정이라 승인 대기가 생기지 않아 확인하지 못했다. 승인 대기가 어떤 훅 이벤트로 오는지도 같은 이유로 미확인.
 - 서브에이전트와 todo 표시: 실제 Hermes에서 본 적이 없다. todo 도구의 인자 형태는 추정이다.
 - 실제 키보드로 누른 단축키, 터미널에 포커스가 있을 때 앱이 먼저 받는지.
 - Tabby와의 메모리 비교.
