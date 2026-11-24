@@ -5,9 +5,17 @@ use std::io::{Read, Write};
 const BATCH_WAIT: std::time::Duration = std::time::Duration::from_millis(4);
 const BATCH_MAX: usize = 256 * 1024;
 
+/// Shared so callers can write after releasing the Desk lock (a blocked child must not stall the whole app).
+pub type Writer = std::sync::Arc<std::sync::Mutex<Box<dyn Write + Send>>>;
+
+pub fn write_to(w: &Writer, data: &[u8]) -> Result<(), String> {
+    let mut w = w.lock().unwrap();
+    w.write_all(data).and_then(|_| w.flush()).map_err(|e| e.to_string())
+}
+
 pub struct Pty {
     master: Option<Box<dyn MasterPty + Send>>,
-    writer: Box<dyn Write + Send>,
+    writer: Writer,
     killer: Box<dyn ChildKiller + Send + Sync>,
 }
 
@@ -92,12 +100,12 @@ pub fn spawn(
         let code = child.wait().map(|s| s.exit_code()).unwrap_or(1);
         on_exit(code, started.elapsed());
     });
-    Ok(Pty { master: Some(pair.master), writer, killer })
+    Ok(Pty { master: Some(pair.master), writer: std::sync::Arc::new(std::sync::Mutex::new(writer)), killer })
 }
 
 impl Pty {
-    pub fn write(&mut self, data: &[u8]) -> Result<(), String> {
-        self.writer.write_all(data).and_then(|_| self.writer.flush()).map_err(|e| e.to_string())
+    pub fn writer(&self) -> Writer {
+        self.writer.clone()
     }
     pub fn resize(&self, cols: u16, rows: u16) -> Result<(), String> {
         self.master
@@ -132,6 +140,22 @@ mod tests {
     }
 
     #[test]
+    fn blocked_write_does_not_stall_the_pty() {
+        if cfg!(windows) {
+            return;
+        }
+        let p = spawn("sleep", &["30".into()], &tmp(), &[], 80, 24, |_| {}, |_, _| {}).unwrap();
+        let w = p.writer();
+        std::thread::spawn(move || { let _ = write_to(&w, &vec![b'x'; 4 << 20]); });
+        std::thread::sleep(Duration::from_millis(300));
+        // what Desk does under its lock (resize, clone the writer) stays instant while a write is stuck
+        let t = Instant::now();
+        p.resize(100, 30).unwrap();
+        let _w2 = p.writer();
+        assert!(t.elapsed() < Duration::from_secs(1));
+    }
+
+    #[test]
     fn echo_output_and_exit() {
         let (prog, args): (&str, Vec<String>) = if cfg!(windows) {
             ("cmd.exe", vec!["/c".into(), "echo hi".into()])
@@ -141,7 +165,7 @@ mod tests {
         let out = Arc::new(Mutex::new(Vec::new()));
         let o = out.clone();
         let (tx, rx) = mpsc::channel();
-        let mut p = spawn(prog, &args, &tmp(), &[], 80, 24,
+        let p = spawn(prog, &args, &tmp(), &[], 80, 24,
             move |b| o.lock().unwrap().extend_from_slice(b),
             move |_, _| { let _ = tx.send(()); }).unwrap();
         // ConPTY asks for the cursor position (ESC[6n) and stalls until answered; xterm does this in the app.
@@ -149,7 +173,7 @@ mod tests {
         loop {
             let text = String::from_utf8_lossy(&out.lock().unwrap()).into_owned();
             if !replied && text.contains("\x1b[6n") {
-                p.write(b"\x1b[1;1R").unwrap();
+                write_to(&p.writer(), b"\x1b[1;1R").unwrap();
                 replied = true;
             }
             exited |= rx.try_recv().is_ok();
@@ -202,12 +226,12 @@ mod tests {
         let args: Vec<String> = vec!["-NoLogo".into(), "-NoProfile".into(), "-Command".into(), cmd.into()];
         let out = Arc::new(Mutex::new((Vec::new(), 0usize)));
         let o = out.clone();
-        let mut p = spawn("powershell.exe", &args, &tmp(), &[], 80, 24,
+        let p = spawn("powershell.exe", &args, &tmp(), &[], 80, 24,
             move |b| { let mut g = o.lock().unwrap(); g.0.extend_from_slice(b); g.1 += 1; }, |_, _| {}).unwrap();
         let (t, mut replied) = (Instant::now(), false);
         loop {
             let (text, calls) = { let g = out.lock().unwrap(); (String::from_utf8_lossy(&g.0).into_owned(), g.1) };
-            if !replied && text.contains("[6n") { p.write(b"[1;1R").unwrap(); replied = true; }
+            if !replied && text.contains("[6n") { write_to(&p.writer(), b"[1;1R").unwrap(); replied = true; }
             if text.contains("DONE_MARK") || t.elapsed() > Duration::from_secs(120) {
                 println!("FLOOD elapsed={:?} bytes={} reads={} done={}", t.elapsed(), text.len(), calls, text.contains("DONE_MARK"));
                 break;
