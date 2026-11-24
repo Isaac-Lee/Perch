@@ -69,6 +69,7 @@ export default function ChatView({ paneId, cwd, sessionId, focused, session }: {
     setPaneGraph(paneId, { subagents: Object.values(state.subagents), background: state.items.flatMap((i) => (i.kind === "background" ? [{ taskId: i.taskId, text: i.text, status: i.status, startedAt: i.startedAt, durationS: i.durationS }] : [])) });
   }, [paneId, state.subagents, state.items]);
   useEffect(() => () => setPaneGraph(paneId, { subagents: [], background: [] }), [paneId]);
+  const grouped = useMemo(() => groupItems(state.items), [state.items]);
   const down = state.conn === "error" || state.conn === "closed";
   return (
     <div className="chat">
@@ -76,7 +77,7 @@ export default function ChatView({ paneId, cwd, sessionId, focused, session }: {
         <div className="chat-col">
           {state.items.length === 0 && state.conn === "ready" && <div className="chat-empty">메시지를 입력해 대화를 시작하세요</div>}
           {/* user rows keyed by their Hermes row: a re-indexed transcript (or a newly saved row) remounts the bubble, so an open editor never binds to another message */}
-          {groupItems(state.items).map((i) => <ChatMessage key={i.kind === "user" && i.rowId !== undefined ? `row${i.rowId}` : i.id} item={i} subagents={state.subagents} actions={actions.get(i.id)} />)}
+          {grouped.map((i) => <ChatMessage key={i.kind === "user" && i.rowId !== undefined ? `row${i.rowId}` : i.id} item={i} subagents={state.subagents} actions={actions.get(i.id)} />)}
           {state.running && <ChatLive state={state} session={session} />}
           {state.prompts.map((p) => <ChatPrompt key={p.promptId} prompt={p} onApproval={(c) => answerApproval(p.promptId, c)} onClarify={(a) => answerClarify(p.promptId, a)} />)}
           {down && retrying && <div className="chat-status">다시 연결하는 중…</div>}

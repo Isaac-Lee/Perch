@@ -7,9 +7,11 @@ import { fmtElapsed } from "../lib/format";
 import { activityOf } from "../lib/orbState";
 import { paneIcon } from "../lib/paneIcon";
 import { agentName } from "./SessionRow";
+import { tickMs, useNow } from "../lib/useNow";
 
-export default function PaneHeader({ pane, session, now, focused, onClose, onStop, dragging, onDragStart, graph }: { pane: Pane; session?: Session; now: number; focused: boolean; onClose: () => void; onStop: () => void; dragging?: boolean; onDragStart?: (e: React.PointerEvent<HTMLElement>) => void; /** subagent graph toggle; undefined hides the button */ graph?: { open: boolean; running: number; onToggle: () => void } }) {
+export default function PaneHeader({ pane, session, focused, onClose, onStop, dragging, onDragStart, graph }: { pane: Pane; session?: Session; focused: boolean; onClose: () => void; onStop: () => void; dragging?: boolean; onDragStart?: (e: React.PointerEvent<HTMLElement>) => void; /** subagent graph toggle; undefined hides the button */ graph?: { open: boolean; running: number; onToggle: () => void } }) {
   const light = useIsLight();
+  const now = useNow(tickMs(session?.state));
   const st = session ? displayState(session, now) : null;
   const waiting = st === "approval" || st === "question" || st === "reply";
   return (

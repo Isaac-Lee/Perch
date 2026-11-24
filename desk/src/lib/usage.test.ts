@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { chartSeries, fmtExact, fmtTokens, summarize, totalTokens } from "./usage";
+import { chartSeries, fmtExact, fmtTokens, summarize, todayTotal, totalTokens } from "./usage";
 import type { Session, Usage } from "./types";
 
 const NOW = new Date(2026, 10, 17, 15, 0, 0).getTime() / 1000; // local 2026-11-17 15:00
@@ -118,4 +118,10 @@ test("lists sorted by total desc; project labels match groups, same-name repos d
   expect(r.byProject.map((x) => x.label)).toEqual(["app (b)", "Shared workspace", "app (a)"]);
   expect(r.byModel[0]).toMatchObject({ key: "m", sessions: 2 });
   expect(r.byAgent[0]).toMatchObject({ key: "hermes", sessions: 3 });
+});
+
+test("todayTotal matches summarize today and skips older or usage-less sessions", () => {
+  const list = [mk(), mk({ usage: u({ startedAt: MID + 1, input: 7 }) }), mk({ usage: u({ startedAt: MID - 1 }) }), mk({ usage: null })];
+  expect(todayTotal(list, NOW)).toBe(summarize(list, "today", NOW).total.total);
+  expect(todayTotal(list, NOW)).toBeGreaterThan(0);
 });

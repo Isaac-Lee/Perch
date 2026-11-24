@@ -43,6 +43,12 @@ function add(r: UsageRow, u: Usage) {
   if (u.costUsd != null) r.costUsd = (r.costUsd ?? 0) + u.costUsd;
 }
 
+/** Today's token total only: all the sidebar shows, without the four breakdown tables `summarize` builds. */
+export function todayTotal(sessions: Session[], now: number): number {
+  const from = since("today", now);
+  return sessions.reduce((n, s) => (s.usage && s.usage.startedAt >= from ? n + totalTokens(s.usage) : n), 0);
+}
+
 export function summarize(sessions: Session[], period: Period, now: number) {
   const withUsage = sessions.filter((s): s is Session & { usage: Usage } => s.usage !== null);
   const from = since(period, now);
