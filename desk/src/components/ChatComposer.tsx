@@ -192,19 +192,19 @@ export default function ChatComposer({ running, disabled, focused, model, effort
             {atts.map((a) => (
               <div className="chat-thumb" key={a.path}>
                 <img src={a.url} alt="" />
-                <button className="chat-thumb-x" aria-label="첨부 제거" onClick={() => remove(a)}>×</button>
+                <button className="chat-thumb-x" aria-label="Remove attachment" onClick={() => remove(a)}>×</button>
               </div>
             ))}
           </div>
         )}
         <div className="chat-row">
           <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden onChange={onPick} />
-          <button className="chat-icon-btn" aria-label="이미지 첨부" title="이미지 첨부" disabled={disabled} onClick={() => fileRef.current?.click()}><Plus size={16} strokeWidth={1.75} /></button>
+          <button className="chat-icon-btn" aria-label="Attach image" title="이미지 첨부" disabled={disabled} onClick={() => fileRef.current?.click()}><Plus size={16} strokeWidth={1.75} /></button>
           <div className="chat-input">
           {!text && !composing && <span className="chat-ph" aria-hidden="true">메시지 입력 — Enter 전송, Shift+Enter 줄바꿈, / 명령</span>}
           <textarea
             ref={ref}
-            aria-label="메시지 입력"
+            aria-label="Message"
             onCompositionStart={() => setComposing(true)}
             onCompositionEnd={() => setComposing(false)}
             rows={1}
@@ -241,8 +241,8 @@ export default function ChatComposer({ running, disabled, focused, model, effort
             <span className="ellipsis">{effort ?? "추론"}</span><ChevronDown size={12} strokeWidth={1.5} />
           </button>
           {stopMode
-            ? <button className="chat-icon-btn" aria-label="중지" title="중지" onClick={onStop}><Square size={12} strokeWidth={1.75} /></button>
-            : <button className="chat-icon-btn chat-send" aria-label="전송" title="전송 (Enter)" onClick={send} disabled={empty || disabled || uploading > 0}><CornerDownLeft size={16} strokeWidth={1.75} /></button>}
+            ? <button className="chat-icon-btn" aria-label="Stop" title="중지" onClick={onStop}><Square size={12} strokeWidth={1.75} /></button>
+            : <button className="chat-icon-btn chat-send" aria-label="Send" title="전송 (Enter)" onClick={send} disabled={empty || disabled || uploading > 0}><CornerDownLeft size={16} strokeWidth={1.75} /></button>}
         </div>
       </div>
     </div>

@@ -20,15 +20,10 @@ export default function SessionRow({ s, now, focused, onClick, onApprove, onStop
   const shown = shownSeconds(s, now);
   const working = st === "running" || st === "thinking" || st === "tool";
   return (
-    <div className={`row${focused ? " focused" : ""}${drag?.dragging ? " dragging" : ""}${unread ? " unread" : ""}`} role="button" tabIndex={0} onClick={onClick}
-      data-sid={drag ? s.sessionId : undefined} onPointerDown={drag?.onPointerDown}
-      onKeyDown={(e) => {
-        if (e.target !== e.currentTarget) return;
-        if (drag && e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) { e.preventDefault(); drag.onMove(e.key === "ArrowUp" ? -1 : 1); }
-        else if (e.key === "Enter" || e.key === " ") onClick();
-      }}>
+    <div className={`row${focused ? " focused" : ""}${drag?.dragging ? " dragging" : ""}${unread ? " unread" : ""}`} role="group" aria-label={[agentName(s.agent), sessionTitle(s), stateLabel(st)].filter(Boolean).join(" · ")} onClick={onClick}
+      data-sid={drag ? s.sessionId : undefined} onPointerDown={drag?.onPointerDown}>
       <div className="row-top">
-        <span className={`dot ${tone}${working ? " blink" : ""}`} />
+        <span className={`dot ${tone}${working ? " blink" : ""}`} aria-hidden="true" />
         <span className="row-agent">{agentName(s.agent)}</span>
         {folder && <span className="row-folder ellipsis">{folder}</span>}
         {s.branch && <span className="row-branch ellipsis">{s.branch}</span>}
@@ -43,7 +38,7 @@ export default function SessionRow({ s, now, focused, onClick, onApprove, onStop
           </button>
         )}
       </div>
-      <div className="row-line">{unread && <span className="dot unread" role="img" aria-label="Unread" title="아직 보지 않은 결과가 있습니다." />}<span className="row-prompt ellipsis" title={isBackgroundId(s.sessionId) ? `다른 세션에서 실행한 백그라운드 작업입니다.\n${s.prompt}` : s.prompt}>{isBackgroundId(s.sessionId) && <><ChevronRight className="row-bg-chev" size={12} strokeWidth={1.75} />Background · </>}{sessionTitle(s)}</span>{s.subagents.length > 0 && (() => { const t = s.subagents.length === 1 ? "1 agent" : `${s.subagents.length} agents`; return onGraph ? <button className="row-sub row-sub-btn" title="서브에이전트 그래프를 엽니다." onClick={(e) => { e.stopPropagation(); onGraph(); }}>{t}</button> : <span className="row-sub">{t}</span>; })()}{s.usage && <span className="row-tok" title="Tokens">{fmtTok(totalTokens(s.usage))}</span>}</div>
+      <div className="row-line">{unread && <span className="dot unread" role="img" aria-label="Unread" title="아직 보지 않은 결과가 있습니다." />}<button className="row-prompt ellipsis" onKeyDown={(e) => { if (drag && e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) { e.preventDefault(); drag.onMove(e.key === "ArrowUp" ? -1 : 1); } }} title={isBackgroundId(s.sessionId) ? `다른 세션에서 실행한 백그라운드 작업입니다.\n${s.prompt}` : s.prompt}>{isBackgroundId(s.sessionId) && <><ChevronRight className="row-bg-chev" size={12} strokeWidth={1.75} />Background · </>}{sessionTitle(s)}</button>{s.subagents.length > 0 && (() => { const t = s.subagents.length === 1 ? "1 agent" : `${s.subagents.length} agents`; return onGraph ? <button className="row-sub row-sub-btn" title="서브에이전트 그래프를 엽니다." onClick={(e) => { e.stopPropagation(); onGraph(); }}>{t}</button> : <span className="row-sub">{t}</span>; })()}{s.usage && <span className="row-tok" title="Tokens">{fmtTok(totalTokens(s.usage))}</span>}</div>
       {s.pending && <div className="row-pending ellipsis">{s.pending.text}</div>}
       {!s.pending && st === "reply" && s.ask && <div className="row-pending ellipsis" title={s.ask}>{s.ask}</div>}
       {s.state === "approval" && (
@@ -59,11 +54,10 @@ export default function SessionRow({ s, now, focused, onClick, onApprove, onStop
       ))}
       {kids?.map((c) => {
         const cs = displayState(c, now), t = shownSeconds(c, now), label = stateLabel(cs);
-        return (
-          <div key={c.sessionId} className={`row-line${onGraph ? " row-line-link" : ""}`} onClick={onGraph && ((e) => { e.stopPropagation(); onGraph(); })}>
-            <span className="tree">└</span><span className="ellipsis" title={c.prompt}>Background · {sessionTitle(c)}{label && ` · ${label}`}</span><span className="row-time">{t !== null && fmtElapsed(t)}</span>
-          </div>
-        );
+        const body = <><span className="tree">└</span><span className="ellipsis" title={c.prompt}>Background · {sessionTitle(c)}{label && ` · ${label}`}</span><span className="row-time">{t !== null && fmtElapsed(t)}</span></>;
+        return onGraph
+          ? <button key={c.sessionId} className="row-line row-line-link" onClick={(e) => { e.stopPropagation(); onGraph(); }}>{body}</button>
+          : <div key={c.sessionId} className="row-line">{body}</div>;
       })}
       {s.todos.map((t, i) => {
         const Icon = TODO_ICON[t.status];

@@ -3,7 +3,7 @@ import turn from "./__fixtures__/turn.jsonl?raw";
 import background from "./__fixtures__/background.jsonl?raw";
 import delegate from "./__fixtures__/delegate.jsonl?raw";
 import { RpcError } from "./gateway";
-import { STUCK_MSG, annotateRows, forThisPane, pendingToQueued, WATCHDOG_MS, activityLabel, canSend, submitFailure, watchdogDue, whileRunning, chatReducer, forkBoundary, rewindFailure, rewindText, userActions, fmtSec, groupItems, staleRetry, initialChat, shouldAutoReconnect, toDirective, toModelProviders, transcriptToItems, type ChatAction } from "./chatSession";
+import { STUCK_MSG, annotateRows, forThisPane, pendingToQueued, WATCHDOG_MS, activityLabel, canSend, submitFailure, watchdogDue, whileRunning, chatReducer, forkBoundary, rewindFailure, rewindText, userActions, groupItems, staleRetry, initialChat, shouldAutoReconnect, toDirective, toModelProviders, transcriptToItems, type ChatAction } from "./chatSession";
 
 const ev = (type: string, payload: object = {}): ChatAction => ({ t: "event", ev: { type, payload } });
 
@@ -298,7 +298,7 @@ describe("turn clock", () => {
   });
 });
 
-describe("activityLabel / fmtSec", () => {
+describe("activityLabel", () => {
   const tool = (status: "running" | "done", name = "terminal", context = "npm test", progress?: string) => ({ kind: "tool" as const, id: name + status, name, context, status, progress });
   const base = { prompts: [], status: "", generating: "" };
   it("prompt, running tool, generating, status, thought, answer, thinking", () => {
@@ -313,7 +313,6 @@ describe("activityLabel / fmtSec", () => {
     expect(activityLabel({ ...base, items: [tool("done"), { kind: "assistant", id: "m", text: "x", streaming: true }] })).toBe("Thinking · writing reply");
     expect(activityLabel({ ...base, items: [tool("done")] })).toBe("Thinking");
   });
-  it("fmtSec", () => { expect(fmtSec(7)).toBe("7초"); expect(fmtSec(72)).toBe("1분 12초"); expect(fmtSec(60)).toBe("1분 0초"); });
 });
 
 describe("groupItems", () => {

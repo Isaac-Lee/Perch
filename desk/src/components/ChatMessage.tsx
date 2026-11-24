@@ -1,7 +1,8 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { ChevronRight, Plus } from "lucide-react";
 import { openUrl } from "../lib/backend";
-import { fmtSec, type Att, type ChatItem, type SubagentLive, type ToolGroup, type ToolItem } from "../lib/chatSession";
+import { fmtElapsed } from "../lib/format";
+import { type Att, type ChatItem, type SubagentLive, type ToolGroup, type ToolItem } from "../lib/chatSession";
 import { imageMime } from "../lib/composer";
 import { highlight } from "../lib/highlight";
 import { useAttachments } from "../lib/useAttachments";
@@ -17,7 +18,7 @@ export type ChatActions = {
   onAttach: (bytes: Uint8Array, mime: string) => Promise<{ path: string; mime: string }>;
 };
 
-const STATUS = { running: "실행 중", done: "", error: "✕ 오류" } as const;
+const STATUS = { running: "Running", done: "", error: "✕ Failed" } as const;
 
 const Rows = ({ rows }: { rows: [string, string][] }) => rows.length ? <dl className="chat-kv">{rows.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}</dl> : null;
 
@@ -63,7 +64,7 @@ function UserBubble({ item, actions }: { item: Extract<ChatItem, { kind: "user" 
               {att.atts.map((a) => (
                 <div className="chat-thumb" key={a.key}>
                   {a.url ? <img src={a.url} alt="" /> : <span className="chat-thumb-name" title={a.path}>{a.path.split(/[\\/]/).pop()}</span>}
-                  <button className="chat-thumb-x" aria-label="첨부 제거" onClick={() => att.remove(a)}>×</button>
+                  <button className="chat-thumb-x" aria-label="Remove attachment" onClick={() => att.remove(a)}>×</button>
                 </div>
               ))}
               {(att.uploading > 0 || att.err) && <span className="chat-composer-err">{att.uploading > 0 ? "이미지 올리는 중…" : att.err}</span>}
@@ -71,7 +72,7 @@ function UserBubble({ item, actions }: { item: Extract<ChatItem, { kind: "user" 
             {mode === "ask-overwrite" ? confirm(() => actions?.onOverwrite(draft, atts)) : (
               <div className="chat-act-row">
                 <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden onChange={att.onPick} />
-                <button className="btn" aria-label="이미지 첨부" title="이미지 첨부" disabled={off} onClick={() => fileRef.current?.click()}><Plus size={12} strokeWidth={1.75} /></button>
+                <button className="btn" aria-label="Attach image" title="이미지 첨부" disabled={off} onClick={() => fileRef.current?.click()}><Plus size={12} strokeWidth={1.75} /></button>
                 <button className="btn" disabled={busy} title={off ? why : att.uploading > 0 ? "이미지를 올리는 중입니다" : "이 메시지부터 덮어씁니다"} onClick={() => setMode("ask-overwrite")}>여기서 덮어쓰기</button>
                 <button className="btn" disabled={busy} title={off ? why : att.uploading > 0 ? "이미지를 올리는 중입니다" : "새 세션으로 포크해 보냅니다"} onClick={() => { const a = atts; done(); actions?.onFork(draft, true, a); }}>포크해서 보내기</button>
                 <button className="btn" onClick={done}>취소</button>
@@ -105,7 +106,7 @@ function BackgroundRow({ item }: { item: Extract<ChatItem, { kind: "background" 
     return () => clearInterval(t);
   }, [running]);
   const secs = running ? (item.startedAt != null ? Math.round((now - item.startedAt) / 1000) : null) : item.durationS ?? null;
-  const parts = [`Background · ${item.text}`, BG_STATUS[item.status], secs != null ? fmtSec(Math.max(0, secs)) : ""].filter(Boolean);
+  const parts = [`Background · ${item.text}`, BG_STATUS[item.status], secs != null ? fmtElapsed(Math.max(0, secs)) : ""].filter(Boolean);
   return (
     <div className={`chat-tool ${item.status === "failed" ? "error" : item.status}`}>
       <button className="chat-tool-row" onClick={() => setOpen(!open)} aria-expanded={open} title="다른 세션에서 실행 중인 백그라운드 작업입니다.">
@@ -129,7 +130,7 @@ function ChatMessage({ item, subagents, actions }: { item: ChatItem | ToolGroup;
       );
     case "thought": {
       const title = thoughtTitle(item.text);
-      const parts = ["생각", title, item.durationS ? fmtSec(item.durationS) : ""].filter(Boolean);
+      const parts = ["생각", title, item.durationS ? fmtElapsed(item.durationS) : ""].filter(Boolean);
       return (
         <div className="chat-tool chat-thought">
           <button className="chat-tool-row" onClick={() => setOpen(!open)} aria-expanded={open}>

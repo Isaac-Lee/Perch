@@ -1,17 +1,12 @@
-import { Fragment, useEffect, useRef } from "react";
+import { Fragment, useCallback, useRef } from "react";
 import { Keyboard } from "lucide-react";
+import { useDismiss } from "../lib/useDismiss";
 import { MOD_KEY, SHORTCUTS, formatShortcut } from "../lib/shortcuts";
 
 export default function ShortcutHelp({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const down = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) onOpenChange(false); };
-    const key = (e: KeyboardEvent) => { if (e.key === "Escape") onOpenChange(false); };
-    document.addEventListener("mousedown", down);
-    document.addEventListener("keydown", key);
-    return () => { document.removeEventListener("mousedown", down); document.removeEventListener("keydown", key); };
-  }, [open, onOpenChange]);
+  const close = useCallback(() => onOpenChange(false), [onOpenChange]);
+  useDismiss(ref, open, close);
   return (
     <div className="menu-wrap" ref={ref}>
       <button className="icon-btn" aria-label="Shortcuts" aria-expanded={open} title={`Shortcuts · ${formatShortcut("help")}`} onClick={() => onOpenChange(!open)}><Keyboard size={16} strokeWidth={1.5} /></button>
