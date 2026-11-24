@@ -334,6 +334,11 @@ pub async fn pane_attach(
     }
 }
 
+/// Clones the pane's writer under the lock; the (possibly blocking) write happens after it is released.
+fn writer_of(desk: &Desk, pred: impl Fn(&PaneInfo) -> bool) -> Option<pty::Writer> {
+    desk.0.lock().unwrap().entries.iter().find(|e| pred(&e.info)).and_then(|e| e.pty.as_ref()).map(|p| p.writer())
+}
+
 fn with_pty(desk: &Desk, id: &str, f: impl FnOnce(&mut Pty) -> Result<(), String>) -> Result<(), String> {
     let mut g = desk.0.lock().unwrap();
     match g.entries.iter_mut().find(|e| e.info.id == id).and_then(|e| e.pty.as_mut()) {
@@ -364,7 +369,10 @@ pub async fn open_url(url: String) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn pane_write(desk: State<'_, Desk>, id: String, data: String) -> Result<(), String> {
-    with_pty(&desk, &id, |p| p.write(data.as_bytes()))
+    match writer_of(&desk, |i| i.id == id) {
+        Some(w) => pty::write_to(&w, data.as_bytes()),
+        None => Ok(()),
+    }
 }
 
 /// Answers a pending approval of a connected session by typing the menu number into its pane.
@@ -384,9 +392,8 @@ pub async fn session_approve(
         return app.emit("desk://chat-approve", serde_json::json!({ "paneId": pane_id, "allow": allow })).map_err(|e| e.to_string());
     }
     let key = sessions::approve_key(&sessions.get(), &session_id, allow)?;
-    let mut g = desk.0.lock().unwrap();
-    match g.entries.iter_mut().find(|e| e.info.session_id.as_deref() == Some(&session_id)).and_then(|e| e.pty.as_mut()) {
-        Some(p) => p.write(key.as_bytes()),
+    match writer_of(&desk, |i| i.session_id.as_deref() == Some(&session_id)) {
+        Some(w) => pty::write_to(&w, key.as_bytes()),
         None => Err("연결된 칸이 없습니다".into()),
     }
 }

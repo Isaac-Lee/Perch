@@ -8,7 +8,7 @@ pub fn now() -> u64 {
 }
 
 pub fn home() -> PathBuf {
-    if let Some(p) = std::env::var_os("PERCH_HOME") {
+    if let Some(p) = std::env::var_os("PERCH_HOME").filter(|h| !h.is_empty()) {
         return PathBuf::from(p);
     }
     let h = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")).unwrap_or_default();
@@ -238,7 +238,7 @@ fn safe_id(id: &str) -> bool {
     !id.is_empty() && id.len() < 200 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
-fn session_file(dir: &Path, id: &str) -> PathBuf {
+pub fn session_file(dir: &Path, id: &str) -> PathBuf {
     dir.join(format!("hermes-{id}.json"))
 }
 
