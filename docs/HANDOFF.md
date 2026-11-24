@@ -125,7 +125,7 @@ npm run tauri build   # 릴리스 exe와 설치 파일
 
 ## 6. 다음에 할 일
 
-**릴리스.** 최신은 `v0.11.0`(열려 있던 칸 복원, 검수에서 찾은 버그·성능·접근성 수정)이고 릴리스 노트는 `docs/releases/v0.11.0.md`다. 직전 `v0.10.2`의 노트는 `docs/releases/v0.10.2.md`다. 이전 `v0.1.0`은 2026-11-18에 [Releases](https://github.com/Isaac-Lee/Perch/releases)에 게시됐다 (`Perch_0.1.0_x64-setup.exe`, `Perch_0.1.0_aarch64.dmg`). 태그 빌드는 초안 릴리스에 설치 파일을 붙이고, 확인 뒤 `gh release edit v<버전> --draft=false --latest`로 게시한다. 다음 버전은 `tauri.conf.json`, `Cargo.toml`(앱과 `hook/`), `package.json`과 두 lock 파일의 버전을 올리고 `v<버전>` 태그를 push하면 같은 과정이 돈다. v0.3.0 준비 커밋도 이 파일들만 고쳤다. 버전 번호는 `docs/VERSIONING.md` 규칙을 따른다.
+**릴리스.** 최신은 `v0.11.1`(변화 없는 폴러 틱 건너뛰기, 상태 파일 정리를 한 시간마다)이고 릴리스 노트는 `docs/releases/v0.11.1.md`다. 직전 `v0.11.0`의 노트는 `docs/releases/v0.11.0.md`다. 이전 `v0.1.0`은 2026-11-18에 [Releases](https://github.com/Isaac-Lee/Perch/releases)에 게시됐다 (`Perch_0.1.0_x64-setup.exe`, `Perch_0.1.0_aarch64.dmg`). 태그 빌드는 초안 릴리스에 설치 파일을 붙이고, 확인 뒤 `gh release edit v<버전> --draft=false --latest`로 게시한다. 다음 버전은 `tauri.conf.json`, `Cargo.toml`(앱과 `hook/`), `package.json`과 두 lock 파일의 버전을 올리고 `v<버전>` 태그를 push하면 같은 과정이 돈다. v0.3.0 준비 커밋도 이 파일들만 고쳤다. 버전 번호는 `docs/VERSIONING.md` 규칙을 따른다.
 
 - 라이선스는 MIT + Commons Clause다 (`LICENSE`). 회사 내부 사용은 허용, 판매는 금지 (사용자 결정, 2026-11-18).
 - Intel 맥용 빌드는 없다. 필요하면 워크플로 matrix에 줄을 추가한다.
