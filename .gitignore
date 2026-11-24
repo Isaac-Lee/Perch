@@ -6,3 +6,5 @@ dist/
 .venv/
 desk/node_modules/
 desk/dist/
+.claude/worktrees/
+.claude/settings.local.json
