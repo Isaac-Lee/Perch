@@ -8,8 +8,8 @@ import { FONT_CHOICES, clampSize, type TermSettings } from "../lib/termSettings"
 const CUSTOM = "__custom";
 const AGENT_CHOICES: [AgentKind, string][] = [["hermes", "Hermes"], ["opencode", "OpenCode"], ["shell", "Shell"]];
 
-export default function SettingsMenu({ theme, onTheme, value, onChange, pane, onPane, folders }: {
-  theme: ThemeId; onTheme: (t: ThemeId) => void; value: TermSettings; onChange: (s: TermSettings) => void; pane: NewPaneDefaults; onPane: (v: NewPaneDefaults) => void; folders: string[];
+export default function SettingsMenu({ theme, onTheme, value, onChange, pane, onPane, folders, restorePanes, onRestorePanes }: {
+  theme: ThemeId; onTheme: (t: ThemeId) => void; value: TermSettings; onChange: (s: TermSettings) => void; pane: NewPaneDefaults; onPane: (v: NewPaneDefaults) => void; folders: string[]; restorePanes: boolean; onRestorePanes: (v: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -92,7 +92,10 @@ export default function SettingsMenu({ theme, onTheme, value, onChange, pane, on
                   onChange={(e) => e.target.value.trim() && onPane({ ...pane, cwd: e.target.value.trim() })} />
               </div>
             )}
-            <div className="menu-help">New session은 이 에이전트와 폴더로 열립니다.</div>
+            <label className="set-row"><span>Restore</span>
+              <input type="checkbox" aria-label="Restore open sessions" checked={restorePanes} onChange={(e) => onRestorePanes(e.target.checked)} />
+            </label>
+            <div className="menu-help">New session은 이 에이전트와 폴더로 열립니다. Restore를 켜면 앱을 다시 열 때 열려 있던 칸을 같은 배치로 엽니다. Hermes는 같은 대화를 잇고, 셸과 OpenCode는 같은 폴더에서 새로 엽니다.</div>
           </div>
           {isTauri && (
             <div className="set-group">

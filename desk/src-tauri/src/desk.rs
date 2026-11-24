@@ -184,6 +184,16 @@ pub fn git_info(cwd: &Path) -> (Option<String>, Option<String>) {
     (None, None)
 }
 
+fn check_cwd(cwd: &str) -> Result<(), String> {
+    if cwd.trim().is_empty() {
+        return Err("폴더가 비어 있습니다".into());
+    }
+    if !Path::new(cwd).is_dir() {
+        return Err(format!("폴더가 없습니다: {cwd}"));
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn pane_create(
     app: AppHandle,
@@ -209,6 +219,7 @@ pub async fn pane_create(
             return Err("resume은 hermes 세션 id에만 쓸 수 있습니다".into());
         }
     }
+    check_cwd(&cwd)?;
     // One spelling per folder: the repo root is the sidebar group key.
     let cwd = if cfg!(windows) { cwd.replace('/', "\\") } else { cwd };
     let (repo_root, branch) = git_info(Path::new(&cwd));
@@ -467,6 +478,14 @@ pub async fn home_dir() -> Result<String, String> {
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn check_cwd_rejects_empty_and_missing() {
+        assert!(check_cwd("").is_err());
+        assert!(check_cwd("  ").is_err());
+        assert!(check_cwd("/no/such/perch/dir").is_err());
+        assert!(check_cwd(std::env::temp_dir().to_str().unwrap()).is_ok());
+    }
 
     fn entry(id: &str, agent: &str, created_ms: u64, session: Option<&str>) -> Entry {
         Entry {

@@ -4,7 +4,7 @@ import type { Group, Pane, Session } from "../lib/types";
 import { SESSION_SORTS, displayState, groupByStatus, nestBackground, groupSessions, groupSummary, isUnread, matchSession, moveInOrder, splitNeedsYou, waitingOnYou, type GroupBy, type SessionSort } from "../lib/groups";
 import SessionRow from "./SessionRow";
 import { openGraph } from "../lib/paneGraph";
-import { clampSidebarWidth, SIDEBAR_DEFAULT, MAX_ORDER, loadArchived, loadCollapsed, loadDismissed, saveDismissed, loadReadAt, saveReadAt, markRead, loadSessionOrder, loadSessionSort, loadGroupBy, saveGroupBy, saveArchived, saveCollapsed, saveSessionOrder, saveSessionSort } from "../lib/uiSettings";
+import { clampSidebarWidth, SIDEBAR_DEFAULT, MAX_ORDER, loadArchived, loadCollapsed, loadDismissed, saveDismissed, loadReadAt, saveReadAt, markRead, loadSessionOrder, loadSessionSort, loadGroupBy, saveGroupBy, saveArchived, saveCollapsed, saveSessionOrder, saveSessionSort, useStored } from "../lib/uiSettings";
 import { useScrollReveal } from "../lib/useScrollReveal";
 import { useRowDrag } from "../lib/useRowDrag";
 import { useLiveSubagents } from "../lib/liveSubagents";
@@ -23,15 +23,18 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
   width: number; onResize: (w: number) => void;
 }) {
   // An archived session stays hidden until it gets an open pane again (resumed).
-  const [archived, setArchived] = useState<Set<string>>(() => new Set(loadArchived()));
-  const toggleArchive = (id: string) => setArchived((o) => { const n = new Set(o); if (!n.delete(id)) n.add(id); saveArchived([...n]); return n; });
+  // Stored settings are shared with other windows: read them live, and change them from the stored value.
+  const archivedList0 = useStored("perch.archivedSessions", loadArchived);
+  const archived = useMemo(() => new Set(archivedList0), [archivedList0]);
+  const toggleArchive = (id: string) => { const n = new Set(loadArchived()); if (!n.delete(id)) n.add(id); saveArchived([...n]); };
   // X on a row: the row leaves the live list for Recent (nothing is archived). Cleared again once the session has a pane.
-  const [dismissed, setDismissed] = useState<Set<string>>(() => new Set(loadDismissed()));
-  const dismiss = (id: string) => setDismissed((o) => { if (o.has(id)) return o; const n = new Set([...o, id]); saveDismissed([...n]); return n; });
+  const dismissedList = useStored("perch.dismissedSessions", loadDismissed);
+  const dismissed = useMemo(() => new Set(dismissedList), [dismissedList]);
+  const dismiss = (id: string) => { const cur = loadDismissed(); if (!cur.includes(id)) saveDismissed([...cur, id]); };
   useEffect(() => {
     const back = sessions.filter((s) => s.paneId && dismissed.has(s.sessionId));
     if (!back.length) return;
-    setDismissed((o) => { const n = new Set(o); back.forEach((s) => n.delete(s.sessionId)); saveDismissed([...n]); return n; });
+    saveDismissed(loadDismissed().filter((id) => !back.some((s) => s.sessionId === id)));
   }, [sessions, dismissed]);
   // Chat panes report their children over gateway frames, not the state file: fill empty rows from that live store.
   const liveSubs = useLiveSubagents();
@@ -41,9 +44,9 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
   const nest = useMemo(() => nestBackground(shown, bgTasks, now), [shown, bgTasks, now]);
   const bodyRef = useRef<HTMLDivElement>(null);
   const [sort, setSort] = useState<SessionSort>(loadSessionSort);
-  const [order, setOrder] = useState<string[]>(loadSessionOrder);
-  const [readAt, setReadAt] = useState<Record<string, number>>(loadReadAt);
-  const markSeen = (id: string) => setReadAt((m) => { const n = markRead(m, id, now); saveReadAt(n); return n; });
+  const order = useStored("perch.sessionOrder", loadSessionOrder);
+  const readAt = useStored("perch.readAt", loadReadAt);
+  const markSeen = (id: string) => saveReadAt(markRead(loadReadAt(), id, now));
   const allGroups = useMemo(() => groupSessions(nest.top, now, sort, order, dismissed, readAt), [nest, now, sort, order, dismissed, readAt]);
   const allSplit = useMemo(() => splitNeedsYou(allGroups, now), [allGroups, now]);
   const [query, setQuery] = useState("");
@@ -63,7 +66,7 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
     const vis = allSplit.groups.flatMap((x) => (x.key === gkey ? moved : x.sessions.map((s) => s.sessionId)));
     const seen = new Set(vis);
     const next = [...vis, ...order.filter((i) => !seen.has(i))].slice(0, MAX_ORDER);
-    setOrder(next); saveSessionOrder(next); chooseSort("manual");
+    saveSessionOrder(next); chooseSort("manual");
   };
   const refocus = useRef<string | null>(null);
   const { drag: rowDrag, suppressClick, onPointerDown } = useRowDrag(!q && !byStatus, bodyRef, reorder);
@@ -84,8 +87,9 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
   const archivedList = useMemo(() => sessions.filter((s) => hiddenIn(archived, s) && (!q || matchSession(s, q))).sort((a, b) => b.seen - a.seen), [sessions, archived, q]);
   const [showArchived, setShowArchived] = useState(false);
   const [open, setOpen] = useState<Set<string>>(new Set());
-  const [folded, setFolded] = useState<Set<string>>(() => new Set(loadCollapsed()));
-  const fold = (k: string) => setFolded((o) => { const n = new Set(o); if (!n.delete(k)) n.add(k); saveCollapsed([...n]); return n; });
+  const foldedList = useStored("perch.collapsedGroups", loadCollapsed);
+  const folded = useMemo(() => new Set(foldedList), [foldedList]);
+  const fold = (k: string) => { const n = new Set(loadCollapsed()); if (!n.delete(k)) n.add(k); saveCollapsed([...n]); };
   const drag = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     const x0 = e.clientX, w0 = width;

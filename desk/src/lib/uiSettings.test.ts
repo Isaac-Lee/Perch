@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { clampSidebarWidth, loadNewPane, loadPaneLayout, savePaneLayout, loadTheme, saveTheme, loadDismissed, saveDismissed, loadSessionOrder, loadSessionSort, pushRecent, removeRecent, loadRecentFolders, saveSessionOrder, saveSessionSort, loadGroupBy, saveGroupBy, loadReadAt, saveReadAt, markRead, MAX_ORDER } from "./uiSettings";
+import { clampSidebarWidth, loadNewPane, loadPaneLayout, savePaneLayout, loadTheme, saveTheme, loadDismissed, saveDismissed, loadSessionOrder, loadSessionSort, pushRecent, removeRecent, loadRecentFolders, saveSessionOrder, saveSessionSort, loadGroupBy, saveGroupBy, loadReadAt, saveReadAt, markRead, MAX_ORDER, loadOpenPanes, saveOpenPanes, subscribeStored, saveArchived, loadArchived } from "./uiSettings";
 
 test("pushRecent moves to front, dedupes, caps at 8", () => {
   expect(pushRecent(["a", "b", "c"], "c")).toEqual(["c", "a", "b"]);
@@ -75,7 +75,7 @@ test("loadPaneLayout validates stored layout", () => {
   expect(loadPaneLayout()).toEqual([]);
   savePaneLayout([["a"], ["b", "c"]]);
   expect(loadPaneLayout()).toEqual([["a"], ["b", "c"]]);
-  for (const bad of ['"x"', "[1]", '[["a"],[]]', '[["a",2]]', "{}"]) { store["perch.paneLayout"] = bad; expect(loadPaneLayout()).toEqual([]); }
+  for (const bad of ['"x"', "[1]", '[["a"],[]]', '[["a",2]]', "{}"]) { store["perch.paneLayout.main"] = bad; expect(loadPaneLayout()).toEqual([]); }
   vi.unstubAllGlobals();
 });
 
@@ -127,5 +127,44 @@ test("group-by load validates, defaults to folder", () => {
   saveGroupBy("status");
   expect(loadGroupBy()).toBe("status");
   for (const bad of ['"bogus"', "3", "{not json", "null"]) { store["perch.sessionGroupBy"] = bad; expect(loadGroupBy()).toBe("folder"); }
+  vi.unstubAllGlobals();
+});
+
+test("recent folders drop empty entries and fall back to a non-empty seed", () => {
+  const store: Record<string, string> = {};
+  vi.stubGlobal("localStorage", { getItem: (k: string) => store[k] ?? null, setItem: (k: string, v: string) => { store[k] = v; } });
+  expect(loadRecentFolders(["/home/u"])).toEqual(["/home/u"]);
+  expect(loadRecentFolders([""])).toEqual([]);
+  store["perch.recentFolders"] = '["", "/a"]';
+  expect(loadRecentFolders(["/home/u"])).toEqual(["/a"]);
+  store["perch.recentFolders"] = '[""]';
+  expect(loadRecentFolders(["/home/u"])).toEqual(["/home/u"]);
+  vi.unstubAllGlobals();
+});
+
+test("open panes round-trip and bad entries are dropped", () => {
+  const store: Record<string, string> = {};
+  vi.stubGlobal("localStorage", { getItem: (k: string) => store[k] ?? null, setItem: (k: string, v: string) => { store[k] = v; } });
+  expect(loadOpenPanes()).toEqual([]);
+  saveOpenPanes([{ agent: "hermes", cwd: "/a", view: "chat", sessionId: "s1" }, { agent: "shell", cwd: "/b", view: "tui", sessionId: null }]);
+  expect(loadOpenPanes()).toHaveLength(2);
+  store["perch.openPanes"] = '[{"agent":"x","cwd":"/a"},{"agent":"shell","cwd":""},null,{"agent":"shell","cwd":"/c","view":"bogus","sessionId":3}]';
+  expect(loadOpenPanes()).toEqual([{ agent: "shell", cwd: "/c", view: "tui", sessionId: null }]);
+  store["perch.openPanes"] = "{}";
+  expect(loadOpenPanes()).toEqual([]);
+  vi.unstubAllGlobals();
+});
+
+test("writes notify subscribers and building on the stored value merges", () => {
+  const store: Record<string, string> = {};
+  vi.stubGlobal("localStorage", { getItem: (k: string) => store[k] ?? null, setItem: (k: string, v: string) => { store[k] = v; } });
+  const f = vi.fn();
+  const off = subscribeStored(f);
+  saveArchived(["a"]);
+  expect(f).toHaveBeenCalledTimes(1);
+  store["perch.archivedSessions"] = '["a","b"]'; // another window archived "b"
+  saveArchived([...loadArchived(), "c"]);
+  expect(loadArchived()).toEqual(["a", "b", "c"]);
+  off();
   vi.unstubAllGlobals();
 });

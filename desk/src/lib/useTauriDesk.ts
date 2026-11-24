@@ -3,6 +3,21 @@ import { WINDOW, deskSnapshot, emitChatStop, onFocusPane, onPanes, onSessions, p
 import type { AgentKind, Pane, PaneView, Session } from "./types";
 import { FOCUS_PANE_EVENT } from "./forkPrefill";
 import { folderName } from "../mock/sessions";
+import { loadOpenPanes, loadRestorePanes, saveOpenPanes } from "./uiSettings";
+
+// Reopen last run's panes once per app start, in the first window only, and only into an empty desk.
+let restoring: Promise<void> | undefined;
+const restoreOnce = () => restoring ??= (async () => {
+  if (WINDOW !== "main" || !loadRestorePanes()) return;
+  const [cur, ss] = await Promise.all([deskSnapshot(), sessionsSnapshot()]);
+  if (cur.length) return;
+  const known = new Set(ss.map((s) => s.sessionId));
+  for (const p of loadOpenPanes()) {
+    if (p.sessionId && !known.has(p.sessionId)) continue; // its state file is gone
+    // ponytail: shell/OpenCode panes reopen fresh in the same folder; a skipped or failed pane shifts later layout slots by one
+    await paneCreate(p.agent, p.cwd, p.agent === "hermes" ? p.sessionId ?? undefined : undefined, p.agent === "hermes" ? p.view : undefined).catch(console.error);
+  }
+})().catch(console.error);
 
 const sec = () => Math.floor(Date.now() / 1000);
 const stoppedNone: Record<string, number> = {};
@@ -22,6 +37,7 @@ export function useTauriDesk(hermesView: PaneView = "chat") {
   const [infos, setInfos] = useState<PaneInfo[]>([]);
   const [sInfos, setSInfos] = useState<SessionInfo[]>([]);
   const [focusedPaneId, setFocused] = useState<string | null>(null);
+  const [restored, setRestored] = useState(false);
   const infosRef = useRef(infos);
   infosRef.current = infos;
   const sInfosRef = useRef(sInfos);
@@ -41,6 +57,15 @@ export function useTauriDesk(hermesView: PaneView = "chat") {
       .then((u) => { if (dead) u(); else off2 = u; });
     return () => { dead = true; clearInterval(t); off(); off2(); off3(); };
   }, []);
+
+  useEffect(() => {
+    let dead = false;
+    restoreOnce().then(() => deskSnapshot()).then((p) => { if (!dead) { setInfos(p); setRestored(true); } }, console.error);
+    return () => { dead = true; };
+  }, []);
+  useEffect(() => { // first window remembers its panes; not before the restore above has finished
+    if (restored && WINDOW === "main") saveOpenPanes(infos.filter((i) => i.window === WINDOW).map((i) => ({ agent: i.agent, cwd: i.cwd, view: i.view, sessionId: i.sessionId })));
+  }, [infos, restored]);
 
   const panes = useMemo<Pane[]>(() => infos.filter((i) => i.window === WINDOW)
     .map((i) => ({ id: i.id, agent: i.agent, cwd: i.cwd, sessionId: i.sessionId ?? i.id, title: folderName(i.cwd), branch: i.branch, view: i.view })), [infos]);
@@ -93,5 +118,5 @@ export function useTauriDesk(hermesView: PaneView = "chat") {
     sessionApprove(sessionId, allow).catch(() => focusSession(sessionId));
   }, [focusSession]);
 
-  return { now, sessions, panes, focusedPaneId, focusPane: setFocused, focusSession, addPane, closePane, approve, stop, stopped: stoppedNone };
+  return { now, restored, sessions, panes, focusedPaneId, focusPane: setFocused, focusSession, addPane, closePane, approve, stop, stopped: stoppedNone };
 }

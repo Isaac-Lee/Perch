@@ -8,11 +8,16 @@ import { loadPaneLayout, savePaneLayout } from "./uiSettings";
 export function usePaneLayout(paneIds: string[], width: number) {
   const maxCols = maxColsFor(width);
   const ready = paneIds.length > 0 && width > 0; // no reconcile/persist before a real width is measured
-  const [stored, setStored] = useState<Layout>(loadPaneLayout);
+  const [stored, setStored] = useState<Layout>([]);
+  const [saved, setSaved] = useState<Layout | null>(loadPaneLayout); // last run's layout as pane positions; mapped onto the first pane set
   const key = paneIds.join("\0");
-  const layout = useMemo(() => (ready ? reconcile(stored, paneIds, maxCols) : stored), [stored, key, maxCols, ready]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (ready && layout !== stored) setStored(layout); }, [layout, stored, ready]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (ready) savePaneLayout(layout); }, [layout, ready]); // eslint-disable-line react-hooks/exhaustive-deps
+  const layout = useMemo(() => {
+    if (!ready) return stored;
+    const base = saved ? saved.map((c) => c.map((i) => paneIds[Number(i)]).filter(Boolean)).filter((c) => c.length) : stored;
+    return reconcile(base, paneIds, maxCols);
+  }, [stored, saved, key, maxCols, ready]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (ready && layout !== stored) { setStored(layout); setSaved(null); } }, [layout, stored, ready]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (ready) savePaneLayout(layout.map((c) => c.map((id) => String(paneIds.indexOf(id))))); }, [layout, ready]); // eslint-disable-line react-hooks/exhaustive-deps
   const move = (id: string, target: DropTarget) => setStored(movePane(layout, id, target));
   return { layout, move, order: useMemo(() => layout.flat(), [layout]) };
 }
