@@ -101,7 +101,7 @@ describe("markdown", () => {
     expect(boxify("+------+\n| 한글한글 |\n+------+")).toBe("┌──────┐\n│ 한글한글 │\n└──────┘");
     expect(boxify("+----------+\n| 클라이언트 |\n+----------+\n      |\n      v")).toBe("┌──────────┐\n│ 클라이언트 │\n└──────────┘\n      │\n      v");
     expect(boxify("+---+\n+---+\n\n+-->\n---->")).toContain("\n\n+──>\n────>");
-    expect(md("```\n+----+\n| a  |\n+----+\n```")).toContain('<pre class="art"><code>┌────┐');
+    expect(md("```\n+----+\n| a  |\n+----+\n```")).toContain('<pre class="art"><code class="hljs-root">┌────┐');
     expect(md("```sql\n+----+\n| a  |\n+----+\n```")).not.toContain("┌");
   });
   it("realign drops padding so character-count box art meets its borders", () => {
@@ -116,7 +116,7 @@ describe("markdown", () => {
     const plain = "┌────┐\n│ ab │\n└────┘";
     expect(realign(plain)).toBe(plain);
     expect(tidyArt("+--------+\n| 한글     |\n+--------+")).toBe("┌────────┐\n│ 한글   │\n└────────┘");
-    expect(md("```\n┌────────┐\n│ 한글     │\n└────────┘\n```")).toContain('<pre class="art"><code>┌────────┐\n│ 한글   │\n└────────┘');
+    expect(md("```\n┌────────┐\n│ 한글     │\n└────────┘\n```")).toContain('<pre class="art"><code class="hljs-root">┌────────┐\n│ 한글   │\n└────────┘');
   });
   it("connector fragments join an unfenced diagram", () => {
     const d = "┌──┐\n│ a│\n└──┘";
@@ -131,5 +131,13 @@ describe("markdown", () => {
     expect(text("C:\\dir\\*.txt")).toBe("C:\\dir\\*.txt");
     expect(text("C:\\Users\\user\\.claude")).toBe("C:\\Users\\user\\.claude");
     expect(md("`a\\*b`")).toContain("<code>a\\*b</code>");
+  });
+  it("prettifies one-line JSON only in a closed fence", () => {
+    const j = JSON.stringify({ alpha: 1, beta: [1, 2, 3], gamma: { delta: "epsilon" }, zeta: "eta theta iota kappa lambda mu nu xi omicron" });
+    expect(md("```json\n" + j + "\n```")).toContain("\n  ");
+    expect(md("```json\n" + j)).not.toContain("\n  ");
+    const u = md("```\n" + j + "\n```");
+    expect(u).toContain("\n  ");
+    expect(u).toContain("hljs-attr");
   });
 });

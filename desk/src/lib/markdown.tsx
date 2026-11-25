@@ -1,5 +1,6 @@
-import { useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { highlight } from "./highlight";
+import { prettify } from "./prettify";
 
 export type Block =
   | { t: "p"; text: string } | { t: "h"; level: 1 | 2 | 3 | 4 | 5 | 6; text: string }
@@ -273,16 +274,28 @@ function inline(s: string, onLink: OnLink): ReactNode[] {
   return out;
 }
 
-function CodeBlock({ lang, text }: { lang: string; text: string }) {
+function CodeBlock({ lang, text, open }: { lang: string; text: string; open: boolean }) {
   const shown = useMemo(() => (/^(text|txt|plain|ascii)?$/i.test(lang) ? tidyArt(text) : text), [lang, text]);
-  const toks = useMemo(() => highlight(lang, shown), [lang, shown]);
+  const hl = useMemo(() => {
+    if (isArt(shown)) return highlight("text", shown);
+    const p = open ? shown : prettify(lang, shown);
+    return highlight(lang || (p === shown ? "" : p.trimStart()[0] === "<" ? "xml" : "json"), p); // prettify only changes JSON/markup
+  }, [lang, shown, open]);
+  const [done, setDone] = useState(false);
+  const timer = useRef<number | undefined>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const copy = () => {
+    try {
+      void navigator.clipboard.writeText(text).then(() => { setDone(true); clearTimeout(timer.current); timer.current = window.setTimeout(() => setDone(false), 1500); }, () => {});
+    } catch { /* no clipboard */ }
+  };
   return (
     <div className="md-code">
       <div className="md-code-head">
-        <span>{lang}</span>
-        <button type="button" className="md-copy" onClick={() => { try { void navigator.clipboard.writeText(text).catch(() => {}); } catch { /* no clipboard */ } }}>복사</button>
+        <span>{lang || hl.lang}</span>
+        <button type="button" className="md-copy" aria-live="polite" onClick={copy}>{done ? "복사됨" : "복사"}</button>
       </div>
-      <pre className={isArt(shown) ? "art" : undefined}><code>{toks.map((k, i) => k.t ? <span key={i} className={"hl-" + k.t}>{k.s}</span> : k.s)}</code></pre>
+      <pre className={isArt(shown) ? "art" : undefined}><code className="hljs-root" dangerouslySetInnerHTML={{ __html: hl.html }} /></pre>
     </div>
   );
 }
@@ -294,7 +307,7 @@ function render(blocks: Block[], onLink: OnLink): ReactNode[] {
     switch (b.t) {
       case "p": return <p key={i}>{inline(b.text, onLink)}</p>;
       case "h": { const H = `h${b.level}` as "h1"; return <H key={i}>{inline(b.text, onLink)}</H>; }
-      case "code": return <CodeBlock key={i} lang={b.lang} text={b.text} />;
+      case "code": return <CodeBlock key={i} lang={b.lang} text={b.text} open={b.open} />;
       case "hr": return <hr key={i} />;
       case "quote": return <blockquote key={i}>{render(b.children, onLink)}</blockquote>;
       case "list": {
