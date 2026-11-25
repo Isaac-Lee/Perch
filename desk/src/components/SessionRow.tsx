@@ -1,4 +1,4 @@
-import { Archive, ArchiveRestore, ChevronRight, Circle, CircleCheck, CircleDot, Square, X } from "lucide-react";
+import { Archive, ArchiveRestore, ChevronRight, Circle, CircleCheck, CircleDot, GitFork, Square, X } from "lucide-react";
 import type { AgentKind, Session, Todo } from "../lib/types";
 import { displayState, isBackgroundId, sessionTitle, shownSeconds } from "../lib/groups";
 import { fmtElapsed, stateLabel } from "../lib/format";
@@ -11,8 +11,8 @@ const TODO_ICON: Record<Todo["status"], typeof Circle> = { done: CircleCheck, in
 
 export interface RowDrag { dragging: boolean; onPointerDown: (e: React.PointerEvent<HTMLElement>) => void; onMove: (dir: -1 | 1) => void }
 
-export default function SessionRow({ s, now, focused, onClick, onApprove, onStop, onArchive, onHide, archived, drag, unread, folder, kids, onGraph }: {
-  s: Session; now: number; focused: boolean; onClick: () => void; onApprove: (allow: boolean) => void; onStop: () => void;
+export default function SessionRow({ s, now, focused, onClick, onApprove, onStop, onFork, onArchive, onHide, archived, drag, unread, folder, kids, onGraph }: {
+  s: Session; now: number; focused: boolean; onClick: () => void; onApprove: (allow: boolean) => void; onStop: () => void; /** fork from the end of the conversation (Hermes chat panes only) */ onFork?: () => void;
   onArchive?: () => void; onHide?: () => void; archived?: boolean; drag?: RowDrag; unread?: boolean; folder?: string; /** background runs started from this session */ kids?: Session[]; /** open this pane's subagent graph (only when the session has a pane) */ onGraph?: () => void;
 }) {
   const st = displayState(s, now);
@@ -30,6 +30,7 @@ export default function SessionRow({ s, now, focused, onClick, onApprove, onStop
         {st !== "plain" && st !== "ready" && <span className={`row-state ${tone}`}>{stateLabel(st)}</span>}
         <span className="row-time">{shown !== null && fmtElapsed(shown)}</span>
         {working && <button className="row-stop" aria-label="Stop" title="진행 중인 작업을 멈춥니다." onClick={(e) => { e.stopPropagation(); onStop(); }}><Square size={14} strokeWidth={1.5} /></button>}
+        {onFork && <button className="row-stop" aria-label="Fork" disabled={working} title={working ? "작업이 끝난 뒤에 포크할 수 있습니다" : "대화 끝에서 새 세션으로 포크합니다."} onClick={(e) => { e.stopPropagation(); onFork(); }}><GitFork size={14} strokeWidth={1.5} /></button>}
         {onHide && <button className="row-stop" aria-label="Hide" title={s.paneId ? (s.agent === "hermes" ? "칸을 닫고 목록에서 내립니다. 작업은 계속됩니다." : "칸을 닫고 목록에서 내립니다.") : "목록에서 내립니다. Recent에서 다시 볼 수 있습니다."} onClick={(e) => { e.stopPropagation(); onHide(); }}><X size={14} strokeWidth={1.5} /></button>}
         {onArchive && (
           <button className="row-stop" aria-label={archived ? "Unarchive" : "Archive"} title={archived ? "보관을 풀고 목록에 다시 보입니다." : s.paneId ? "칸을 닫고 보관합니다." : "보관합니다. Archived에서 되돌릴 수 있습니다."}

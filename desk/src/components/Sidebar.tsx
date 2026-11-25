@@ -18,9 +18,9 @@ import { formatShortcut } from "../lib/shortcuts";
 
 const hiddenIn = (archived: Set<string>, s: Session) => !s.paneId && archived.has(s.sessionId);
 
-export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, onApprove, onStop, onClosePane, onCollapse, onUsage, onNew, newSession, width, onResize }: {
+export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, onApprove, onStop, onFork, onClosePane, onCollapse, onUsage, onNew, newSession, width, onResize }: {
   sessions: Session[]; panes: Pane[]; now: number; focusedPaneId: string | null;
-  onFocus: (id: string) => void; onApprove: (id: string, allow: boolean) => void; onStop: (id: string) => void; onClosePane: (paneId: string) => void; onCollapse: () => void; onUsage: () => void; onNew: (cwd: string) => void; newSession: React.ReactNode;
+  onFocus: (id: string) => void; onApprove: (id: string, allow: boolean) => void; onStop: (id: string) => void; onFork: (id: string) => void; onClosePane: (paneId: string) => void; onCollapse: () => void; onUsage: () => void; onNew: (cwd: string) => void; newSession: React.ReactNode;
   width: number; onResize: (w: number) => void;
 }) {
   // An archived session stays hidden until it gets an open pane again (resumed).
@@ -132,6 +132,7 @@ export default function Sidebar({ sessions, panes, now, focusedPaneId, onFocus, 
       } : undefined}
       onGraph={s.paneId ? () => { openGraph(s.paneId!); onFocus(s.sessionId); } : undefined}
       onClick={() => { if (!suppressClick.current) { onFocus(s.sessionId); markSeen(s.sessionId); } }} onApprove={(a) => onApprove(s.sessionId, a)} onStop={() => onStop(s.sessionId)}
+      onFork={(() => { const p = s.paneId ? panes.find((x) => x.id === s.paneId) : undefined; return p?.agent === "hermes" && p.view === "chat" ? () => onFork(s.sessionId) : undefined; })()}
       onHide={g || folder ? () => { if (s.paneId) onClosePane(s.paneId); dismiss(s.sessionId); } : undefined}
       onArchive={() => { if (s.paneId) onClosePane(s.paneId); toggleArchive(s.sessionId); }} archived={hiddenIn(archived, s)} />
   );

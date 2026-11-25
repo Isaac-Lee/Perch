@@ -108,7 +108,7 @@ export default function App() {
       <div className="main">
         {!collapsed && (
           <Sidebar sessions={d.sessions} panes={d.panes} now={d.now} focusedPaneId={d.focusedPaneId}
-            onFocus={d.focusSession} onApprove={d.approve} onStop={d.stop} onClosePane={d.closePane} width={width} onResize={setWidth} onCollapse={() => setCollapsed(true)} onUsage={() => setUsage(true)} onNew={(cwd) => open(newPane.agent, cwd, newPane.view)}
+            onFocus={d.focusSession} onApprove={d.approve} onStop={d.stop} onFork={d.fork} onClosePane={d.closePane} width={width} onResize={setWidth} onCollapse={() => setCollapsed(true)} onUsage={() => setUsage(true)} onNew={(cwd) => open(newPane.agent, cwd, newPane.view)}
             newSession={<NewPaneMenu variant="side" defaults={newPane} folders={folders} onAdd={open} onDefaults={setNewPane} onChooseFolder={chooseFolder} onRemoveFolder={(f) => setFolders((l) => removeRecent(l, f))} />} />
         )}
         <div className="stage" ref={stageRef} style={{ display: usage ? "none" : "flex" }}>

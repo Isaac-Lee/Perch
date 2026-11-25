@@ -71,5 +71,7 @@ export const paneFocus = (id: string) => invoke<void>("pane_focus", { id });
 export const onFocusPane = (cb: (id: string) => void): Promise<() => void> => listen<string>("desk://focus", (e) => cb(e.payload));
 export const onChatApprove = (cb: (p: { paneId: string; allow: boolean }) => void): Promise<() => void> => listen<{ paneId: string; allow: boolean }>("desk://chat-approve", (e) => cb(e.payload));
 export const onChatStop = (cb: (p: { paneId: string }) => void): Promise<() => void> => listen<{ paneId: string }>("desk://chat-stop", (e) => cb(e.payload));
+export const onChatFork = (cb: (p: { paneId: string }) => void): Promise<() => void> => listen<{ paneId: string }>("desk://chat-fork", (e) => cb(e.payload));
+export const emitChatFork = (paneId: string): Promise<void> => emit("desk://chat-fork", { paneId });
 export const emitChatStop = (paneId: string): Promise<void> => emit("desk://chat-stop", { paneId });
 export const onPanes =(cb: (p: PaneInfo[]) => void): Promise<() => void> => listen<PaneInfo[]>("desk://panes", (e) => cb(e.payload));

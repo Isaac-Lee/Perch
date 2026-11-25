@@ -3,7 +3,8 @@ import turn from "./__fixtures__/turn.jsonl?raw";
 import background from "./__fixtures__/background.jsonl?raw";
 import delegate from "./__fixtures__/delegate.jsonl?raw";
 import { RpcError } from "./gateway";
-import { STUCK_MSG, annotateRows, forThisPane, pendingToQueued, WATCHDOG_MS, activityLabel, canSend, submitFailure, watchdogDue, whileRunning, chatReducer, forkBoundary, rewindFailure, rewindText, userActions, groupItems, staleRetry, initialChat, shouldAutoReconnect, toDirective, toModelProviders, transcriptToItems, type ChatAction } from "./chatSession";
+import type { ChatItem } from "./chatSession";
+import { STUCK_MSG, annotateRows, forThisPane, pendingToQueued, WATCHDOG_MS, activityLabel, canSend, submitFailure, watchdogDue, whileRunning, chatReducer, forkBoundary, rewindFailure, rewindText, userActions, newUserRow, groupItems, staleRetry, initialChat, shouldAutoReconnect, toDirective, toModelProviders, transcriptToItems, type ChatAction } from "./chatSession";
 
 const ev = (type: string, payload: object = {}): ChatAction => ({ t: "event", ev: { type, payload } });
 
@@ -755,14 +756,24 @@ describe("row ids", () => {
     expect(chatReducer(initialChat, { t: "snapshot", snap: { session_id: "s", display_messages: rows } }).rowIds).toBe(true);
     expect(chatReducer(initialChat, { t: "snapshot", snap: { session_id: "s", messages: rows } }).rowIds).toBe(false);
   });
-  it("userActions: hidden without row ids, disabled while busy or unsaved", () => {
+  it("userActions: hidden without row ids; busy keeps rewind/edit but not fork; unsaved disabled", () => {
     const item = { kind: "user", id: "u", text: "x", rowId: 3 } as const;
+    const busy = { show: true, enabled: true, fork: false, forkReason: "작업이 끝난 뒤에 포크할 수 있습니다", busy: true };
     expect(userActions({ running: false, queued: [], rowIds: false }, item).show).toBe(false);
-    expect(userActions({ running: true, queued: [], rowIds: true }, item)).toEqual({ show: true, enabled: false, reason: "작업 중에는 쓸 수 없습니다" });
-    expect(userActions({ running: false, queued: [{} as any], rowIds: true }, item).reason).toBe("작업 중에는 쓸 수 없습니다");
-    expect(userActions({ running: false, queued: [], rowIds: true }, { ...item, rowId: undefined })).toEqual({ show: true, enabled: false, reason: "저장되는 중" });
-    expect(userActions({ running: false, queued: [], rowIds: true }, item)).toEqual({ show: true, enabled: true });
+    expect(userActions({ running: true, queued: [], rowIds: true }, item)).toEqual(busy);
+    expect(userActions({ running: false, queued: [{} as any], rowIds: true }, item)).toEqual(busy);
+    expect(userActions({ running: true, queued: [], rowIds: true }, { ...item, rowId: undefined })).toEqual(busy); // the running turn's own prompt
+    expect(userActions({ running: false, queued: [], rowIds: true }, { ...item, rowId: undefined })).toMatchObject({ show: true, enabled: false, reason: "저장되는 중", fork: false });
+    expect(userActions({ running: false, queued: [], rowIds: true }, item)).toEqual({ show: true, enabled: true, fork: true, busy: false });
     expect(userActions({ running: false, queued: [], rowIds: true }, { kind: "system", id: "s", text: "x" }).show).toBe(false);
+  });
+  it("newUserRow: the last user row new since the stop with the same text", () => {
+    const u = (rowId: number, text: string): ChatItem => ({ kind: "user", id: `u${rowId}`, text, rowId });
+    const items = [u(1, "hi"), u(5, "fix it"), u(7, "fix it ")];
+    expect(newUserRow(items, new Set([1]), "fix it")).toBe(7);
+    expect(newUserRow(items, new Set([1, 7]), "fix it")).toBe(5);
+    expect(newUserRow(items, new Set([1, 5, 7]), "fix it")).toBeUndefined(); // nothing new: the interrupt left no row
+    expect(newUserRow(items, new Set([1]), "other")).toBeUndefined();
   });
 });
 

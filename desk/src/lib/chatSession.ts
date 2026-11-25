@@ -125,11 +125,23 @@ export function transcriptToItems(messages: any[], projected = false): ChatItem[
 /** Fork point of a user message: everything before it, or a fresh session for the first one. */
 export const forkBoundary = (item: ChatItem): { through: number } | { fresh: true } =>
   item.kind === "user" && typeof item.prevRowId === "number" ? { through: item.prevRowId } : { fresh: true };
-export function userActions(s: Pick<ChatState, "running" | "queued" | "rowIds">, item: ChatItem): { show: boolean; enabled: boolean; reason?: string } {
-  if (item.kind !== "user" || !s.rowIds) return { show: false, enabled: false };
-  if (s.running || s.queued.length > 0) return { show: true, enabled: false, reason: "작업 중에는 쓸 수 없습니다" };
-  if (item.rowId === undefined) return { show: true, enabled: false, reason: "저장되는 중" };
-  return { show: true, enabled: true };
+export const FORK_BUSY = "작업이 끝난 뒤에 포크할 수 있습니다";
+export type UserActionState = { show: boolean; enabled: boolean; reason?: string; /** fork button */ fork: boolean; forkReason?: string; /** running or queued: rewind/edit stop the work first */ busy: boolean };
+/** Rewind/edit work while busy (Perch stops the session first, even for a bubble with no row id yet); fork needs an idle session. */
+export function userActions(s: Pick<ChatState, "running" | "queued" | "rowIds">, item: ChatItem): UserActionState {
+  if (item.kind !== "user" || !s.rowIds) return { show: false, enabled: false, fork: false, busy: false };
+  if (s.running || s.queued.length > 0) return { show: true, enabled: true, fork: false, forkReason: FORK_BUSY, busy: true };
+  if (item.rowId === undefined) return { show: true, enabled: false, reason: "저장되는 중", fork: false, forkReason: "저장되는 중", busy: false };
+  return { show: true, enabled: true, fork: true, busy: false };
+}
+const userRowIds = (items: ChatItem[]): Set<number> => new Set(items.flatMap((i) => (i.kind === "user" && i.rowId !== undefined ? [i.rowId] : [])));
+/** Row of a bubble that had no row id when the session was stopped: the last user row new since then (not in `before`) with the same text. */
+export function newUserRow(items: ChatItem[], before: Set<number>, text: string): number | undefined {
+  for (let k = items.length - 1; k >= 0; k--) {
+    const i = items[k];
+    if (i.kind === "user" && i.rowId !== undefined && !before.has(i.rowId) && i.text.trim() === text.trim()) return i.rowId;
+  }
+  return undefined;
 }
 
 // Event payloads and session.resume snapshot rows share one shape (CanonicalPendingPrompt).
@@ -697,12 +709,12 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
 
   const busy = useRef(false); // a rewind/overwrite/fork is in flight: a second click does nothing
   /** Runs a rewind/branch/create step; a failure shows the error and gives `text` back to this pane's composer. */
-  async function guarded(text: string | null, f: () => Promise<void>): Promise<void> {
+  async function guarded(text: string | null, f: () => Promise<void>, idleOnly = false): Promise<void> {
     if (busy.current) return;
     const st = stateRef.current;
-    if (st.running || st.queued.length > 0) { // destructive: never mid-turn, whatever the UI showed
+    if (idleOnly && (st.running || st.queued.length > 0)) { // fork never mid-turn, whatever the UI showed; rewind/overwrite stop the work themselves
       if (text !== null) setDraft((x) => ({ text, n: x.n + 1 }));
-      dispatch({ t: "localError", text: "작업 중에는 쓸 수 없습니다" });
+      dispatch({ t: "localError", text: FORK_BUSY });
       return;
     }
     busy.current = true;
@@ -726,6 +738,46 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
     const r = await mutate("rewind", { target_message_id: rowId }) as { target_message?: { content?: unknown } };
     if (draft !== undefined) { const t = draft || rewindText(r.target_message?.content); setDraft((x) => ({ text: t, n: x.n + 1 })); } // before the resync: the text must never be lost
     await resync();
+  }
+
+  /** Makes the session idle for rewind/branch (Hermes refuses them otherwise): cancel queued admissions, interrupt, re-read; bounded. */
+  async function quiesce(): Promise<void> {
+    const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    for (let i = 0; i < 20; i++) {
+      const rpc = rpcRef.current, st = stateRef.current;
+      if (!rpc || !st.sessionId) break;
+      // cancel first: a queued prompt would start by itself once the interrupt ends the turn
+      await Promise.all(st.queued.filter((q) => q.admissionId).map((q) => rpc.request<{ outcome?: string }>("prompt.cancel", { session_id: st.sessionId, admission_id: q.admissionId }).then((c) => { if (c?.outcome === "cancelled") dispatch({ t: "unqueue", id: q.id }); }, () => {})));
+      if (st.running) await rpc.request("session.interrupt", base()).catch(() => {});
+      const idle = (await resync()) === false;
+      await wait(300); // stateRef follows the dispatch only after a render
+      // the idle snapshot replaced `queued` with the gateway's pending list: empty means nothing will start on its own
+      if (idle && !stateRef.current.running && stateRef.current.queued.length === 0) return;
+    }
+    throw new Error("작업을 멈추지 못했습니다");
+  }
+  /** Row id to rewind to for a user bubble: its own, else (a prompt the stop interrupted) the row that appeared since. Stops the session first when busy. */
+  async function settleTarget(item: Extract<ChatItem, { kind: "user" }>): Promise<number | undefined> {
+    const s = stateRef.current, before = userRowIds(s.items);
+    if (s.running || s.queued.length > 0) await quiesce();
+    return item.rowId ?? newUserRow(stateRef.current.items, before, item.text);
+  }
+  /** Branch (or fresh session) and open it in a new pane. `pre` is what the child's composer starts with. */
+  async function openChild(b: { through: number } | { fresh: true } | { end: true }, pre?: { text: string; send: boolean; attachments?: Att[] }): Promise<void> {
+    const rpc = rpcRef.current;
+    if (!rpc) throw new Error("연결되지 않았습니다");
+    let child: string;
+    if ("fresh" in b || ("end" in b && !stateRef.current.items.some((i) => i.kind === "user"))) {
+      const s = stateRef.current;
+      const c = await rpc.request<SessionSnapshot>("session.create", { request_id: crypto.randomUUID(), source: "tui", cwd, model: s.model ?? undefined, reasoning: s.effort ?? undefined });
+      child = c.stored_session_id ?? c.session_id;
+    } else child = ((await mutate("branch", "through" in b ? { through_message_id: b.through } : {})) as { branched_session_id?: string }).branched_session_id ?? "";
+    if (!child) throw new Error("새 세션을 만들지 못했습니다");
+    if (pre) setPrefill(child, pre);
+    let paneId: string;
+    try { paneId = await paneCreate("hermes", cwd, child, "chat"); }
+    catch (e) { if (pre) takePrefill(child); throw e; } // no pane will take it: a later pane on this session must not auto-send
+    window.dispatchEvent(new CustomEvent(FOCUS_PANE_EVENT, { detail: paneId }));
   }
 
   const api = {
@@ -833,29 +885,27 @@ export function useChatSession(paneId: string, cwd: string, resumeId: string | n
       dispatch({ t: "effortChanged", revision: r.revision, executionGeneration: r.execution_generation, effort: r.effort || effort });
     },
     reconnect() { setNonce((n) => n + 1); },
-    /** Takes the conversation back to just before the user row and puts its bubble text in the composer. */
-    rewindTo: (rowId: number, text: string): Promise<void> => guarded(null, () => rewind(rowId, text)),
-    /** Rewinds, then sends `text` in place of that message. */
-    overwrite: (rowId: number, text: string, attachments?: Att[]): Promise<void> => guarded(text, async () => { const fresh = await restage(attachments); await rewind(rowId); if (!canSend(stateRef.current)) throw new Error("연결되지 않았습니다"); api.send(text, fresh?.length ? fresh : undefined); }),
+    /** Takes the conversation back to just before the user message and puts `text` in the composer (stops running work first). */
+    rewindTo: (item: Extract<ChatItem, { kind: "user" }>, text: string): Promise<void> => guarded(null, async () => {
+      const id = await settleTarget(item);
+      if (id === undefined) setDraft((x) => ({ text, n: x.n + 1 })); // the interrupted turn left nothing to rewind
+      else await rewind(id, text);
+    }),
+    /** Rewinds (stopping running work first), then sends `text` in place of that message. */
+    overwrite: (item: Extract<ChatItem, { kind: "user" }>, text: string, attachments?: Att[]): Promise<void> => guarded(text, async () => {
+      const fresh = await restage(attachments);
+      const id = await settleTarget(item);
+      if (id !== undefined) await rewind(id);
+      if (!canSend(stateRef.current)) throw new Error("연결되지 않았습니다");
+      api.send(text, fresh?.length ? fresh : undefined);
+    }),
     /** Opens a child session (branch before the item, or a fresh one) in a new pane, carrying `text` to send or edit there. */
     fork: (item: ChatItem, text: string, sendNow: boolean, attachments?: Att[]): Promise<void> => guarded(!sendNow && item.kind === "user" && text === item.text ? null : text, async () => { // a plain fork never writes this composer
-      const rpc = rpcRef.current, b = forkBoundary(item);
-      if (!rpc) throw new Error("연결되지 않았습니다");
       const fresh = sendNow ? await restage(attachments) : undefined; // before the branch is made
-      let child: string;
-      if ("through" in b) child = ((await mutate("branch", { through_message_id: b.through })) as { branched_session_id?: string }).branched_session_id ?? "";
-      else {
-        const s = stateRef.current;
-        const c = await rpc.request<SessionSnapshot>("session.create", { request_id: crypto.randomUUID(), source: "tui", cwd, model: s.model ?? undefined, reasoning: s.effort ?? undefined });
-        child = c.stored_session_id ?? c.session_id;
-      }
-      if (!child) throw new Error("새 세션을 만들지 못했습니다");
-      setPrefill(child, { text, send: sendNow, ...(fresh?.length ? { attachments: fresh } : {}) });
-      let paneId: string;
-      try { paneId = await paneCreate("hermes", cwd, child, "chat"); }
-      catch (e) { takePrefill(child); throw e; } // no pane will take it: a later pane on this session must not auto-send
-      window.dispatchEvent(new CustomEvent(FOCUS_PANE_EVENT, { detail: paneId }));
-    }),
+      await openChild(forkBoundary(item), { text, send: sendNow, ...(fresh?.length ? { attachments: fresh } : {}) });
+    }, true),
+    /** Sidebar fork: the whole conversation into a new pane. */
+    forkEnd: (): Promise<void> => guarded(null, () => openChild({ end: true }), true),
   };
   sendRef.current = api.send;
   return api;

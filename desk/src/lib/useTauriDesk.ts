@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { WINDOW, deskSnapshot, emitChatStop, onFocusPane, onPanes, onSessions, paneClose, paneCreate, paneFocus, paneWrite, sessionApprove, sessionForceIdle, sessionsSnapshot, windowFocus, type PaneInfo, type SessionInfo } from "./backend";
+import { WINDOW, deskSnapshot, emitChatFork, emitChatStop, onFocusPane, onPanes, onSessions, paneClose, paneCreate, paneFocus, paneWrite, sessionApprove, sessionForceIdle, sessionsSnapshot, windowFocus, type PaneInfo, type SessionInfo } from "./backend";
 import type { AgentKind, Pane, PaneView, Session } from "./types";
 import { FOCUS_PANE_EVENT } from "./forkPrefill";
 import { folderName } from "../mock/sessions";
@@ -114,9 +114,13 @@ export function useTauriDesk(hermesView: PaneView = "chat") {
       sessionForceIdle(sessionId).catch(console.error); // TUI: no gateway socket here; clears a "working" row the interrupt left stuck
     }
   }, []);
+  const fork = useCallback((sessionId: string) => { // sidebar fork: only chat panes (the row shows the button for those alone); the pane branches itself
+    const paneId = sInfosRef.current.find((x) => x.sessionId === sessionId)?.paneId ?? infosRef.current.find((i) => i.sessionId === sessionId)?.id ?? sessionId;
+    if (infosRef.current.find((i) => i.id === paneId)?.view === "chat") emitChatFork(paneId).catch(console.error);
+  }, []);
   const approve = useCallback((sessionId: string, allow: boolean) => {
     sessionApprove(sessionId, allow).catch(() => focusSession(sessionId));
   }, [focusSession]);
 
-  return { now, restored, sessions, panes, focusedPaneId, focusPane: setFocused, focusSession, addPane, closePane, approve, stop, stopped: stoppedNone };
+  return { now, restored, sessions, panes, focusedPaneId, focusPane: setFocused, focusSession, addPane, closePane, approve, stop, fork, stopped: stoppedNone };
 }
