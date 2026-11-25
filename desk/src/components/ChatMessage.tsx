@@ -6,7 +6,7 @@ import { type Att, type ChatItem, type SubagentLive, type ToolGroup, type ToolIt
 import { imageMime } from "../lib/composer";
 import { highlight } from "../lib/highlight";
 import { useAttachments } from "../lib/useAttachments";
-import { Markdown, artLines, boxify, isArt } from "../lib/markdown";
+import { Markdown, artLines, isArt, tidyArt } from "../lib/markdown";
 import SubagentBlock from "./SubagentBlock";
 import { clip, kvRows, resultCount, resultView, thoughtTitle, toolTitle } from "../lib/toolView";
 
@@ -25,7 +25,7 @@ const Rows = ({ rows }: { rows: [string, string][] }) => rows.length ? <dl class
 /** Expanded view of one tool call: summary, arguments, inline diff, result. */
 function ToolDetails({ t }: { t: ToolItem }) {
   const res = resultView(t.result, t.resultText);
-  const shown = res.text ? boxify(clip(res.text, 2000)) : "";
+  const shown = res.text ? tidyArt(clip(res.text, 2000)) : "";
   return (
     <div className="chat-tool-body">
       {t.summary && <div className="chat-tool-summary">{t.summary}</div>}
@@ -81,7 +81,7 @@ function UserBubble({ item, actions }: { item: Extract<ChatItem, { kind: "user" 
             )}
           </div>
         ) : (
-          <div className={"chat-bubble" + (artLines(item.text.split("\n")) >= 2 ? " art" : "")}>{boxify(item.text)}{item.images?.length ? <div className="chat-bubble-img">이미지 {item.images.length}개</div> : null}</div>
+          <div className={"chat-bubble" + (artLines(item.text.split("\n")) >= 2 ? " art" : "")}>{tidyArt(item.text)}{item.images?.length ? <div className="chat-bubble-img">이미지 {item.images.length}개</div> : null}</div>
         )}
         {a?.show && mode === "" && <div className="chat-acts">
           <button className="chat-act" disabled={off} title={off ? why : "이 메시지 직전으로 되감기"} onClick={() => setMode("ask-rewind")}>⟲ 되감기</button>
