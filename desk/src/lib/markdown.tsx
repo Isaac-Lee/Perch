@@ -55,7 +55,34 @@ export function boxify(text: string): string {
     return ch === "|" && (has("|+", at(r - 1, c)) || has("|+", at(r + 1, c)) || open) ? "│" : ch;
   }).join("")).join("\n");
 }
-const CONNECTOR_CHARS = /[\s|▼▲▶◀↓↑→←^:.+\-=<>]/g;
+const WALL = "│|┃║", JUNCTION = "┌┐└┘├┤┬┴┼│+|╔╗╚╝╠╣╦╩╬║┏┓┗┛┣┫┳┻╋┃╭╮╰╯";
+const nWide = (a: string[]) => a.filter((c) => WIDE.test(c)).length;
+/** Display-only: repairs box art drawn by character count (Hangul/CJK counted as one cell) by dropping padding spaces so walls meet the borders again. */
+// ponytail: only lines whose walls match a border by character index are repaired; irregular miscounts and lines without spare spaces stay as they are.
+export function realign(text: string): string {
+  if (!WIDE.test(text)) return text;
+  const rows = text.split("\n").map((l) => [...l]);
+  const border = rows.map((r) => !nWide(r) && /[─━═-]{2,}/.test(r.join("")));
+  const near = (i: number, d: number) => { for (let j = i + d; rows[j]; j += d) if (border[j]) return rows[j]; };
+  return rows.map((r, i) => {
+    const walls = r.flatMap((c, k) => (WALL.includes(c) ? [k] : []));
+    if (walls.length < 2 || !nWide(r)) return r.join("");
+    const ok = (R: string[], col: (k: number) => number) => walls.every((k) => has(JUNCTION, R[col(k)]));
+    const ref = [near(i, -1), near(i, 1)].find((R) => R && ok(R, (k) => k) && !ok(R, (k) => k + nWide(r.slice(0, k))));
+    if (!ref) return r.join("");
+    const out = r.slice(0, walls[0] + 1);
+    walls.slice(1).forEach((w, j) => {
+      const seg = r.slice(walls[j] + 1, w);
+      // drop one space per wide char: trailing first, then leading
+      for (let n = nWide(seg); n > 0; n--) { if (seg.at(-1) === " ") seg.pop(); else if (seg[0] === " ") seg.shift(); else break; }
+      out.push(...seg, r[w]);
+    });
+    return out.concat(r.slice(walls.at(-1)! + 1)).join("");
+  }).join("\n");
+}
+/** Display-only: repairs character-count box art, then redraws ASCII boxes. */
+export const tidyArt = (text: string) => boxify(realign(text));
+const CONNECTOR_CHARS =/[\s|▼▲▶◀↓↑→←^:.+\-=<>]/g;
 // a line made only of connector glyphs (| ▼ -> v ...), or an indented line holding an arrow/pipe
 const isConnector = (l: string) =>
   l.replace(CONNECTOR_CHARS, "").replace(/(?<![\p{L}\p{N}])[vV](?![\p{L}\p{N}])/gu, "") === "" || (/^ {2}/.test(l) && /[|▼▲▶◀↓↑→←]/.test(l));
@@ -247,7 +274,7 @@ function inline(s: string, onLink: OnLink): ReactNode[] {
 }
 
 function CodeBlock({ lang, text }: { lang: string; text: string }) {
-  const shown = useMemo(() => (/^(text|txt|plain|ascii)?$/i.test(lang) ? boxify(text) : text), [lang, text]);
+  const shown = useMemo(() => (/^(text|txt|plain|ascii)?$/i.test(lang) ? tidyArt(text) : text), [lang, text]);
   const toks = useMemo(() => highlight(lang, shown), [lang, shown]);
   return (
     <div className="md-code">

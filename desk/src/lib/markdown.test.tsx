@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { Markdown, boxify, parseBlocks } from "./markdown";
+import { Markdown, boxify, parseBlocks, realign, tidyArt } from "./markdown";
 
 const md = (text: string) => renderToStaticMarkup(<Markdown text={text} onLink={() => {}} />);
 
@@ -103,6 +103,20 @@ describe("markdown", () => {
     expect(boxify("+---+\n+---+\n\n+-->\n---->")).toContain("\n\n+──>\n────>");
     expect(md("```\n+----+\n| a  |\n+----+\n```")).toContain('<pre class="art"><code>┌────┐');
     expect(md("```sql\n+----+\n| a  |\n+----+\n```")).not.toContain("┌");
+  });
+  it("realign drops padding so character-count box art meets its borders", () => {
+    const fixed = "┌────────┐\n│ 한글   │\n└────────┘";
+    expect(realign("┌────────┐\n│ 한글     │\n└────────┘")).toBe(fixed);
+    expect(realign(fixed)).toBe(fixed);
+    expect(realign("┌──────┐     ┌──────┐\n│ 서버   │ ──▶ │ 캐시   │\n└──────┘     └──────┘")).toBe("┌──────┐     ┌──────┐\n│ 서버 │ ──▶ │ 캐시 │\n└──────┘     └──────┘");
+    expect(realign("┌────┬────┐\n│ 키  │ 값  │\n└────┴────┘")).toBe("┌────┬────┐\n│ 키 │ 값 │\n└────┴────┘");
+    const tight = "┌────┐\n│한글한글│\n└────┘";
+    expect(realign(tight)).toBe(tight);
+    expect(realign("┌─────┐\n│   한글│\n└─────┘")).toBe("┌─────┐\n│ 한글│\n└─────┘");
+    const plain = "┌────┐\n│ ab │\n└────┘";
+    expect(realign(plain)).toBe(plain);
+    expect(tidyArt("+--------+\n| 한글     |\n+--------+")).toBe("┌────────┐\n│ 한글   │\n└────────┘");
+    expect(md("```\n┌────────┐\n│ 한글     │\n└────────┘\n```")).toContain('<pre class="art"><code>┌────────┐\n│ 한글   │\n└────────┘');
   });
   it("connector fragments join an unfenced diagram", () => {
     const d = "┌──┐\n│ a│\n└──┘";
