@@ -2,6 +2,8 @@
 @font-face { font-family: "IBM Plex Sans"; font-weight: 500; font-style: normal; font-display: swap; src: url("/fonts/IBMPlexSans-Medium.woff2") format("woff2"); }
 @font-face { font-family: "IBM Plex Sans KR"; font-weight: 400; font-style: normal; font-display: swap; src: url("/fonts/IBMPlexSansKR-Regular.woff2") format("woff2"); unicode-range: U+AC00-D7A3, U+1100-11FF, U+3130-318F, U+3000-303F; }
 @font-face { font-family: "IBM Plex Sans KR"; font-weight: 500; font-style: normal; font-display: swap; src: url("/fonts/IBMPlexSansKR-Medium.woff2") format("woff2"); unicode-range: U+AC00-D7A3, U+1100-11FF, U+3130-318F, U+3000-303F; }
+@font-face { font-family: "IBM Plex Sans"; font-weight: 700; font-style: normal; font-display: swap; src: url("/fonts/IBMPlexSans-Bold.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Sans KR"; font-weight: 700; font-style: normal; font-display: swap; src: url("/fonts/IBMPlexSansKR-Bold.woff2") format("woff2"); unicode-range: U+AC00-D7A3, U+1100-11FF, U+3130-318F, U+3000-303F; }
 @font-face { font-family: "D2Coding"; font-weight: 400; font-style: normal; font-display: block; src: url("/fonts/D2Coding-Regular.ttf") format("truetype"); }
 @font-face { font-family: "D2Coding"; font-weight: 700; font-style: normal; font-display: block; src: url("/fonts/D2Coding-Bold.ttf") format("truetype"); }
 @font-face { font-family: "Monoplex KR"; font-weight: 400; font-style: normal; font-display: block; src: url("/fonts/MonoplexKR-Regular.woff2") format("woff2"); }
@@ -13,7 +15,9 @@
   --text: #e6e6e6;
   --text-2: #a1a1a6;
   --text-3: #8b8b91;
+  --text-strong: #ffffff;
   --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.18);
   --accent: #6c9bf2;
   --ok: #5fb87c;
   --warn: #e0894a;
@@ -43,7 +47,7 @@
 :root[data-theme="midnight"] {
   --bg: #0d1117; --surface-1: #131a24; --surface-2: #1a2330;
   --text: #dde3ea; --text-2: #9aa7b5; --text-3: #8795a3; --muted: #8795a3;
-  --accent: #6ea8fe;
+  --accent: #6ea8fe; --text-strong: #f3f6fa;
   --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%239aa7b5' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
 }
 :root[data-theme="black"] {
@@ -52,7 +56,7 @@
 :root[data-theme="light"] {
   --bg: #f6f6f7; --surface-1: #ffffff; --surface-2: #ececee;
   --text: #1c1c1e; --text-2: #5c5c63; --text-3: #65656c; --muted: #65656c;
-  --line: rgba(0, 0, 0, 0.10);
+  --line: rgba(0, 0, 0, 0.10); --line-strong: rgba(0, 0, 0, 0.22); --text-strong: #000000;
   --accent: #2f6fdb; --ok: #277a4c; --warn: #b35514; --warn-bg: rgba(179, 85, 20, 0.12); --idle: #8f7312;
   --hover-soft: rgba(0, 0, 0, 0.04); --hover: rgba(0, 0, 0, 0.06); --hover-strong: rgba(0, 0, 0, 0.09);
   --scroll-thumb: rgba(0, 0, 0, 0.25);

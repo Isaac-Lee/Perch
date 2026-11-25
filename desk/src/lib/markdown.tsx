@@ -5,7 +5,7 @@ import { prettify } from "./prettify";
 export type Block =
   | { t: "p"; text: string } | { t: "h"; level: 1 | 2 | 3 | 4 | 5 | 6; text: string }
   | { t: "code"; lang: string; text: string; open: boolean; art?: true }   // open: no closing ``` yet; art: promoted from a paragraph
-  | { t: "list"; ordered: boolean; start?: number; items: { text: string; children: Block[] }[] }
+  | { t: "list"; ordered: boolean; start?: number; items: { text: string; checked?: boolean; children: Block[] }[] }
   | { t: "quote"; children: Block[] } | { t: "hr" }
   | { t: "table"; head: string[]; rows: string[][]; align?: string[] };
 
@@ -157,7 +157,7 @@ function parseLines(lines: string[]): Block[] {
     if (m) {
       const base = m[1].length;
       const ordered = /\d/.test(m[2]);
-      const items: { text: string; children: Block[] }[] = [];
+      const items: { text: string; checked?: boolean; children: Block[] }[] = [];
       while (i < lines.length) {
         const im = ITEM.exec(lines[i]);
         if (!im || im[1].length > base || /\d/.test(im[2]) !== ordered) break;
@@ -174,7 +174,8 @@ function parseLines(lines: string[]): Block[] {
           child.push(lines[i]);
         }
         const min = Math.min(...child.filter((l) => !isBlank(l)).map(indentOf), Infinity);
-        items.push({ text: im[3], children: parseLines(child.map((l) => l.slice(Number.isFinite(min) ? min : 0))) });
+        const tm = /^\[([ xX])\] /.exec(im[3]);
+        items.push({ text: tm ? im[3].slice(4) : im[3], ...(tm && { checked: tm[1] !== " " }), children: parseLines(child.map((l) => l.slice(Number.isFinite(min) ? min : 0))) });
         // skip blank lines between items of the same list
         let j = i;
         while (j < lines.length && isBlank(lines[j])) j++;
@@ -254,6 +255,12 @@ function inline(s: string, onLink: OnLink): ReactNode[] {
         i = close + 1;
         continue;
       }
+    } else if (c === "*" && s[i + 1] === "*" && s[i + 2] === "*" && s.indexOf("***", i + 3) > i + 3) {
+      const e = s.indexOf("***", i + 3);
+      push(<strong key={k}><em>{inline(s.slice(i + 3, e), onLink)}</em></strong>); i = e + 3; continue;
+    } else if (c === "_" && s[i + 1] === "_" && boldEnd(s, i) > 0) {
+      const e = boldEnd(s, i);
+      push(<strong key={k}>{inline(s.slice(i + 2, e), onLink)}</strong>); i = e + 2; continue;
     } else if (c === "*" && s[i + 1] === "*") {
       const e = s.indexOf("**", i + 2);
       if (e > i + 2) { push(<strong key={k}>{inline(s.slice(i + 2, e), onLink)}</strong>); i = e + 2; continue; }
@@ -273,6 +280,9 @@ function inline(s: string, onLink: OnLink): ReactNode[] {
   flush();
   return out;
 }
+
+// __bold__ only at word boundaries, so snake__case__name stays literal
+const boldEnd = (s: string, i: number) => { const e = isAlnum(s[i - 1]) ? -1 : s.indexOf("__", i + 2); return e > i + 2 && !isAlnum(s[e + 2]) ? e : -1; };
 
 function CodeBlock({ lang, text, open }: { lang: string; text: string; open: boolean }) {
   const shown = useMemo(() => (/^(text|txt|plain|ascii)?$/i.test(lang) ? tidyArt(text) : text), [lang, text]);
@@ -312,7 +322,7 @@ function render(blocks: Block[], onLink: OnLink): ReactNode[] {
       case "quote": return <blockquote key={i}>{render(b.children, onLink)}</blockquote>;
       case "list": {
         const L = b.ordered ? "ol" : "ul";
-        return <L key={i} start={b.ordered ? b.start : undefined}>{b.items.map((it, j) => <li key={j}>{inline(it.text, onLink)}{render(it.children, onLink)}</li>)}</L>;
+        return <L key={i} start={b.ordered ? b.start : undefined}>{b.items.map((it, j) => <li key={j} className={it.checked === undefined ? undefined : it.checked ? "md-task done" : "md-task"}>{it.checked !== undefined && <input type="checkbox" checked={it.checked} disabled readOnly />}{inline(it.text, onLink)}{render(it.children, onLink)}</li>)}</L>;
       }
       case "table":
         return (
