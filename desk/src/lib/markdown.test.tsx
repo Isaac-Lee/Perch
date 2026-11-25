@@ -66,4 +66,28 @@ describe("markdown", () => {
     expect(parseBlocks("run cat x | grep y\nthen more")).toEqual([{ t: "p", text: "run cat x | grep y\nthen more" }]);
     expect(parseBlocks("text\ncat x | grep y\n---")[0]).toMatchObject({ t: "p" });
   });
+
+  it("fences: 4 backticks and ~~~", () => {
+    const b = parseBlocks("````md\n```js\nx\n```\n````\nafter");
+    expect(b).toEqual([{ t: "code", lang: "md", text: "```js\nx\n```", open: false }, { t: "p", text: "after" }]);
+    expect(parseBlocks("~~~\na\n~~~\nb")).toEqual([{ t: "code", lang: "", text: "a", open: false }, { t: "p", text: "b" }]);
+  });
+  it("ordered list keeps its start number across a code block", () => {
+    const t = "1. a\n```\nc\n```\n2. b";
+    expect(parseBlocks(t)[2]).toMatchObject({ t: "list", ordered: true, start: 2 });
+    expect(renderToStaticMarkup(<Markdown text={t} onLink={() => {}} />)).toContain('<ol start="2">');
+  });
+  it("unfenced box diagram becomes art code; prose with one rule stays a paragraph", () => {
+    const d = "┌──────┐\n│ 한글 │\n└──────┘";
+    expect(parseBlocks(d + "\n\n   │")).toEqual([{ t: "code", lang: "", text: d + "\n\n   │", open: false, art: true }]);
+    expect(parseBlocks("가나다 ─ 라마바")).toEqual([{ t: "p", text: "가나다 ─ 라마바" }]);
+    expect(renderToStaticMarkup(<Markdown text={"```\n│ 한글 │\n```"} onLink={() => {}} />)).toContain('<pre class="art">');
+  });
+  it("inline br, strike, double-backtick code", () => {
+    const h = (t: string) => renderToStaticMarkup(<Markdown text={t} onLink={() => {}} />);
+    expect(h("a<br>b")).toContain("a\nb");
+    expect(h("a<br>b")).not.toContain("<br");
+    expect(h("~~x~~")).toContain("<del>x</del>");
+    expect(h("``a`b``")).toContain("<code>a`b</code>");
+  });
 });

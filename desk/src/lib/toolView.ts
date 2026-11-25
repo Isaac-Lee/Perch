@@ -68,3 +68,6 @@ export function toolTitle(t: ToolItem): string {
   if (t.name === "web_search" && (text(a.query) || text(a.search_term))) return `${done ? "검색" : "검색 중"}: ${cut(text(a.query) || text(a.search_term), 80)}`;
   return [t.name, t.context || t.preview].filter(Boolean).join(" · ");
 }
+
+/** Cut long output and say how much is hidden, so a cut never looks like the whole result. */
+export const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}\n… (${s.length - n}자 더 있음)` : s);

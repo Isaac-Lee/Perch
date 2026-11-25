@@ -35,7 +35,7 @@
 .chat-tool-row:hover { background: var(--surface-2); color: var(--text-2); }
 .chat-tool.running .chat-tool-row { color: var(--idle); }
 .chat-tool.error .chat-tool-row { color: var(--warn); }
-.chat-tool-result { margin: 4px 0 0; padding: 8px 12px; max-height: 280px; overflow: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; font: 12px/1.5 var(--font-term); color: var(--text-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat-tool-result { margin: 4px 0 0; padding: 8px 12px; max-height: 280px; overflow: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; font: 12px/1.5 var(--font-term); color: var(--text-2); white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 4; }
 .chat-error { padding: 6px 10px; color: var(--warn); background: var(--warn-bg); border-radius: 6px; font-size: 13px; }
 .chat-system { color: var(--text-2); font-size: 12.5px; padding: 0 2px; }
 .chat-bubble-img { margin-top: 4px; color: var(--text-3); font-size: 12px; }
@@ -89,8 +89,12 @@
 .md hr { border: 0; border-top: 1px solid var(--line); margin: 1em 0; }
 .md a { color: var(--accent); text-decoration: none; cursor: pointer; } .md a:hover { text-decoration: underline; }
 .md code { font-family: var(--font-term); font-size: 0.9em; padding: 1px 5px; background: var(--surface-2); border-radius: 4px; }
-.md pre { margin: 0; padding: 10px 12px; overflow-x: auto; font: 12.5px/1.5 var(--font-term); }
+.md pre { margin: 0; padding: 10px 12px; overflow-x: auto; font: 12.5px/1.5 var(--font-term); tab-size: 4; }
 .md pre code { padding: 0; background: none; font-size: inherit; }
+/* D2Coding box-drawing glyphs are 1.06em tall: a taller line leaves a gap in every vertical stroke. No wrapping, or the drawing breaks. */
+.md pre.art, .chat-tool-result.art, .chat-bubble.art { line-height: 1.05; }
+.chat-tool-result.art, .chat-bubble.art { white-space: pre; overflow-x: auto; overflow-wrap: normal; }
+.chat-bubble.art { font-family: var(--font-term); font-size: 12.5px; }
 .md-code { margin: 0.7em 0; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
 .md-code-head { display: flex; align-items: center; justify-content: space-between; padding: 2px 8px 2px 12px; border-bottom: 1px solid var(--line); color: var(--text-3); font-size: 11px; }
 .md-copy { padding: 2px 8px; border-radius: 4px; color: var(--text-2); font-size: 11px; }
