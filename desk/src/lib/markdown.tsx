@@ -16,6 +16,49 @@ const ASCII_BORDER = /^\s*\+[-=]{2,}[-=+\s]*\+\s*$/; // +-----+   +----+
 export const isArt = (text: string) => BOX.test(text);
 /** Unfenced diagram: at least two lines drawn with box characters or +---+ borders. */
 export const artLines = (lines: string[]) => lines.filter((l) => BOX.test(l) || ASCII_BORDER.test(l)).length;
+const WIDE = /[\u1100-\u115F\u2E80-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6]/;
+const has = (set: string, ch: string) => ch !== "" && set.includes(ch);
+/** Display-only: redraws ASCII +--+ / | boxes with box-drawing characters (the copy button keeps the original). */
+export function boxify(text: string): string {
+  const lines = text.split("\n");
+  if (lines.filter((l) => ASCII_BORDER.test(l)).length < 2) return text;
+  // display-column grid: a wide char takes its cell plus an empty filler cell
+  const grid = lines.map((l) => [...l].flatMap((ch) => (WIDE.test(ch) ? [ch, ""] : [ch])));
+  const at = (r: number, c: number) => grid[r]?.[c] ?? "";
+  return grid.map((row, r) => row.map((ch, c) => {
+    if (ch === "+") {
+      const L = has("-=+", at(r, c - 1)), R = has("-=+", at(r, c + 1));
+      let U = has("|+", at(r - 1, c)), D = has("|+", at(r + 1, c));
+      if (!U && !D) {
+        // misaligned corner: no vertical neighbour in its column, look four cells either side
+        const near = (k: number) => [-4, -3, -2, -1, 0, 1, 2, 3, 4].some((d) => has("|+", at(k, c + d)));
+        U = near(r - 1);
+        D = near(r + 1);
+      }
+      if (L && R && U && D) return "┼";
+      if (L && R && D) return "┬";
+      if (L && R && U) return "┴";
+      if (U && D && R) return "├";
+      if (U && D && L) return "┤";
+      if (L && R) return "─";
+      if (U && D) return "│";
+      return R && D ? "┌" : L && D ? "┐" : R && U ? "└" : L && U ? "┘" : ch;
+    }
+    if (ch === "-" || ch === "=") {
+      let s = c, e = c;
+      while (row[s - 1] === ch) s--;
+      while (row[e + 1] === ch) e++;
+      return e - s >= 2 || row[s - 1] === "+" || row[e + 1] === "+" ? (ch === "-" ? "─" : "═") : ch;
+    }
+    // also convert a pipe with open sides (misaligned boxes); a wide-char filler "" on the left is not open
+    const open = (c === 0 || row[c - 1] === " ") && (c === row.length - 1 || row[c + 1] === " ");
+    return ch === "|" && (has("|+", at(r - 1, c)) || has("|+", at(r + 1, c)) || open) ? "│" : ch;
+  }).join("")).join("\n");
+}
+const CONNECTOR_CHARS = /[\s|▼▲▶◀↓↑→←^:.+\-=<>]/g;
+// a line made only of connector glyphs (| ▼ -> v ...), or an indented line holding an arrow/pipe
+const isConnector = (l: string) =>
+  l.replace(CONNECTOR_CHARS, "").replace(/(?<![\p{L}\p{N}])[vV](?![\p{L}\p{N}])/gu, "") === "" || (/^ {2}/.test(l) && /[|▼▲▶◀↓↑→←]/.test(l));
 const HEADING = /^(#{1,6})\s+(.*?)\s*$/;
 const HR = /^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/;
 const ITEM = /^(\s*)([-*+]|\d{1,9}[.)])\s+(.*)$/;
@@ -119,8 +162,8 @@ function parseLines(lines: string[]): Block[] {
     while (i < lines.length && !isBlank(lines[i]) && !startsBlock(lines[i]) && !isTableStart(lines, i)) para.push(lines[i++]);
     const n = artLines(para);
     const prev = out[out.length - 1];
-    // ponytail: a fragment without box characters between two pieces (a lone "▼" line set off by blank lines) stays a paragraph; proper fix is for the model to fence the diagram.
-    if (prev?.t === "code" && prev.art && n >= 1) prev.text += "\n\n" + para.join("\n");
+    // ponytail: heuristic; a prose line made only of arrows/punctuation right after an unfenced diagram joins it. Proper fix is for the model to fence the diagram.
+    if (prev?.t === "code" && prev.art && (n >= 1 || para.every(isConnector))) prev.text += "\n\n" + para.join("\n");
     else if (n >= 2) out.push({ t: "code", lang: "", text: para.join("\n"), open: false, art: true });
     else out.push({ t: "p", text: para.join("\n") });
   }
@@ -148,6 +191,12 @@ function inline(s: string, onLink: OnLink): ReactNode[] {
   while (i < s.length) {
     const c = s[i];
     const k = out.length;
+    // backslash escape, except inside Windows-path-looking words (C:\dir\*.txt, a\b\.claude stay verbatim)
+    if (c === "\\" && /[!-/:-@[-`{-~]/.test(s[i + 1] ?? "")) {
+      const ws = Math.max(s.lastIndexOf(" ", i), s.lastIndexOf("\n", i), s.lastIndexOf("\t", i)) + 1;
+      const we = s.slice(i).search(/\s/);
+      if (!/:\\|\\[\p{L}\p{N}]/u.test(s.slice(ws, we < 0 ? s.length : i + we))) { buf += s[i + 1]; i += 2; continue; }
+    }
     if (c === "`" && s[i + 1] === "`") {
       let n = 2;
       while (s[i + n] === "`") n++;
@@ -198,14 +247,15 @@ function inline(s: string, onLink: OnLink): ReactNode[] {
 }
 
 function CodeBlock({ lang, text }: { lang: string; text: string }) {
-  const toks = useMemo(() => highlight(lang, text), [lang, text]);
+  const shown = useMemo(() => (/^(text|txt|plain|ascii)?$/i.test(lang) ? boxify(text) : text), [lang, text]);
+  const toks = useMemo(() => highlight(lang, shown), [lang, shown]);
   return (
     <div className="md-code">
       <div className="md-code-head">
         <span>{lang}</span>
         <button type="button" className="md-copy" onClick={() => { try { void navigator.clipboard.writeText(text).catch(() => {}); } catch { /* no clipboard */ } }}>복사</button>
       </div>
-      <pre className={isArt(text) ? "art" : undefined}><code>{toks.map((k, i) => k.t ? <span key={i} className={"hl-" + k.t}>{k.s}</span> : k.s)}</code></pre>
+      <pre className={isArt(shown) ? "art" : undefined}><code>{toks.map((k, i) => k.t ? <span key={i} className={"hl-" + k.t}>{k.s}</span> : k.s)}</code></pre>
     </div>
   );
 }

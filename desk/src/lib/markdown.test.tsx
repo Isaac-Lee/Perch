@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { Markdown, parseBlocks } from "./markdown";
+import { Markdown, boxify, parseBlocks } from "./markdown";
 
 const md = (text: string) => renderToStaticMarkup(<Markdown text={text} onLink={() => {}} />);
 
@@ -89,5 +89,33 @@ describe("markdown", () => {
     expect(h("a<br>b")).not.toContain("<br");
     expect(h("~~x~~")).toContain("<del>x</del>");
     expect(h("``a`b``")).toContain("<code>a`b</code>");
+  });
+  it("boxify redraws ASCII boxes with box-drawing characters", () => {
+    expect(boxify("+----+\n| ab |\n+----+")).toBe("┌────┐\n│ ab │\n└────┘");
+    expect(boxify("+------+\n| 한글 |\n+------+")).toBe("┌──────┐\n│ 한글 │\n└──────┘");
+    expect(boxify("+--+--+\n| a| b|\n+--+--+\n| c| d|\n+--+--+")).toBe("┌──┬──┐\n│ a│ b│\n├──┼──┤\n│ c│ d│\n└──┴──┘");
+    const plain = "a | b\n--flag";
+    expect(boxify(plain)).toBe(plain);
+    expect(boxify("+----+\n| ab |\n+----+\n--flag\na == b\nx | y")).toBe("┌────┐\n│ ab │\n└────┘\n--flag\na == b\nx │ y");
+    expect(boxify("+----------+\n| a|b      |\n| a || b   |\n+----------+")).toBe("┌──────────┐\n│ a|b      │\n│ a || b   │\n└──────────┘");
+    expect(boxify("+------+\n| 한글한글 |\n+------+")).toBe("┌──────┐\n│ 한글한글 │\n└──────┘");
+    expect(boxify("+----------+\n| 클라이언트 |\n+----------+\n      |\n      v")).toBe("┌──────────┐\n│ 클라이언트 │\n└──────────┘\n      │\n      v");
+    expect(boxify("+---+\n+---+\n\n+-->\n---->")).toContain("\n\n+──>\n────>");
+    expect(md("```\n+----+\n| a  |\n+----+\n```")).toContain('<pre class="art"><code>┌────┐');
+    expect(md("```sql\n+----+\n| a  |\n+----+\n```")).not.toContain("┌");
+  });
+  it("connector fragments join an unfenced diagram", () => {
+    const d = "┌──┐\n│ a│\n└──┘";
+    expect(parseBlocks(d + "\n\n   ▼\n\n" + d)).toEqual([{ t: "code", lang: "", text: d + "\n\n   ▼\n\n" + d, open: false, art: true }]);
+    expect(parseBlocks(d + "\n\nplain prose here")[1]).toEqual({ t: "p", text: "plain prose here" });
+  });
+  it("backslash escapes", () => {
+    const text = (t: string) => md(t).replace(/<[^>]+>/g, "");
+    expect(md("5 \\* 3 \\* 2")).not.toContain("<em>");
+    expect(text("5 \\* 3 \\* 2")).toBe("5 * 3 * 2");
+    expect(text("snake\\_case\\_name")).toBe("snake_case_name");
+    expect(text("C:\\dir\\*.txt")).toBe("C:\\dir\\*.txt");
+    expect(text("C:\\Users\\user\\.claude")).toBe("C:\\Users\\user\\.claude");
+    expect(md("`a\\*b`")).toContain("<code>a\\*b</code>");
   });
 });
