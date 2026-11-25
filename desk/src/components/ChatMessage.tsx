@@ -30,7 +30,7 @@ function ToolDetails({ t }: { t: ToolItem }) {
     <div className="chat-tool-body">
       {t.summary && <div className="chat-tool-summary">{t.summary}</div>}
       <Rows rows={kvRows(t.args)} />
-      {t.diff && <pre className="chat-tool-result"><code>{highlight("diff", clip(t.diff, 20000)).map((k, i) => (k.t ? <span key={i} className={"hl-" + k.t}>{k.s}</span> : k.s))}</code></pre>}
+      {t.diff && <pre className="chat-tool-result"><code className="hljs-root" dangerouslySetInnerHTML={{ __html: highlight("diff", clip(t.diff, 20000)).html }} /></pre>}
       <Rows rows={res.rows} />
       {res.text && <pre className={"chat-tool-result" + (isArt(shown) ? " art" : "")}>{shown}</pre>}
     </div>

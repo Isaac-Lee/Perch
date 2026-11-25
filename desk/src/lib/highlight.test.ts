@@ -1,58 +1,73 @@
 import { describe, expect, it } from "vitest";
 import { highlight } from "./highlight";
 
-const types = (l: string, s: string) => highlight(l, s).map((x) => `${x.t}:${x.s}`);
-const has = (l: string, s: string, t: string, piece: string) =>
-  expect(highlight(l, s).some((x) => x.t === t && x.s === piece)).toBe(true);
+const plainOf = (h: string) => h.replace(/<[^>]*>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&amp;/g, "&");
+const JS = "import fs from 'fs';\nconst data = fs.readFileSync('a.txt', 'utf8');\nasync function main() {\n  const r = await fetch(url);\n  console.log(await r.json());\n}\nmain();";
+const PY = "import os\nfrom typing import List\n\nclass A:\n    def __init__(self, x):\n        self.x = x\n\n    def run(self):\n        for i in range(10):\n            print(i)\n";
 
 describe("highlight", () => {
   it("round-trips", () => {
     const samples: [string, string][] = [
       ["diff", "--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b\n c"],
-      ["ts", 'const a = "x" // c\n/* b */ 0x1F 3.5'],
+      ["ts", 'const a = "x" // c\n/* b */ 0x1F 3.5 <T>&'],
       ["python", "def f():\n  '''doc\nstring'''\n  return 1 # c"],
       ["json", '{"a": [1, true, null]}'],
-      ["zzz", "anything"],
+      ["zzz", "anything <b>"],
       ["ts", ""],
       ["ts", 'let s = "unterminated\nnext'],
       ["ts", "/* never closed"],
       ["go", "x := `raw\nstring"],
       ["", "@@ -1 +1 @@\n-a\n+b"],
+      ["", JS],
+      ["", "├── src\n└── a & b"],
     ];
-    for (const [l, s] of samples) expect(highlight(l, s).map((x) => x.s).join("")).toBe(s);
-  });
-  it("diff", () => {
-    has("diff", "+a", "add", "+a");
-    has("diff", "-b", "del", "-b");
-    has("diff", "@@ -1 +1 @@", "hunk", "@@ -1 +1 @@");
-    has("diff", "--- a/x", "meta", "--- a/x");
-    expect(types("", "@@ -1 +1 @@\n-a\n+b")).toEqual(["hunk:@@ -1 +1 @@\n", "del:-a\n", "add:+b"]);
+    for (const [l, s] of samples) expect(plainOf(highlight(l, s).html)).toBe(s);
   });
   it("ts", () => {
-    has("ts", "// c", "com", "// c");
-    has("TS", '"s"', "str", '"s"');
-    has("ts", "42", "num", "42");
-    has("ts", "const x", "kw", "const");
-    expect(highlight("ts", "constant").some((x) => x.t === "kw")).toBe(false);
-    expect(highlight("ts", "abc123").some((x) => x.t === "num")).toBe(false);
+    const { html, lang } = highlight("TS", 'const x = "s"; // c');
+    expect(html).toContain('<span class="hljs-keyword">const</span>');
+    expect(html).toContain("hljs-string");
+    expect(html).toContain("hljs-comment");
+    expect(lang).not.toBe("");
   });
-  it("python vs c-like hash", () => {
-    has("python", "# c", "com", "# c");
-    expect(highlight("ts", "# c").some((x) => x.t === "com")).toBe(false);
+  it("json keys differ from values", () => {
+    const { html } = highlight("json", '{"k": "v"}');
+    expect(html).toContain('<span class="hljs-attr">&quot;k&quot;</span>');
+    expect(html).toContain('<span class="hljs-string">&quot;v&quot;</span>');
   });
-  it("unknown lang", () => {
-    expect(highlight("zzz", "const a")).toEqual([{ t: "", s: "const a" }]);
-    expect(highlight("", "const a")).toEqual([{ t: "", s: "const a" }]);
+  it("diff", () => {
+    const { html } = highlight("diff", "@@ -1 +1 @@\n-a\n+b");
+    expect(html).toContain('<span class="hljs-deletion">-a</span>');
+    expect(html).toContain('<span class="hljs-addition">+b</span>');
+    expect(highlight("", "@@ -1 +1 @@\n-a\n+b").lang).toBe("diff");
   });
-  it("lone apostrophe is not a string", () => {
-    const rs = "fn f<'a>(x: &'a str) {}";
-    const toks = highlight("rust", rs);
-    expect(toks.map((x) => x.s).join("")).toBe(rs);
-    has("rust", rs, "kw", "fn");
-    expect(toks.some((x) => x.t === "str")).toBe(false);
-    has("ts", "'ok'", "str", "'ok'");
-    const p = "don't stop\nnext";
-    expect(highlight("yaml", p).map((x) => x.s).join("")).toBe(p);
-    expect(highlight("yaml", p).some((x) => x.t === "str")).toBe(false);
+  it("auto-detects code", () => {
+    for (const [s, l] of [[JS, "javascript"], [PY, "python"]]) {
+      const r = highlight("", s);
+      expect(r.lang).toBe(l);
+      expect(r.html).toContain("hljs-keyword");
+    }
+  });
+  it("leaves prose, logs, trees plain", () => {
+    for (const s of [
+      "This is a normal paragraph of text. It explains that we should use the function when the value is set, and then return to the caller.",
+      "2026-01-01 12:00:01 INFO server started on port 8080\n2026-01-01 12:00:02 WARN slow request took 1200ms\n2026-01-01 12:00:03 ERROR failed to connect: timeout",
+      "├── src\n│   ├── lib\n│   │   └── a.ts\n│   └── main.tsx\n└── package.json",
+      "┌──────┐\n│ a    │──▶ b\n└──────┘",
+    ]) {
+      const r = highlight("", s);
+      expect(r.lang).toBe("");
+      expect(r.html).not.toContain("<span");
+    }
+  });
+  it("unknown / text langs are plain", () => {
+    for (const l of ["zzz", "text", "plaintext"]) expect(highlight(l, "const a = 1")).toEqual({ html: "const a = 1", lang: "" });
+  });
+  it("escapes markup", () => {
+    for (const l of ["", "html", "ts", "zzz", "text", "diff"]) expect(highlight(l, "<script>alert(1)</script>").html).not.toContain("<script");
+  });
+  it("empty", () => {
+    expect(highlight("", "")).toEqual({ html: "", lang: "" });
+    expect(highlight("ts", "").html).toBe("");
   });
 });

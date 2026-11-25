@@ -29,6 +29,7 @@
   --del: #e0705f;
   --add-bg: rgba(95, 184, 124, 0.12);
   --del-bg: rgba(224, 112, 95, 0.12);
+  --syn-kw: #c594e8; --syn-str: #7fc98f; --syn-num: #e58a6a; --syn-fn: #6cb6f2; --syn-type: #5cc8c0; --syn-attr: #d9b55f; --syn-tag: #e07b8a; --syn-com: var(--text-3); --syn-meta: var(--text-2);
   --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23a1a1a6' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
   /* Terminal palette. Dark themes: the terminal follows the app. Light: terminals stay dark, because agent TUIs
      (Hermes) print truecolor text picked for dark backgrounds (cream #FFF8DC, gold #FFD700) that is unreadable on white. */
@@ -57,6 +58,7 @@
   --scroll-thumb: rgba(0, 0, 0, 0.25);
   --shadow: rgba(0, 0, 0, 0.15); --shadow-sm: rgba(0, 0, 0, 0.12);
   --del: #c4412f; --add-bg: rgba(39, 122, 76, 0.12); --del-bg: rgba(196, 65, 47, 0.12);
+  --syn-kw: #8a3fc0; --syn-str: #277a4c; --syn-num: #b35514; --syn-fn: #2a65c9; --syn-type: #0f7d78; --syn-attr: #8f6a00; --syn-tag: #c4412f;
   --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%235c5c63' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
   --term-bg: #17181b; --term-fg: #e6e6e6; --term-cursor: #a1a1a6;
   color-scheme: light;
