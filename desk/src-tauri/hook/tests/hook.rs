@@ -65,6 +65,22 @@ fn transitions() {
     assert_eq!(st["state"], "thinking");
     assert_eq!(st["todos"], json!([{"text":"a","status":"done"},{"text":"b","status":"pending"}]));
 
+    // todo_list: extra.result is the full list, tool_input is a partial merge write
+    let full = r#"{"todos":[{"id":"1","content":"a","status":"completed"},{"id":"2","content":"b","status":"in_progress"},{"id":"3","content":"c","status":"cancelled"},{"id":"4","content":"d","status":"pending"}]}"#;
+    let mut e = ev("post_tool_call", json!({"result": full}));
+    e["tool_name"] = json!("todo_list");
+    e["tool_input"] = json!({"todos": [{"id":"2","status":"completed"}], "merge": true});
+    let st = step(st, e, 23);
+    let want = json!([{"text":"a","status":"done"},{"text":"b","status":"in_progress"},{"text":"d","status":"pending"}]);
+    assert_eq!(st["todos"], want);
+
+    // error result leaves todos untouched
+    let mut e = ev("post_tool_call", json!({"result": "{\"error\":\"x\"}"}));
+    e["tool_name"] = json!("todo_list");
+    e["tool_input"] = json!({"todos": [{"id":"9","status":"done"}], "merge": true});
+    let st = step(st, e, 23);
+    assert_eq!(st["todos"], want);
+
     let st = step(st, ev("on_human_input_request", json!({"kind":"tool_approval","request_id":"r1","prompt":"rm?"})), 24);
     assert_eq!(st["state"], "approval");
     assert_eq!(st["pending"], json!({"kind":"tool_approval","id":"r1","text":"rm?"}));
