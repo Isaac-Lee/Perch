@@ -132,6 +132,23 @@ describe("markdown", () => {
     expect(text("C:\\Users\\user\\.claude")).toBe("C:\\Users\\user\\.claude");
     expect(md("`a\\*b`")).toContain("<code>a\\*b</code>");
   });
+  it("bold variants", () => {
+    expect(md("__bold__")).toContain("<strong>bold</strong>");
+    expect(md("a__b__c")).not.toContain("<strong>");
+    expect(md("snake_case__name")).not.toContain("<strong>");
+    expect(md("***x***")).toContain("<strong><em>x</em></strong>");
+    expect(md("**a *b* c**")).toContain("<strong>a <em>b</em> c</strong>");
+  });
+  it("task lists", () => {
+    expect(parseBlocks("- [ ] a\n- [x] b\n- [X] c\n- plain")).toEqual([{ t: "list", ordered: false, items: [
+      { text: "a", checked: false, children: [] }, { text: "b", checked: true, children: [] }, { text: "c", checked: true, children: [] }, { text: "plain", children: [] }] }]);
+    const h = md("- [ ] a\n- [x] b");
+    expect(h).toContain('<li class="md-task"><input type="checkbox" disabled=""');
+    expect(h).toContain("md-task done");
+    expect(h).toContain("checked");
+    expect(md("- [ref] note")).not.toContain("md-task");
+    expect(md("- top\n  - [x] sub")).toContain("md-task done");
+  });
   it("prettifies one-line JSON only in a closed fence", () => {
     const j = JSON.stringify({ alpha: 1, beta: [1, 2, 3], gamma: { delta: "epsilon" }, zeta: "eta theta iota kappa lambda mu nu xi omicron" });
     expect(md("```json\n" + j + "\n```")).toContain("\n  ");
