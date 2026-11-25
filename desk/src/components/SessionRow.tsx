@@ -7,7 +7,7 @@ import { fmtTok, totalTokens } from "../lib/usage";
 export const agentName = (a: AgentKind) => (a === "hermes" ? "Hermes" : a === "opencode" ? "OpenCode" : "Shell");
 
 const TONE = { running: "ok", thinking: "ok", tool: "ok", approval: "warn", question: "warn", reply: "warn", done: "ok", ready: "muted", plain: "muted", closed: "muted", stale: "muted" } as const;
-const TODO_ICON: Record<Todo["status"], typeof Circle> = { done: CircleCheck, in_progress: CircleDot, pending: Circle };
+export const TODO_ICON: Record<Todo["status"], typeof Circle> = { done: CircleCheck, in_progress: CircleDot, pending: Circle };
 
 export interface RowDrag { dragging: boolean; onPointerDown: (e: React.PointerEvent<HTMLElement>) => void; onMove: (dir: -1 | 1) => void }
 

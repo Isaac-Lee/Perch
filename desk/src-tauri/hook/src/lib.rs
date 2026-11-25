@@ -164,14 +164,17 @@ pub fn apply(state: Value, event: &Value, now: u64) -> Option<Value> {
             if !st["turnStart"].is_null() {
                 set_state(&mut st, "thinking", now);
             }
-            if event["tool_name"] == "todo" {
-                // ponytail: assumes tool_input.todos = [{content|text, status}]; real shape unverified, untouched otherwise
-                if let Some(a) = event["tool_input"]["todos"].as_array() {
+            if matches!(event["tool_name"].as_str(), Some("todo_list" | "todo")) {
+                // extra.result (JSON string) holds the full list after the call; tool_input.todos is only a full list when not merging (legacy fallback)
+                let res = match &ex["result"] { Value::String(s) => serde_json::from_str(s).unwrap_or(Value::Null), v => v.clone() };
+                let a = res["todos"].as_array().or_else(|| if event["tool_input"]["merge"] == true { None } else { event["tool_input"]["todos"].as_array() });
+                if let Some(a) = a {
                     let todos: Vec<Value> = a.iter().filter_map(|t| {
                         let text = t["content"].as_str().or_else(|| t["text"].as_str())?;
                         let status = match t["status"].as_str()? {
                             "completed" | "done" => "done",
                             "in_progress" => "in_progress",
+                            "cancelled" => return None,
                             _ => "pending",
                         };
                         Some(json!({"text": text, "status": status}))

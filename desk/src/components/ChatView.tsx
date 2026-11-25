@@ -8,6 +8,7 @@ import ChatMessage, { type ChatActions } from "./ChatMessage";
 import type { Session } from "../lib/types";
 import ChatLive from "./ChatLive";
 import ChatQueue from "./ChatQueue";
+import ChatTodos from "./ChatTodos";
 import { setLiveSubagents } from "../lib/liveSubagents";
 import { setBackgroundTasks } from "../lib/liveBackground";
 import { setPaneGraph } from "../lib/paneGraph";
@@ -86,6 +87,7 @@ export default function ChatView({ paneId, cwd, sessionId, focused, session }: {
           {state.conn === "connecting" && <div className="chat-status">연결 중…</div>}
         </div>
       </div>
+      {state.todos.some((t) => t.status !== "done") && <ChatTodos todos={state.todos} />}
       {state.queued.length > 0 && <ChatQueue queued={state.queued} onSendNow={sendNow} />}
       <ChatComposer model={state.model ?? undefined} effort={state.effort ?? undefined} draft={draft} onDraftReplaced={(old) => setExtra((e) => [old, ...e])} history={history} running={state.running} disabled={state.conn !== "ready"} focused={focused} onSend={(t, a) => { stick.current = true; send(t, a); }} onStop={stop} onAttach={attachImage} onListModels={listModels} onSetModel={setModel} onSetEffort={setEffort} onCompleteSlash={completeSlash} />
     </div>

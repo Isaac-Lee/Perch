@@ -870,3 +870,29 @@ describe("whileRunning", () => {
     expect(n).toBe(3);
   });
 });
+
+describe("todos", () => {
+  const raw = [{ id: "1", content: "a", status: "completed" }, { id: "2", content: "b", status: "in_progress" }, { id: "3", content: "c", status: "cancelled" }, { id: "4", content: "d", status: "pending" }];
+  it("todo.updated maps statuses and drops cancelled", () => {
+    expect(chatReducer(initialChat, ev("todo.updated", { todos: raw, revision: 2 })).todos).toEqual([{ text: "a", status: "done" }, { text: "b", status: "in_progress" }, { text: "d", status: "pending" }]);
+  });
+  it("ignores an older revision", () => {
+    const s = chatReducer(initialChat, ev("todo.updated", { todos: raw, revision: 3 }));
+    expect(chatReducer(s, ev("todo.updated", { todos: [], revision: 2 }))).toBe(s);
+  });
+  it("tool.complete with todos updates the tool item and todos", () => {
+    let s = chatReducer(initialChat, ev("tool.start", { tool_id: "t1", name: "todo" }));
+    s = chatReducer(s, ev("tool.complete", { tool_id: "t1", todos: raw, revision: 1 }));
+    expect(s.items[0]).toMatchObject({ kind: "tool", status: "done" });
+    expect(s.todos).toHaveLength(3);
+    expect(s.todoRev).toBe(1);
+  });
+  it("snapshot sets todos from todo_state and clears them without it", () => {
+    const s = chatReducer(initialChat, { t: "snapshot", snap: { session_id: "a", todo_state: { todos: raw, revision: 5 } } });
+    expect(s.todos).toHaveLength(3);
+    expect(s.todoRev).toBe(5);
+    const c = chatReducer(s, { t: "snapshot", snap: { session_id: "a" } });
+    expect(c.todos).toEqual([]);
+    expect(c.todoRev).toBe(0);
+  });
+});

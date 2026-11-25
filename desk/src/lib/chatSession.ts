@@ -6,6 +6,7 @@ import { createRpc, type Rpc, type RpcError } from "./gateway";
 import { splitImageRefs, userText } from "./hermesFrames";
 import { activityOf } from "./orbState";
 import type { GatewayEvent, SessionSnapshot } from "./gatewayTypes";
+import type { Todo } from "./types";
 
 /** An uploaded image ready to send. */
 /** `kept`: an image of an earlier message, whose gateway path is gone: re-upload before use. */
@@ -41,8 +42,9 @@ export interface ChatState { conn: "connecting" | "ready" | "closed" | "error"; 
   /** `at` of a local prompt that has not seen message.start yet (the optimistic window); null otherwise */ sentAt: number | null;
   /** the last snapshot carried display_messages (rows have row_id) */ rowIds: boolean;
   /** the user cleared a stuck indicator by hand: the next real frame turns it back on */ cleared: boolean;
-  /** delegate_task children by subagent_id. Not in session.resume snapshots: after a resume/reconnect only children seen live exist. */ subagents: Record<string, SubagentLive> }
-export const initialChat: ChatState = { conn: "connecting", sessionId: null, executionGeneration: 0, revision: 0, running: false, items: [], prompts: [], queued: [], model: null, effort: null, turnStart: null, status: "", generating: "", sentAt: null, cleared: false, rowIds: false, subagents: {} };
+  /** delegate_task children by subagent_id. Not in session.resume snapshots: after a resume/reconnect only children seen live exist. */ subagents: Record<string, SubagentLive>;
+  /** Hermes task list (todo tool), full list as of `todoRev` */ todos: Todo[]; todoRev: number }
+export const initialChat: ChatState = { conn: "connecting", sessionId: null, executionGeneration: 0, revision: 0, running: false, items: [], prompts: [], queued: [], model: null, effort: null, turnStart: null, status: "", generating: "", sentAt: null, cleared: false, rowIds: false, subagents: {}, todos: [], todoRev: 0 };
 export type ChatAction =
   | { t: "conn"; conn: ChatState["conn"]; error?: string }
   | { t: "snapshot"; snap: any; at?: number; /** post-turn resync: annotate row ids onto the live items; if they do not line up, replace but carry local error/system rows over */ keepLocal?: boolean }
@@ -75,6 +77,19 @@ function callContext(args: unknown): string {
     return typeof v === "string" ? v.slice(0, 120) : "";
   } catch { return ""; }
 }
+
+/** Gateway todo rows -> the sidebar's Todo shape; cancelled rows are dropped. */
+export function toTodos(raw: unknown): Todo[] {
+  return (Array.isArray(raw) ? raw : []).flatMap((t: any) => {
+    const text = str(t?.content) || str(t?.text), st = str(t?.status);
+    return !text || st === "cancelled" ? [] : [{ text, status: st === "completed" || st === "done" ? "done" as const : st === "in_progress" ? "in_progress" as const : "pending" as const }];
+  });
+}
+/** A todo list frame applies unless an older revision than the one held. */
+const withTodos = (s: ChatState, p: any): ChatState => {
+  const rev = typeof p.revision === "number" ? p.revision : 0;
+  return Array.isArray(p.todos) && rev >= s.todoRev ? { ...s, todos: toTodos(p.todos), todoRev: rev } : s;
+};
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const labelsOf = (v: unknown) => { const l = (Array.isArray(v) ? v : []).map((x) => str((x as any)?.text)).filter(Boolean); return l.length ? { labels: l } : {}; };
@@ -216,7 +231,7 @@ export function chatReducer(s: ChatState, a: ChatAction): ChatState {
         executionGeneration: typeof a.snap.execution_generation === "number" ? a.snap.execution_generation : s.executionGeneration,
       };
       return {
-      ...s, conn: "ready", error: undefined, sessionId: a.snap.session_id ?? null,
+      ...s, todos: toTodos(a.snap.todo_state?.todos), todoRev: typeof a.snap.todo_state?.revision === "number" ? a.snap.todo_state.revision : 0, conn: "ready", error: undefined, sessionId: a.snap.session_id ?? null,
       executionGeneration: typeof a.snap.execution_generation === "number" ? a.snap.execution_generation : s.executionGeneration,
       revision: typeof a.snap.revision === "number" ? a.snap.revision : 0,
       sentAt: null, cleared: false, rowIds: Array.isArray(a.snap.display_messages), running: !!a.snap.running, turnStart: a.snap.running ? s.turnStart ?? a.at ?? null : null, model: a.snap.info?.model || s.model, effort: str(a.snap.info?.reasoning_effort) || s.effort, items: [...transcriptToItems(a.snap.display_messages ?? a.snap.messages ?? [], Array.isArray(a.snap.display_messages)), ...(a.keepLocal ? s.items.filter((i) => i.kind === "error" || i.kind === "system").map((i) => ({ ...i, id: `k${i.id}` })) /* re-keyed: a later local row's e<n>/s<n> must not collide */ : []), ...s.items.filter((i) => i.kind === "background" && i.status === "running")], prompts: (Array.isArray(a.snap.prompts) ? a.snap.prompts : []).map((p: any) => toPrompt(p, p?.kind)).filter((p: ChatPrompt | null): p is ChatPrompt => !!p), queued: pendingToQueued(a.snap.pending),
@@ -376,9 +391,10 @@ function onEvent(s: ChatState, ev: GatewayEvent, at?: number): ChatState {
     case "tool.complete": {
       const id = str(p.tool_id);
       const patch = { status: (p.is_error ? "error" : "done") as "error" | "done", durationS: typeof p.duration_s === "number" ? p.duration_s : undefined, result: typeof p.result === "string" ? p.result : isObj(p.result) ? JSON.stringify(p.result) : undefined, progress: undefined, ...toolExtra(p) };
-      if (s.items.some((i) => i.kind === "tool" && i.id === id)) return { ...s, items: s.items.map((i) => (i.kind === "tool" && i.id === id ? { ...i, ...patch } : i)) };
-      return { ...s, items: [...settle(s.items), { kind: "tool", id: id || `t${s.items.length}`, name: str(p.name), context: str(p.context), ...patch }] };
+      if (s.items.some((i) => i.kind === "tool" && i.id === id)) return withTodos({ ...s, items: s.items.map((i) => (i.kind === "tool" && i.id === id ? { ...i, ...patch } : i)) }, p);
+      return withTodos({ ...s, items: [...settle(s.items), { kind: "tool", id: id || `t${s.items.length}`, name: str(p.name), context: str(p.context), ...patch }] }, p);
     }
+    case "todo.updated": return withTodos(s, p);
     case "session.info": {
       const model = str(p.model), effort = str(p.reasoning_effort);
       let n = model || effort ? { ...s, model: model || s.model, effort: effort || s.effort } : s;
