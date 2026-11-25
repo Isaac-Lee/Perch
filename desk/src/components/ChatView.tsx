@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { promptHistory } from "../lib/composer";
 import { groupItems, useChatSession, userActions } from "../lib/chatSession";
-import { onChatApprove, onChatStop } from "../lib/backend";
+import { onChatApprove, onChatFork, onChatStop } from "../lib/backend";
 import ChatComposer from "./ChatComposer";
 import ChatPrompt from "./ChatPrompt";
 import ChatMessage, { type ChatActions } from "./ChatMessage";
@@ -15,7 +15,7 @@ import { setPaneGraph } from "../lib/paneGraph";
 export default function ChatView({ paneId, cwd, sessionId, focused, session }: { paneId: string; cwd: string; sessionId: string | null; focused: boolean; session?: Session }) {
   // Session id at first render only (equal to the pane id means none yet); a later paneSetSession must not reconnect.
   const [resumeId] = useState(() => (sessionId && sessionId !== paneId ? sessionId : null));
-  const { state, retrying, draft, send, stop, reconnect, attachImage, listModels, setModel, setEffort, completeSlash, sendNow, answerApproval, answerClarify, rewindTo, overwrite, fork } = useChatSession(paneId, cwd, resumeId);
+  const { state, retrying, draft, send, stop, reconnect, attachImage, listModels, setModel, setEffort, completeSlash, sendNow, answerApproval, answerClarify, rewindTo, overwrite, fork, forkEnd } = useChatSession(paneId, cwd, resumeId);
   const [extra, setExtra] = useState<string[]>([]); // drafts a rewind replaced, newest first, recallable with up-arrow
   const history = useMemo(() => [...extra, ...promptHistory(state.items)], [extra, state.items]);
   // Per-bubble actions for user items. The hook's actions read live state through its own ref, so a closure from an earlier render is safe.
@@ -25,8 +25,8 @@ export default function ChatView({ paneId, cwd, sessionId, focused, session }: {
       if (item.kind !== "user") continue;
       m.set(item.id, {
         state: userActions(state, item),
-        onRewind: () => { if (item.rowId !== undefined) void rewindTo(item.rowId, item.text); },
-        onOverwrite: (t, a) => { if (item.rowId !== undefined) void overwrite(item.rowId, t, a); },
+        onRewind: () => { void rewindTo(item, item.text); },
+        onOverwrite: (t, a) => { void overwrite(item, t, a); },
         onFork: (t, now, a) => { void fork(item, t, now, a); },
         onAttach: attachImage,
       });
@@ -38,8 +38,8 @@ export default function ChatView({ paneId, cwd, sessionId, focused, session }: {
   const toBottom = () => { const el = scrollRef.current; if (el) el.scrollTop = el.scrollHeight; };
   useLayoutEffect(() => { if (stick.current) toBottom(); }, [state.items, state.conn, state.prompts, state.running]);
   // Sidebar buttons arrive as Tauri events; the ref keeps the listeners on the latest state without resubscribing.
-  const live = useRef({ state, stop, answerApproval });
-  live.current = { state, stop, answerApproval };
+  const live = useRef({ state, stop, forkEnd, answerApproval });
+  live.current = { state, stop, forkEnd, answerApproval };
   useEffect(() => {
     let dead = false;
     const offs: (() => void)[] = [];
@@ -53,6 +53,7 @@ export default function ChatView({ paneId, cwd, sessionId, focused, session }: {
       answer(pr.promptId, pr.choices.includes(want) ? want : p.allow ? pr.choices[0] : pr.choices[pr.choices.length - 1]);
     }));
     keep(onChatStop((p) => { if (p.paneId === paneId) live.current.stop(); }));
+    keep(onChatFork((p) => { if (p.paneId === paneId) void live.current.forkEnd(); }));
     return () => { dead = true; offs.forEach((o) => o()); };
   }, [paneId]);
   useEffect(() => { toBottom(); }, [state.sessionId]); // resumed history opens at the bottom
