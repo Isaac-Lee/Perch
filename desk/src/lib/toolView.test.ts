@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { kvRows, resultCount, resultView, thoughtTitle, toolTitle } from "./toolView";
+import { clip, kvRows, resultCount, resultView, thoughtTitle, toolTitle } from "./toolView";
 
 const tool = (o: object) => ({ kind: "tool" as const, id: "1", name: "x", context: "", status: "done" as const, ...o });
 
@@ -37,5 +37,9 @@ describe("toolView", () => {
     expect(toolTitle(tool({ name: "terminal", args: { command: "ls -la\nmore" } }))).toBe("실행: ls -la");
     expect(toolTitle(tool({ name: "weird", context: "c" }))).toBe("weird · c");
     expect(toolTitle(tool({ name: "weird", preview: "p" }))).toBe("weird · p");
+  });
+  it("clip says how much is cut", () => {
+    expect(clip("abcdef", 3)).toBe("abc\n… (3자 더 있음)");
+    expect(clip("abc", 3)).toBe("abc");
   });
 });

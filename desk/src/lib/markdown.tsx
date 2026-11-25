@@ -3,13 +3,19 @@ import { highlight } from "./highlight";
 
 export type Block =
   | { t: "p"; text: string } | { t: "h"; level: 1 | 2 | 3 | 4 | 5 | 6; text: string }
-  | { t: "code"; lang: string; text: string; open: boolean }   // open: no closing ``` yet
-  | { t: "list"; ordered: boolean; items: { text: string; children: Block[] }[] }
+  | { t: "code"; lang: string; text: string; open: boolean; art?: true }   // open: no closing ``` yet; art: promoted from a paragraph
+  | { t: "list"; ordered: boolean; start?: number; items: { text: string; children: Block[] }[] }
   | { t: "quote"; children: Block[] } | { t: "hr" }
   | { t: "table"; head: string[]; rows: string[][]; align?: string[] };
 
-const FENCE = /^\s{0,3}```\s*([^\s`]*)/;
-const FENCE_END = /^\s{0,3}```\s*$/;
+const FENCE = /^\s{0,3}(`{3,}|~{3,})\s*([^\s`]*)/;
+const closes = (l: string, ch: string, len: number) => new RegExp(`^\\s{0,3}${ch}{${len},}\\s*$`).test(l);
+const BOX = /[─-╿]/;
+const ASCII_BORDER = /^\s*\+[-=]{2,}[-=+\s]*\+\s*$/; // +-----+   +----+
+/** Any box-drawing character: such text needs the tight `art` line height so vertical strokes join. */
+export const isArt = (text: string) => BOX.test(text);
+/** Unfenced diagram: at least two lines drawn with box characters or +---+ borders. */
+export const artLines = (lines: string[]) => lines.filter((l) => BOX.test(l) || ASCII_BORDER.test(l)).length;
 const HEADING = /^(#{1,6})\s+(.*?)\s*$/;
 const HR = /^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/;
 const ITEM = /^(\s*)([-*+]|\d{1,9}[.)])\s+(.*)$/;
@@ -51,10 +57,10 @@ function parseLines(lines: string[]): Block[] {
     if (f) {
       const body: string[] = [];
       i++;
-      while (i < lines.length && !FENCE_END.test(lines[i])) body.push(lines[i++]);
+      while (i < lines.length && !closes(lines[i], f[1][0], f[1].length)) body.push(lines[i++]);
       const open = i >= lines.length;
       if (!open) i++;
-      out.push({ t: "code", lang: f[1], text: body.join("\n"), open });
+      out.push({ t: "code", lang: f[2], text: body.join("\n"), open });
       continue;
     }
     const h = HEADING.exec(line);
@@ -104,13 +110,19 @@ function parseLines(lines: string[]): Block[] {
         const nm = j < lines.length ? ITEM.exec(lines[j]) : null;
         if (nm && nm[1].length <= base && /\d/.test(nm[2]) === ordered) i = j;
       }
-      out.push({ t: "list", ordered, items });
+      const start = ordered ? parseInt(m[2]) : 1;
+      out.push(start !== 1 ? { t: "list", ordered, start, items } : { t: "list", ordered, items });
       continue;
     }
     const para = [line];
     i++;
     while (i < lines.length && !isBlank(lines[i]) && !startsBlock(lines[i]) && !isTableStart(lines, i)) para.push(lines[i++]);
-    out.push({ t: "p", text: para.join("\n") });
+    const n = artLines(para);
+    const prev = out[out.length - 1];
+    // ponytail: a fragment without box characters between two pieces (a lone "▼" line set off by blank lines) stays a paragraph; proper fix is for the model to fence the diagram.
+    if (prev?.t === "code" && prev.art && n >= 1) prev.text += "\n\n" + para.join("\n");
+    else if (n >= 2) out.push({ t: "code", lang: "", text: para.join("\n"), open: false, art: true });
+    else out.push({ t: "p", text: para.join("\n") });
   }
   return out;
 }
@@ -136,9 +148,24 @@ function inline(s: string, onLink: OnLink): ReactNode[] {
   while (i < s.length) {
     const c = s[i];
     const k = out.length;
-    if (c === "`") {
+    if (c === "`" && s[i + 1] === "`") {
+      let n = 2;
+      while (s[i + n] === "`") n++;
+      const run = "`".repeat(n);
+      const e = s.indexOf(run, i + n);
+      if (e < 0) { buf += run; i += n; continue; }
+      let t = s.slice(i + n, e);
+      if (t.length > 1 && t.startsWith(" ") && t.endsWith(" ")) t = t.slice(1, -1);
+      push(<code key={k}>{t}</code>); i = e + n; continue;
+    } else if (c === "`") {
       const e = s.indexOf("`", i + 1);
       if (e > i + 1) { push(<code key={k}>{s.slice(i + 1, e)}</code>); i = e + 1; continue; }
+    } else if (c === "~" && s[i + 1] === "~") {
+      const e = s.indexOf("~~", i + 2);
+      if (e > i + 2) { push(<del key={k}>{inline(s.slice(i + 2, e), onLink)}</del>); i = e + 2; continue; }
+    } else if (c === "<") {
+      const br = /^<br\s*\/?>/i.exec(s.slice(i, i + 8));
+      if (br) { buf += "\n"; i += br[0].length; continue; }
     } else if (c === "[") {
       const e = s.indexOf("](", i + 1);
       const close = e > 0 ? s.indexOf(")", e + 2) : -1;
@@ -178,7 +205,7 @@ function CodeBlock({ lang, text }: { lang: string; text: string }) {
         <span>{lang}</span>
         <button type="button" className="md-copy" onClick={() => { try { void navigator.clipboard.writeText(text).catch(() => {}); } catch { /* no clipboard */ } }}>복사</button>
       </div>
-      <pre><code>{toks.map((k, i) => k.t ? <span key={i} className={"hl-" + k.t}>{k.s}</span> : k.s)}</code></pre>
+      <pre className={isArt(text) ? "art" : undefined}><code>{toks.map((k, i) => k.t ? <span key={i} className={"hl-" + k.t}>{k.s}</span> : k.s)}</code></pre>
     </div>
   );
 }
@@ -195,7 +222,7 @@ function render(blocks: Block[], onLink: OnLink): ReactNode[] {
       case "quote": return <blockquote key={i}>{render(b.children, onLink)}</blockquote>;
       case "list": {
         const L = b.ordered ? "ol" : "ul";
-        return <L key={i}>{b.items.map((it, j) => <li key={j}>{inline(it.text, onLink)}{render(it.children, onLink)}</li>)}</L>;
+        return <L key={i} start={b.ordered ? b.start : undefined}>{b.items.map((it, j) => <li key={j}>{inline(it.text, onLink)}{render(it.children, onLink)}</li>)}</L>;
       }
       case "table":
         return (
